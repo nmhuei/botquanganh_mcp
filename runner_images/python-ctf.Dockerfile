@@ -17,10 +17,17 @@ RUN pip install --no-cache-dir \
     pycryptodome \
     z3-solver \
     sympy \
-    gmpy2
+    gmpy2 \
+    playwright \
+    cloakbrowser
+
+RUN playwright install-deps chromium
 
 RUN useradd -m -u 1000 runner
 WORKDIR /work
 USER runner
 
+RUN python3 -m cloakbrowser install
+
 CMD ["python3"]
+
