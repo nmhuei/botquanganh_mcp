@@ -10,4 +10,14 @@ RUN apt-get update && apt-get install -y \
 
 USER sage
 WORKDIR /work
+
+RUN sage -pip install --no-cache-dir \
+    pycryptodome \
+    z3-solver \
+    libnum \
+    tqdm \
+    pyasn1 \
+    pyasn1-modules
+
 CMD ["sage"]
+

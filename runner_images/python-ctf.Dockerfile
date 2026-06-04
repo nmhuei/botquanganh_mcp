@@ -19,7 +19,12 @@ RUN pip install --no-cache-dir \
     sympy \
     gmpy2 \
     playwright \
-    cloakbrowser
+    cloakbrowser \
+    libnum \
+    tqdm \
+    pyasn1 \
+    pyasn1-modules
+
 
 RUN playwright install-deps chromium
 
