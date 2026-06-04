@@ -1,14 +1,47 @@
 import time
 import socket
+import ssl
 from typing import Any, Dict, Optional
 from app.mcp_server import mcp
-from app.security import validate_target_allowlisted, block_private_or_local_host
+from app.security import (
+    validate_target_allowlisted,
+    block_private_or_local_host,
+    resolve_host_to_ips,
+    format_error_response
+)
 from app.logging_audit import log_audit_event
+
+
+@mcp.tool(
+    name="check_target_allowed",
+    description="Check if a target host:port is permitted by allowlist and security policy rules before requesting a fallback execution."
+)
+def check_target_allowed(host: str, port: int) -> Dict[str, Any]:
+    """Checks target allowlist status and policy blocks."""
+    try:
+        # Check target allowlisted
+        validate_target_allowlisted(host, port)
+        # Check block private/local
+        block_private_or_local_host(host, port)
+        return {
+            "ok": True,
+            "allowed": True,
+            "policy": "ALLOWED_TCP_TARGETS",
+            "message": f"Target '{host}:{port}' is allowed."
+        }
+    except Exception as e:
+        err = format_error_response(e)
+        return {
+            "ok": True,
+            "allowed": False,
+            "error": err["error"]
+        }
+
 
 @mcp.tool(
     name="probe_target_from_runner",
     description=(
-        "Check TCP connectivity to a target from your runner machine. "
+        "Check TCP connectivity and diagnostic information to a target from your runner machine. "
         "Only valid after experiencing a remote connection failure inside the LLM sandbox. "
         "Requires target to be allowlisted."
     )
@@ -17,11 +50,9 @@ def probe_target_from_runner(
     target: Dict[str, Any],
     sandbox_failure_reason: str
 ) -> Dict[str, Any]:
-    """Probes connectivity to the remote target host:port and attempts to read a banner."""
+    """Probes connectivity to the remote target host:port and attempts to read a banner and perform network diagnostics."""
     try:
-        # 1. Input validation
         if not sandbox_failure_reason or not sandbox_failure_reason.strip():
-
             raise ValueError("sandbox_failure_reason must be provided to probe target.")
             
         host = target.get("host")
@@ -29,7 +60,7 @@ def probe_target_from_runner(
         if not host or port is None:
             raise ValueError("Target host and port must be specified in the target field.")
             
-        # 3. Security validations
+        # Security validations
         validate_target_allowlisted(host, port)
         block_private_or_local_host(host, port)
         
@@ -42,40 +73,77 @@ def probe_target_from_runner(
         reachable = False
         banner: Optional[str] = None
         
-        try:
-            # 4. Attempt TCP connection
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(5.0)  # 5 seconds connection timeout
-            s.connect((host, int(port)))
-            reachable = True
-            
-            # Attempt to read a banner with a 1-second timeout
-            s.settimeout(1.0)
+        # DNS diagnostic
+        ips = resolve_host_to_ips(host)
+        dns_ok = len(ips) > 0
+        
+        # TCP/TLS diagnostics
+        tcp_connected = False
+        tcp_duration_ms = 0
+        tls_attempted = False
+        tls_handshake_ok = False
+        
+        if dns_ok:
+            tcp_start = time.time()
             try:
-                banner_bytes = s.recv(1024)
-                if banner_bytes:
-                    banner = banner_bytes.decode('utf-8', errors='replace')
-            except socket.timeout:
-                pass  # No banner returned in 1s is normal for some services
-            except Exception:
-                pass
-            finally:
-                s.close()
-        except Exception as conn_err:
-            log_audit_event("PROBE_TARGET_FAILED_CONNECTION", {
-                "target": f"{host}:{port}",
-                "error": str(conn_err)
-            })
-            
+                # Attempt TCP connection
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(5.0)  # 5 seconds connection timeout
+                s.connect((host, int(port)))
+                tcp_connected = True
+                reachable = True
+                tcp_duration_ms = int((time.time() - tcp_start) * 1000)
+                
+                # Attempt TLS Handshake if it's HTTPS (443)
+                if port == 443:
+                    tls_attempted = True
+                    try:
+                        context = ssl.create_default_context()
+                        with context.wrap_socket(s, server_hostname=host) as ss:
+                            tls_handshake_ok = True
+                    except Exception:
+                        pass
+                
+                # Attempt to read a banner with a 1-second timeout
+                s.settimeout(1.0)
+                try:
+                    banner_bytes = s.recv(1024)
+                    if banner_bytes:
+                        banner = banner_bytes.decode('utf-8', errors='replace')
+                except socket.timeout:
+                    pass  # No banner returned in 1s is normal for some services
+                except Exception:
+                    pass
+                finally:
+                    s.close()
+            except Exception as conn_err:
+                log_audit_event("PROBE_TARGET_FAILED_CONNECTION", {
+                    "target": f"{host}:{port}",
+                    "error": str(conn_err)
+                })
+                
         duration_ms = int((time.time() - start_time) * 1000)
         
         return {
             "ok": True,
             "reachable": reachable,
             "banner": banner,
-            "duration_ms": duration_ms
+            "duration_ms": duration_ms,
+            "dns": {
+                "resolved": dns_ok,
+                "addresses": ips
+            },
+            "tcp": {
+                "connected": tcp_connected,
+                "duration_ms": tcp_duration_ms
+            },
+            "tls": {
+                "attempted": tls_attempted,
+                "handshake_ok": tls_handshake_ok,
+                "server_name": host if tls_attempted else None
+            }
         }
         
     except Exception as e:
         log_audit_event("PROBE_ERROR", {"error": str(e)})
-        raise e
+        return format_error_response(e)

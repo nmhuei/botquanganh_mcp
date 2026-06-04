@@ -1,7 +1,17 @@
 from datetime import datetime
 from app.mcp_server import mcp
-from app.config import RUNNER_IMAGE_PYTHON, RUNNER_IMAGE_PWN, RUNNER_IMAGE_SAGE
+from app.config import (
+    RUNNER_IMAGE_PYTHON,
+    RUNNER_IMAGE_PWN,
+    RUNNER_IMAGE_SAGE,
+    MAX_TIMEOUT_SECONDS,
+    MAX_CODE_BYTES,
+    MAX_SINGLE_FILE_BYTES,
+    MAX_ARGS,
+    MAX_ARG_LENGTH,
+)
 from app.logging_audit import log_audit_event
+from app.security import format_error_response
 
 
 @mcp.tool(name="health_check", description="Verify the MCP server is reachable and running correctly.")
@@ -12,13 +22,51 @@ def health_check() -> dict:
         return {
             "ok": True,
             "service": "fallback-runner-mcp",
-            "version": "0.1.0",
+            "version": "0.2.0",
             "server_time": datetime.utcnow().isoformat() + "Z",
             "runner_images": [RUNNER_IMAGE_PYTHON, RUNNER_IMAGE_PWN, RUNNER_IMAGE_SAGE]
         }
     except Exception as e:
         log_audit_event("HEALTH_CHECK_FAIL", {"tool": "health_check", "error": str(e)})
-        raise e
+        return format_error_response(e)
+
+
+@mcp.tool(
+    name="get_capabilities",
+    description="Retrieve runner constraints, limits, accepted encodings, and feature support matrices."
+)
+def get_capabilities() -> dict:
+    """Returns capabilities and restrictions of the fallback runner server."""
+    try:
+        log_audit_event("GET_CAPABILITIES", {})
+        return {
+            "ok": True,
+            "service": "fallback-runner-mcp",
+            "version": "0.2.0",
+            "limits": {
+                "max_timeout_seconds": MAX_TIMEOUT_SECONDS,
+                "max_total_file_bytes": MAX_CODE_BYTES,
+                "max_single_file_bytes": MAX_SINGLE_FILE_BYTES,
+                "max_args": MAX_ARGS,
+                "max_arg_length": MAX_ARG_LENGTH,
+                "accepted_file_encodings": ["text", "base64"]
+            },
+            "supported_languages": ["python", "pwn", "sage"],
+            "features": {
+                "validate_only": True,
+                "rerun": False,
+                "interactive_runs": False,
+                "artifact_upload": False,
+                "stdout_tail": False,
+                "stderr_tail": False
+            },
+            "network_policy": {
+                "allowlist_required": True
+            }
+        }
+    except Exception as e:
+        log_audit_event("GET_CAPABILITIES_FAIL", {"error": str(e)})
+        return format_error_response(e)
 
 
 @mcp.tool(
@@ -101,4 +149,4 @@ def get_runner_environments() -> dict:
         }
     except Exception as e:
         log_audit_event("GET_RUNNER_ENV_FAIL", {"error": str(e)})
-        raise e
+        return format_error_response(e)

@@ -6,6 +6,7 @@ from typing import Any, Dict
 from app.mcp_server import mcp
 from app.config import RUNS_DIR
 from app.logging_audit import get_audit_logs_for_run, log_audit_event
+from app.security import format_error_response
 
 RUN_ID_PATTERN = re.compile(r"^run_[0-9]{8}_[0-9]{6}_[a-f0-9]+$")
 
@@ -59,7 +60,7 @@ def get_run_log(run_id: str, include_transcript: bool = True) -> Dict[str, Any]:
         }
     except Exception as e:
         log_audit_event("GET_RUN_LOG_FAIL", {"error": str(e), "run_id": run_id})
-        raise e
+        return format_error_response(e)
 
 @mcp.tool(
     name="list_recent_runs",
@@ -68,7 +69,6 @@ def get_run_log(run_id: str, include_transcript: bool = True) -> Dict[str, Any]:
 def list_recent_runs(limit: int = 20) -> Dict[str, Any]:
     """Retrieves summaries of the most recent solver runs, sorted newest first."""
     try:
-        
         runs = []
         if RUNS_DIR.exists():
             for p in RUNS_DIR.iterdir():
@@ -97,7 +97,7 @@ def list_recent_runs(limit: int = 20) -> Dict[str, Any]:
         }
     except Exception as e:
         log_audit_event("LIST_RUNS_FAIL", {"error": str(e)})
-        raise e
+        return format_error_response(e)
 
 @mcp.tool(
     name="delete_run",
@@ -121,4 +121,4 @@ def delete_run(run_id: str) -> Dict[str, Any]:
         }
     except Exception as e:
         log_audit_event("DELETE_RUN_FAIL", {"error": str(e), "run_id": run_id})
-        raise e
+        return format_error_response(e)

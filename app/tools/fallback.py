@@ -7,6 +7,7 @@ from app.security import (
     validate_timeout,
     validate_language,
     validate_args,
+    format_error_response,
 )
 from app.runner import execute_fallback_solver
 from app.logging_audit import log_audit_event
@@ -101,4 +102,65 @@ def run_solver_fallback(
             "error": str(e),
             "target_host": host_info
         })
-        raise e
+        return format_error_response(e)
+
+
+@mcp.tool(
+    name="validate_run_request",
+    description="Dry-run validation for run_solver_fallback. Checks parameters, targets, policy, timeout, and schema without executing the solver container."
+)
+def validate_run_request(
+    target: Dict[str, Any],
+    sandbox_failure: Dict[str, Any],
+    local_validation: Dict[str, Any],
+    files: List[Dict[str, Any]],
+    language: str = "python",
+    entrypoint: str = "solve.py",
+    args: List[str] = [],
+    env: Dict[str, str] = {},
+    timeout_seconds: int = 30
+) -> Dict[str, Any]:
+    """Dry-run validation of a solver fallback request."""
+    try:
+        req = FallbackRequest(
+            target=target,
+            language=language,
+            entrypoint=entrypoint,
+            args=args,
+            env=env,
+            timeout_seconds=timeout_seconds,
+            sandbox_failure=sandbox_failure,
+            local_validation=local_validation,
+            files=files
+        )
+        validate_target_allowlisted(req.target.host, req.target.port)
+        block_private_or_local_host(req.target.host, req.target.port)
+        validate_timeout(req.timeout_seconds)
+        validate_language(req.language)
+        validate_args(req.args)
+        
+        # Verify entrypoint file is specified in files list
+        entrypoint_found = False
+        for f in req.files:
+            if f.path == req.entrypoint:
+                entrypoint_found = True
+                break
+        if not entrypoint_found:
+            raise ValueError(f"Entrypoint file '{req.entrypoint}' is missing from the files list.")
+
+        return {
+            "ok": True,
+            "valid": True,
+            "normalized": {
+                "language": req.language,
+                "timeout_seconds": req.timeout_seconds
+            },
+            "warnings": []
+        }
+    except Exception as e:
+        err = format_error_response(e)
+        return {
+            "ok": False,
+            "valid": False,
+            "error": err["error"]
+        }

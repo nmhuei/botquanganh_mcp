@@ -91,5 +91,24 @@ class TestSecurity(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_relative_path(".")
 
+    def test_format_error_response(self):
+        from app.security import format_error_response
+        
+        # Test permission error targets
+        err = format_error_response(PermissionError("not in the allowed_tcp_targets"))
+        self.assertEqual(err["error"]["code"], "TARGET_NOT_ALLOWLISTED")
+        
+        # Test private IP blocking permission error
+        err = format_error_response(PermissionError("blocked private ip"))
+        self.assertEqual(err["error"]["code"], "POLICY_BLOCKED")
+        
+        # Test timeout value error
+        err = format_error_response(ValueError("timeout exceeds max"))
+        self.assertEqual(err["error"]["code"], "TIMEOUT_INVALID")
+        
+        # Test unsupported language
+        err = format_error_response(ValueError("language not supported"))
+        self.assertEqual(err["error"]["code"], "UNSUPPORTED_LANGUAGE")
+
 if __name__ == "__main__":
     unittest.main()

@@ -84,3 +84,58 @@ def validate_relative_path(path: str) -> None:
         raise ValueError(f"Path traversal detected in path: '{path}'")
     if not str(p) or str(p) == ".":
         raise ValueError(f"Invalid empty/dot path: '{path}'")
+
+def format_error_response(e: Exception) -> dict:
+    """Standardizes error response formatting according to the proposal's enum and details."""
+    code = "INTERNAL_RUNNER_ERROR"
+    message = str(e)
+    details = {}
+    suggestion = "Check system logs or contact server administrator."
+
+    msg = str(e).lower()
+    
+    # Map Pydantic validation errors
+    if "validation error" in msg:
+        code = "SCHEMA_INVALID"
+        suggestion = "Check the input parameters and format against the tool schema."
+        # Attempt to parse field errors if possible
+        details["validation_message"] = str(e)
+    elif isinstance(e, PermissionError):
+        if "not in the allowed_tcp_targets" in msg:
+            code = "TARGET_NOT_ALLOWLISTED"
+            suggestion = "Check if the remote target hostname and port are allowlisted, or request the administrator to add them to ALLOWED_TCP_TARGETS."
+        else:
+            code = "POLICY_BLOCKED"
+            suggestion = "Verify that the target endpoint is not a private, local, or blocked IP/host address."
+    elif isinstance(e, ValueError):
+        if "timeout" in msg:
+            code = "TIMEOUT_INVALID"
+            suggestion = "Ensure timeout_seconds is a positive integer below the configured MAX_TIMEOUT_SECONDS."
+        elif "language" in msg:
+            code = "UNSUPPORTED_LANGUAGE"
+            suggestion = "Ensure language is one of: 'python', 'pwn', 'sage'."
+        elif "path traversal" in msg or "absolute path" in msg or "invalid empty/dot path" in msg:
+            code = "SCHEMA_INVALID"
+            suggestion = "Correct your file path parameters to be strictly relative and avoid path traversal."
+        elif "encoding must be" in msg:
+            code = "UNSUPPORTED_ENCODING"
+            suggestion = "Specify file encoding as either 'text' or 'base64'."
+        elif "entrypoint" in msg:
+            code = "SCHEMA_INVALID"
+            suggestion = "Ensure the specified entrypoint is included in the files list."
+        else:
+            code = "SCHEMA_INVALID"
+            suggestion = "Please check your payload formatting and schemas."
+    elif isinstance(e, FileNotFoundError):
+        code = "RUN_NOT_FOUND"
+        suggestion = "The specified run_id was not found. Use list_recent_runs to find correct run_ids."
+
+    return {
+        "ok": False,
+        "error": {
+            "code": code,
+            "message": message,
+            "details": details,
+            "suggestion": suggestion
+        }
+    }
