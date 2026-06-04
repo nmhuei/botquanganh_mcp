@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  mcp-server:
+    build: .
+    container_name: fallback-runner-mcp
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount docker socket to control sibling docker containers on the host
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Map logs folder for audit persistence
+      - ./logs:/app/logs
+    env_file:
+      - .env
+    # Host network mode is necessary to permit iptables rule manipulation directly on the host's DOCKER-USER chain
+    network_mode: host
