@@ -2,7 +2,7 @@ import json
 import re
 import shutil
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from app.mcp_server import mcp
 from app.config import RUNS_DIR
 from app.logging_audit import get_audit_logs_for_run, log_audit_event
@@ -122,3 +122,96 @@ def delete_run(run_id: str) -> Dict[str, Any]:
     except Exception as e:
         log_audit_event("DELETE_RUN_FAIL", {"error": str(e), "run_id": run_id})
         return format_error_response(e)
+
+
+@mcp.tool(
+    name="get_run_stdout",
+    description="Retrieve the stdout trace from a previous fallback run, optionally tailing the last N lines."
+)
+def get_run_stdout(run_id: str, tail_lines: Optional[int] = None) -> Dict[str, Any]:
+    """Retrieves raw stdout trace from fallback run output."""
+    try:
+        validate_run_id_safe(run_id)
+        stdout_path = RUNS_DIR / run_id / "output" / "stdout.txt"
+        if not stdout_path.exists():
+            raise FileNotFoundError(f"Stdout log for run '{run_id}' not found.")
+            
+        if tail_lines is not None and tail_lines > 0:
+            content = tail_file(stdout_path, tail_lines)
+        else:
+            content = stdout_path.read_text(encoding="utf-8", errors="replace")
+            
+        return {
+            "ok": True,
+            "run_id": run_id,
+            "stream": "stdout",
+            "content": content
+        }
+    except Exception as e:
+        return format_error_response(e)
+
+
+@mcp.tool(
+    name="get_run_stderr",
+    description="Retrieve the stderr trace from a previous fallback run, optionally tailing the last N lines."
+)
+def get_run_stderr(run_id: str, tail_lines: Optional[int] = None) -> Dict[str, Any]:
+    """Retrieves raw stderr trace from fallback run output."""
+    try:
+        validate_run_id_safe(run_id)
+        stderr_path = RUNS_DIR / run_id / "output" / "stderr.txt"
+        if not stderr_path.exists():
+            raise FileNotFoundError(f"Stderr log for run '{run_id}' not found.")
+            
+        if tail_lines is not None and tail_lines > 0:
+            content = tail_file(stderr_path, tail_lines)
+        else:
+            content = stderr_path.read_text(encoding="utf-8", errors="replace")
+            
+        return {
+            "ok": True,
+            "run_id": run_id,
+            "stream": "stderr",
+            "content": content
+        }
+    except Exception as e:
+        return format_error_response(e)
+
+
+@mcp.tool(
+    name="tail_run_output",
+    description="Simultaneously tail the stdout and stderr traces from a previous fallback run."
+)
+def tail_run_output(run_id: str, tail_lines: int = 50) -> Dict[str, Any]:
+    """Retrieves tailed content of both stdout and stderr for quick debugging."""
+    try:
+        validate_run_id_safe(run_id)
+        stdout_path = RUNS_DIR / run_id / "output" / "stdout.txt"
+        stderr_path = RUNS_DIR / run_id / "output" / "stderr.txt"
+        
+        stdout_content = tail_file(stdout_path, tail_lines) if stdout_path.exists() else ""
+        stderr_content = tail_file(stderr_path, tail_lines) if stderr_path.exists() else ""
+        
+        return {
+            "ok": True,
+            "run_id": run_id,
+            "tail_lines": tail_lines,
+            "stdout": stdout_content,
+            "stderr": stderr_content
+        }
+    except Exception as e:
+        return format_error_response(e)
+
+
+def tail_file(path: Path, max_lines: int) -> str:
+    """Helper to read the last N lines of a file efficiently."""
+    if not path.exists():
+        return ""
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+            if len(lines) <= max_lines:
+                return "".join(lines)
+            return "".join(lines[-max_lines:])
+    except Exception:
+        return ""

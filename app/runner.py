@@ -1,6 +1,7 @@
 import uuid
 import json
 import time
+from typing import Optional
 from datetime import datetime
 from pathlib import Path
 from app.config import RUNS_DIR, MAX_OUTPUT_BYTES
@@ -16,7 +17,7 @@ def create_run_id() -> str:
     rand = uuid.uuid4().hex[:8]
     return f"run_{timestamp}_{rand}"
 
-def execute_fallback_solver(req: FallbackRequest) -> FallbackResponse:
+def execute_fallback_solver(req: FallbackRequest, derived_from: Optional[str] = None) -> FallbackResponse:
     """Orchestrates the entire solver execution cycle."""
     run_id = create_run_id()
     created_at = datetime.utcnow().isoformat() + "Z"
@@ -128,6 +129,7 @@ def execute_fallback_solver(req: FallbackRequest) -> FallbackResponse:
     # 6. Save metadata
     metadata = {
         "run_id": run_id,
+        "derived_from": derived_from,
         "created_at": created_at,
         "target": target_str,
         "language": req.language,

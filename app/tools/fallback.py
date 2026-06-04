@@ -164,3 +164,176 @@ def validate_run_request(
             "valid": False,
             "error": err["error"]
         }
+
+
+@mcp.tool(
+    name="upload_artifact",
+    description="Upload a solver source file or utility payload to the server's artifact cache. Returns an artifact_id for file entry references."
+)
+def upload_artifact(
+    filename: str,
+    content: str,
+    encoding: str = "text"
+) -> Dict[str, Any]:
+    """Uploads a file payload, computes its SHA-256, and stores it in the persistent artifacts directory."""
+    try:
+        from app.config import ARTIFACTS_DIR
+        import hashlib
+        import base64
+        
+        # Validate filename
+        if not filename or "/" in filename or "\\" in filename or ".." in filename:
+            raise ValueError(f"Invalid filename: '{filename}'")
+            
+        if encoding not in ("text", "base64"):
+            raise ValueError("encoding must be 'text' or 'base64'")
+            
+        # Decode and validate content bytes
+        if encoding == "base64":
+            try:
+                content_bytes = base64.b64decode(content)
+            except Exception as e:
+                raise ValueError(f"Invalid base64 payload: {str(e)}")
+        else:
+            content_bytes = content.encode("utf-8")
+            
+        # Calculate SHA-256 to form artifact ID
+        sha256 = hashlib.sha256(content_bytes).hexdigest()
+        artifact_id = f"art_{sha256}"
+        
+        # Save to artifacts directory
+        artifact_path = ARTIFACTS_DIR / artifact_id
+        artifact_path.write_bytes(content_bytes)
+        
+        log_audit_event("UPLOAD_ARTIFACT", {
+            "filename": filename,
+            "artifact_id": artifact_id,
+            "size": len(content_bytes)
+        })
+        
+        return {
+            "ok": True,
+            "artifact_id": artifact_id,
+            "sha256": sha256,
+            "size": len(content_bytes),
+            "filename": filename
+        }
+    except Exception as e:
+        log_audit_event("UPLOAD_ARTIFACT_FAIL", {"error": str(e)})
+        return format_error_response(e)
+
+
+@mcp.tool(
+    name="rerun_run",
+    description="Run a new fallback solver by inheriting and patching workspace or execution config of an existing run."
+)
+def rerun_run(
+    run_id: str,
+    patch: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Patches an existing solver run workspace and execution config to trigger a new fallback run."""
+    try:
+        from app.config import RUNS_DIR
+        from app.tools.runs import validate_run_id_safe
+        import json
+        import base64
+        
+        # 1. Validate original run ID format
+        validate_run_id_safe(run_id)
+        
+        # 2. Retrieve old metadata
+        run_dir = RUNS_DIR / run_id
+        if not run_dir.exists():
+            raise FileNotFoundError(f"Run directory for run_id '{run_id}' not found.")
+            
+        metadata_path = run_dir / "metadata.json"
+        if not metadata_path.exists():
+            raise FileNotFoundError(f"Metadata for run_id '{run_id}' is missing.")
+            
+        old_meta = json.loads(metadata_path.read_text(encoding="utf-8"))
+        
+        # 3. Reconstruct files from original workspace
+        files_info = old_meta.get("files", [])
+        reconstructed_files = []
+        run_input_dir = run_dir / "input"
+        
+        for f_info in files_info:
+            path_str = f_info["path"]
+            file_path = run_input_dir / path_str
+            if file_path.exists():
+                content_bytes = file_path.read_bytes()
+                # Encode as base64 to preserve binary safety
+                content_b64 = base64.b64encode(content_bytes).decode('utf-8')
+                reconstructed_files.append({
+                    "path": path_str,
+                    "encoding": "base64",
+                    "content": content_b64
+                })
+                
+        # 4. Apply workspace files patch
+        workspace_patch = patch.get("workspace", {})
+        patched_files_map = {f["path"]: f for f in reconstructed_files}
+        
+        for patch_file in workspace_patch.get("files", []):
+            patched_files_map[patch_file["path"]] = patch_file
+            
+        final_files = list(patched_files_map.values())
+        
+        # 5. Extract original target and details
+        target_str = old_meta.get("target")
+        if ":" not in target_str:
+            raise ValueError(f"Corrupt target format in run metadata: '{target_str}'")
+        host, port_str = target_str.split(":", 1)
+        target_dict = {
+            "host": host,
+            "port": int(port_str),
+            "protocol": "tcp"
+        }
+        
+        # 6. Extract sandbox failure and local validation
+        sandbox_failure_dict = old_meta.get("sandbox_failure")
+        local_validation_dict = old_meta.get("local_validation")
+        
+        # 7. Merge execution config and properties
+        final_language = workspace_patch.get("language", old_meta.get("language", "python"))
+        final_entrypoint = workspace_patch.get("entrypoint", old_meta.get("entrypoint", "solve.py"))
+        
+        execution_patch = patch.get("execution", {})
+        final_args = execution_patch.get("args", old_meta.get("args", []))
+        final_env = execution_patch.get("env", old_meta.get("env", {}))
+        final_timeout = execution_patch.get("timeout_seconds", old_meta.get("timeout_seconds", 30))
+        
+        # 8. Re-validate request and execute
+        req = FallbackRequest(
+            target=target_dict,
+            language=final_language,
+            entrypoint=final_entrypoint,
+            args=final_args,
+            env=final_env,
+            timeout_seconds=final_timeout,
+            sandbox_failure=sandbox_failure_dict,
+            local_validation=local_validation_dict,
+            files=final_files
+        )
+        
+        # Security checks
+        validate_target_allowlisted(req.target.host, req.target.port)
+        block_private_or_local_host(req.target.host, req.target.port)
+        validate_timeout(req.timeout_seconds)
+        validate_language(req.language)
+        validate_args(req.args)
+        
+        # Execute the solver
+        res = execute_fallback_solver(req, derived_from=run_id)
+        
+        # Return response including derived_from attribute
+        response_dict = res.model_dump()
+        response_dict["derived_from"] = run_id
+        return response_dict
+        
+    except Exception as e:
+        log_audit_event("RERUN_ERROR", {
+            "error": str(e),
+            "original_run_id": run_id
+        })
+        return format_error_response(e)

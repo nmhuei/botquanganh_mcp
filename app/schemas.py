@@ -1,5 +1,5 @@
 from typing import List, Dict, Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 class HealthCheckRequest(BaseModel):
     pass
@@ -48,14 +48,22 @@ class LocalValidation(BaseModel):
 
 class FileEntry(BaseModel):
     path: str
-    encoding: str  # "text" or "base64"
-    content: str
+    encoding: Optional[str] = None  # "text" or "base64"
+    content: Optional[str] = None
+    artifact_id: Optional[str] = None
 
     @field_validator("encoding")
     def validate_encoding(cls, v):
-        if v not in ("text", "base64"):
+        if v is not None and v not in ("text", "base64"):
             raise ValueError("encoding must be 'text' or 'base64'")
         return v
+
+    @model_validator(mode="after")
+    def validate_content_or_artifact(self):
+        if self.artifact_id is None:
+            if self.encoding is None or self.content is None:
+                raise ValueError("Either (encoding and content) or artifact_id must be provided.")
+        return self
 
 class FallbackRequest(BaseModel):
     target: Target

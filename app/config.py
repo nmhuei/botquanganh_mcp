@@ -24,6 +24,11 @@ if not RUNS_DIR.is_absolute():
     RUNS_DIR = BASE_DIR / RUNS_DIR
 RUNS_DIR.mkdir(parents=True, exist_ok=True)
 
+ARTIFACTS_DIR = Path(os.getenv("ARTIFACTS_DIR", "./logs/artifacts"))
+if not ARTIFACTS_DIR.is_absolute():
+    ARTIFACTS_DIR = BASE_DIR / ARTIFACTS_DIR
+ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+
 LOG_FILE = Path(os.getenv("LOG_FILE", "./logs/gateway.log"))
 if not LOG_FILE.is_absolute():
     LOG_FILE = BASE_DIR / LOG_FILE

@@ -3,7 +3,7 @@ import hashlib
 from pathlib import Path
 from typing import List, Tuple
 from app.schemas import FileEntry
-from app.config import MAX_CODE_BYTES, MAX_SINGLE_FILE_BYTES
+from app.config import MAX_CODE_BYTES, MAX_SINGLE_FILE_BYTES, ARTIFACTS_DIR
 from app.security import validate_relative_path
 
 def validate_and_decode_file(file: FileEntry) -> bytes:
@@ -11,16 +11,26 @@ def validate_and_decode_file(file: FileEntry) -> bytes:
     # Enforce relative path rules
     validate_relative_path(file.path)
     
-    # Decode contents
-    if file.encoding == "base64":
-        try:
-            content_bytes = base64.b64decode(file.content)
-        except Exception as e:
-            raise ValueError(f"Failed to decode base64 content for file '{file.path}': {str(e)}")
-    elif file.encoding == "text":
-        content_bytes = file.content.encode("utf-8")
+    # Resolve using artifact store if referenced
+    if file.artifact_id is not None:
+        if not file.artifact_id.startswith("art_") or ".." in file.artifact_id or "/" in file.artifact_id or "\\" in file.artifact_id:
+            raise ValueError(f"Invalid artifact_id format: '{file.artifact_id}'")
+        
+        artifact_path = ARTIFACTS_DIR / file.artifact_id
+        if not artifact_path.exists():
+            raise FileNotFoundError(f"Artifact '{file.artifact_id}' not found in storage.")
+        content_bytes = artifact_path.read_bytes()
     else:
-        raise ValueError(f"Unsupported file encoding '{file.encoding}' for file '{file.path}'")
+        # Decode contents
+        if file.encoding == "base64":
+            try:
+                content_bytes = base64.b64decode(file.content)
+            except Exception as e:
+                raise ValueError(f"Failed to decode base64 content for file '{file.path}': {str(e)}")
+        elif file.encoding == "text":
+            content_bytes = file.content.encode("utf-8")
+        else:
+            raise ValueError(f"Unsupported file encoding '{file.encoding}' for file '{file.path}'")
         
     # Check individual file size limit
     if len(content_bytes) > MAX_SINGLE_FILE_BYTES:

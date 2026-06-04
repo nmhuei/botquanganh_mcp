@@ -54,11 +54,11 @@ def get_capabilities() -> dict:
             "supported_languages": ["python", "pwn", "sage"],
             "features": {
                 "validate_only": True,
-                "rerun": False,
+                "rerun": True,
                 "interactive_runs": False,
-                "artifact_upload": False,
-                "stdout_tail": False,
-                "stderr_tail": False
+                "artifact_upload": True,
+                "stdout_tail": True,
+                "stderr_tail": True
             },
             "network_policy": {
                 "allowlist_required": True
