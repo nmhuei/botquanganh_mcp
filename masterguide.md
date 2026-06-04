@@ -90,3 +90,29 @@ ps aux | grep -E 'fastmcp|cloudflared'
 3. Chọn giao thức kết nối: **Server-Sent Events (SSE)**.
 4. Điền URL lấy được từ script `start_tunnel_server.sh` (ví dụ: `https://xxxx.trycloudflare.com/mcp`).
 5. Hoàn tất kết nối. ChatGPT sẽ tự động nhận diện 6 công cụ chính: `health_check`, `run_solver_fallback`, `probe_target_from_runner`, `get_run_log`, `list_recent_runs`, và `delete_run`.
+
+---
+
+## 5. Sử Dụng CloakBrowser Cho Web Exploitation / Automation
+
+Hệ thống đã được tích hợp sẵn **CloakBrowser** (phiên bản Chromium tuỳ chỉnh chống phát hiện bot mức mã nguồn C++) cùng toàn bộ các thư viện hệ thống cần thiết (qua Playwright) trong các Docker runner images (`ctf-python-runner`, `ctf-pwn-runner`).
+
+### Cách sử dụng trong file solver:
+Khi viết script giải bài liên quan đến Web/Browser automation, hãy truyền tham số `--no-sandbox` khi khởi động browser do môi trường Docker chạy mặc định không có sandbox namespace:
+
+```python
+import cloakbrowser
+
+# Khởi chạy trình duyệt ở chế độ headless với tham số --no-sandbox
+browser = cloakbrowser.launch(
+    headless=True,
+    args=["--no-sandbox"]
+)
+
+page = browser.new_page()
+page.goto("https://httpbin.org/ip")
+print(page.content())
+
+browser.close()
+```
+
