@@ -16,10 +16,9 @@ from app.logging_audit import log_audit_event
     description=(
         "Run a provided CTF/lab solver only as a fallback when the assistant has already solved locally "
         "and failed to connect to the remote target from its sandbox. "
-        "Do not use this tool for normal local solving. "
-        "Do not use this tool if the assistant sandbox can reach the remote server. "
-        "The server must reject requests without sandbox_failure evidence, local_validation summary, "
-        "and an allowlisted target. "
+        "Supported language environments:\n"
+        "- 'python' (default) or 'pwn': Python 3.12 with pre-installed libraries: pwntools, pycryptodome (import Crypto), z3-solver (import z3), libnum, sympy, gmpy2, requests, tqdm, pyasn1, pyasn1-modules, playwright, cloakbrowser (requires args=['--no-sandbox']).\n"
+        "- 'sage': SageMath with pre-installed libraries: native SageMath, pycryptodome, z3-solver, libnum, sympy, gmpy2, tqdm, pyasn1, pyasn1-modules.\n"
         "The solver runs inside an isolated Docker container and returns stdout, stderr, hashes, and transcript logs."
     )
 )
@@ -34,7 +33,38 @@ def run_solver_fallback(
     env: Dict[str, str] = {},
     timeout_seconds: int = 30
 ) -> Dict[str, Any]:
-    """Runs a CTF solver package inside an isolated Docker container, returning execution outputs."""
+    """Runs a CTF solver package inside an isolated Docker container, returning execution outputs.
+
+    Supported language environments (parameter 'language'):
+    - 'python' (default) / 'pwn': Runs in Python 3.12-slim container.
+      Pre-installed libraries (importable directly):
+      * pwntools (import pwn)
+      * pycryptodome (import Crypto)
+      * z3-solver (import z3)
+      * libnum (import libnum)
+      * sympy (import sympy)
+      * gmpy2 (import gmpy2)
+      * requests (import requests)
+      * tqdm (import tqdm)
+      * pyasn1 (import pyasn1)
+      * pyasn1-modules (import pyasn1_modules)
+      * playwright (import playwright)
+      * cloakbrowser (import cloakbrowser). Note: When running playwright or cloakbrowser, you MUST pass "--no-sandbox" in the args parameter.
+
+    - 'sage': Runs in SageMath container.
+      Pre-installed libraries (importable directly):
+      * SageMath (native)
+      * pycryptodome (import Crypto)
+      * z3-solver (import z3)
+      * libnum (import libnum)
+      * sympy (import sympy)
+      * gmpy2 (import gmpy2)
+      * tqdm (import tqdm)
+      * pyasn1 (import pyasn1)
+      * pyasn1-modules (import pyasn1_modules)
+
+    This tool is only for fallback runs and requires sandbox_failure reason, local_validation, and allowlisted target.
+    """
     try:
         # 1. Parse and Validate request schema
         req = FallbackRequest(
