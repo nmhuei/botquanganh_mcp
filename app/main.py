@@ -5,6 +5,7 @@ from app.mcp_server import mcp
 # Basic tools: lightweight server connectivity checks for ChatGPT.
 import app.tools.health
 import app.tools.probe
+import app.tools.basic_runner
 from app.config import MCP_BIND_HOST, MCP_PORT, ENABLE_ADVANCED_TOOLS
 
 # Advanced tools: Docker runner/workspace/log features. Enabled after running

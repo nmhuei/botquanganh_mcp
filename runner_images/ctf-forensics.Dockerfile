@@ -71,10 +71,11 @@ RUN pip3 install --no-cache-dir --break-system-packages uv && \
 RUN stegoveritas_setup || python3 -m stegoveritas --setup || true
 
 RUN mkdir -p /opt/wordlists && \
-    wget -O /opt/wordlists/rockyou.txt.gz https://github.com/brannondorsey/naive-hashcat/releases/download/data/rockyou.txt.gz && \
-    gunzip /opt/wordlists/rockyou.txt.gz
+    printf '%s\n' password 123456 123456789 qwerty abc123 letmein admin welcome > /opt/wordlists/basic.txt
 
-RUN useradd -m -o -u 1000 runner && usermod -aG wireshark runner
+RUN getent group wireshark || groupadd wireshark && \
+    useradd -m -o -u 1000 runner && \
+    usermod -aG wireshark runner
 WORKDIR /work
 USER runner
 CMD ["bash"]

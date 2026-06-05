@@ -228,5 +228,23 @@ class TestNewTools(unittest.TestCase):
         # Cleanup
         delete_workspace(ws_id)
 
+    @patch("app.security.ALLOWED_TCP_TARGETS", ["1.1.1.1:80"])
+    def test_run_basic_python_solver(self):
+        from app.tools.basic_runner import run_basic_python_solver
+
+        res = run_basic_python_solver(
+            target={"host": "1.1.1.1", "port": 80},
+            files=[{
+                "path": "solve.py",
+                "encoding": "text",
+                "content": "import os\nprint(os.environ['TARGET_HOST'] + ':' + os.environ['TARGET_PORT'])\n"
+            }],
+            entrypoint="solve.py",
+            timeout_seconds=10
+        )
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["exit_code"], 0)
+        self.assertIn("1.1.1.1:80", res["stdout"])
+
 if __name__ == "__main__":
     unittest.main()

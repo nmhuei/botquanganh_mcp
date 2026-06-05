@@ -54,7 +54,8 @@ def get_capabilities() -> dict:
                 "health_check",
                 "get_capabilities",
                 "check_target_allowed",
-                "probe_target_from_runner"
+                "probe_target_from_runner",
+                "run_basic_python_solver"
             ],
             "advanced_tools": [
                 "get_runner_environments",
@@ -83,8 +84,9 @@ def get_capabilities() -> dict:
                 "max_arg_length": MAX_ARG_LENGTH,
                 "accepted_file_encodings": ["text", "base64"]
             },
-            "supported_languages": ["python", "pwn", "sage", "forensics"] if ENABLE_ADVANCED_TOOLS else [],
+            "supported_languages": ["python", "pwn", "sage", "forensics"] if ENABLE_ADVANCED_TOOLS else ["python"],
             "features": {
+                "basic_python_solver": True,
                 "validate_only": True,
                 "rerun": ENABLE_ADVANCED_TOOLS,
                 "interactive_runs": False,

@@ -2,3 +2,13 @@ fastmcp
 pydantic
 python-dotenv
 httpx
+requests
+beautifulsoup4
+lxml
+pwntools
+pycryptodome
+z3-solver
+sympy
+gmpy2
+websocket-client
+websockets

@@ -3,7 +3,7 @@
 Tài liệu này hướng dẫn cách cài, chạy và nối **Fallback Runner MCP** với ChatGPT qua máy của bạn.
 
 Mục tiêu hiện tại:
-- **Basic mode**: nhẹ nhất, để ChatGPT connect tới server MCP và kiểm tra target/server qua máy bạn.
+- **Basic mode**: nhẹ, để ChatGPT connect tới server MCP, kiểm tra target/server, và chạy solver Python pwn/web cơ bản qua máy bạn.
 - **Advanced mode**: cài thêm Docker runner images để chạy solver, workspace, log, shell command trong container.
 
 ---
@@ -21,6 +21,7 @@ health_check
 get_capabilities
 check_target_allowed
 probe_target_from_runner
+run_basic_python_solver
 ```
 
 Ý nghĩa:
@@ -28,8 +29,26 @@ probe_target_from_runner
 - `get_capabilities`: xem server đang basic hay advanced.
 - `check_target_allowed`: kiểm tra host:port có được phép probe không.
 - `probe_target_from_runner`: thử DNS/TCP/TLS/banner tới target qua máy bạn.
+- `run_basic_python_solver`: chạy solver Python nhẹ trong `.venv` host, phù hợp pwn/web cơ bản.
 
-Basic phù hợp khi bạn gặp bài liên quan tới server/network và muốn ChatGPT dùng máy bạn để kiểm tra kết nối thật.
+Basic packages cho solver:
+
+```text
+requests
+beautifulsoup4
+lxml
+pwntools
+pycryptodome
+z3-solver
+sympy
+gmpy2
+websocket-client
+websockets
+```
+
+`run_basic_python_solver` bắt buộc truyền `target={"host": "...", "port": ...}`. Target đó phải nằm trong `ALLOWED_TCP_TARGETS`. Solver sẽ nhận `TARGET_HOST` và `TARGET_PORT` qua environment.
+
+Basic phù hợp khi bạn gặp bài liên quan tới server/network/pwn/web và muốn ChatGPT dùng máy bạn để connect thật, chạy solver nhẹ thật.
 
 ### 1.2 Advanced Mode
 
@@ -84,7 +103,7 @@ chmod +x scripts/*.sh
 
 Script này sẽ:
 - tạo `.venv` nếu chưa có,
-- cài dependency Python nhẹ trong `requirements.txt`,
+- cài dependency Python basic bằng `uv pip install -r requirements.txt`, gồm package pwn/web phổ biến,
 - tạo `.env` từ `.env.example` nếu chưa có.
 
 Không build Docker image.
@@ -192,13 +211,14 @@ https://xxxx.trycloudflare.com/mcp
 4. Lưu connector.
 5. Test bằng tool `health_check`.
 
-Nếu basic mode hoạt động đúng, ChatGPT sẽ thấy 4 tool:
+Nếu basic mode hoạt động đúng, ChatGPT sẽ thấy 5 tool:
 
 ```text
 health_check
 get_capabilities
 check_target_allowed
 probe_target_from_runner
+run_basic_python_solver
 ```
 
 ---
@@ -270,6 +290,17 @@ ALLOWED_TCP_TARGETS=target.host:port
 ENABLE_ADVANCED_TOOLS=false
 ```
 
+### Cần ChatGPT chạy solver pwn/web nhẹ
+
+Vẫn dùng basic:
+
+```bash
+./scripts/install_basic.sh
+./scripts/start_tunnel_server.sh
+```
+
+Solver Python có thể import `pwn`, `requests`, `bs4`, `Crypto`, `z3`, `sympy`, `gmpy2`, `websocket`.
+
 ### Cần chạy solver/container
 
 ```bash
@@ -283,5 +314,5 @@ ENABLE_ADVANCED_TOOLS=false
 
 - Đừng dùng `ALLOWED_TCP_TARGETS=*` lâu dài nếu không cần.
 - Giữ `BLOCK_PRIVATE_IPS=true` trừ khi bạn đang test local có chủ đích.
-- Basic mode không chạy Docker command, không có workspace, không có shell tool.
+- Basic mode không chạy Docker command, không có workspace, không có shell tool. Nó chỉ chạy Python solver trong `.venv` host với timeout và allowlist target.
 - Advanced mode mạnh hơn, nên chỉ bật khi cần.

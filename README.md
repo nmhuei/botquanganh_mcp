@@ -4,7 +4,7 @@ MCP server để ChatGPT có thể dùng máy của bạn kiểm tra kết nối
 
 Repo có 2 chế độ:
 
-- **Basic**: nhẹ nhất, dùng để test/local, chỉ expose tool kiểm tra kết nối.
+- **Basic**: nhẹ, dùng để test/local, có tool kiểm tra kết nối và chạy solver Python pwn/web cơ bản.
 - **Full / Advanced**: cài thêm Docker runner images, phù hợp chạy trên VPS hoặc máy chủ cloud.
 
 ---
@@ -22,14 +22,33 @@ health_check
 get_capabilities
 check_target_allowed
 probe_target_from_runner
+run_basic_python_solver
 ```
 
 Dùng basic khi:
 
 - bạn chỉ muốn ChatGPT connect tới MCP server,
 - cần kiểm tra host/port từ mạng máy bạn,
+- cần chạy solver Python nhẹ cho pwn/web qua máy bạn,
 - đang test connector,
 - chạy trên laptop/local machine.
+
+Basic Python packages:
+
+```text
+requests
+beautifulsoup4
+lxml
+pwntools
+pycryptodome
+z3-solver
+sympy
+gmpy2
+websocket-client
+websockets
+```
+
+`run_basic_python_solver` requires a `target` object (`host` and `port`). That target must be allowed by `ALLOWED_TCP_TARGETS`. The solver receives `TARGET_HOST` and `TARGET_PORT` in its environment.
 
 ### Full / Advanced Mode
 
@@ -70,13 +89,13 @@ ctf-forensics-runner:latest
 
 ## Important Note
 
-For normal testing and ChatGPT connector setup, install **basic** only:
+For normal testing, ChatGPT connector setup, and lightweight pwn/web solving, install **basic** only:
 
 ```bash
 ./scripts/install_basic.sh
 ```
 
-Install **full/advanced** only on a VPS or cloud server if you need containerized solver execution. The full install downloads and builds large Docker images and can take a long time on a laptop.
+Install **full/advanced** only on a VPS or cloud server if you need containerized solver execution, Sage, forensics, or heavier isolated tooling. The full install downloads and builds large Docker images and can take a long time on a laptop.
 
 ---
 
@@ -143,6 +162,7 @@ health_check
 get_capabilities
 check_target_allowed
 probe_target_from_runner
+run_basic_python_solver
 ```
 
 ---
@@ -225,7 +245,7 @@ Dev UI:
 
 ## Test
 
-For local testing, basic install is enough:
+For local testing and lightweight pwn/web solving, basic install is enough:
 
 ```bash
 ./scripts/install_basic.sh
@@ -246,6 +266,7 @@ app/
   tools/
     health.py          basic health/capability tools
     probe.py           basic target connectivity probe
+    basic_runner.py    basic Python pwn/web solver runner
     fallback.py        advanced solver runner tools
     workspace.py       advanced workspace tools
     runs.py            advanced run log tools
@@ -264,7 +285,7 @@ logs/                  runtime logs, ignored by git
 
 ## Security Notes
 
-- Keep basic mode for laptop/local testing.
+- Keep basic mode for laptop/local testing and lightweight pwn/web challenges.
 - Use full mode mainly on VPS/cloud servers with Docker.
 - Keep `ALLOWED_TCP_TARGETS` narrow when possible.
 - Keep `BLOCK_PRIVATE_IPS=true` unless you are intentionally testing local targets.

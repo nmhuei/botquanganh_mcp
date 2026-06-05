@@ -15,7 +15,8 @@ RUN useradd -m -u 1000 mcp && usermod -aG sudo mcp
 
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir uv && \
+    uv pip install --system --no-cache-dir -r requirements.txt
 
 COPY . .
 RUN chown -R mcp:mcp /app

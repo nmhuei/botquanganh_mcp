@@ -10,9 +10,11 @@ fi
 
 source .venv/bin/activate
 
-echo "[*] Installing basic MCP server dependencies..."
-python3 -m pip install --upgrade pip
-python3 -m pip install -r requirements.txt
+echo "[*] Checking basic MCP server dependencies with uv..."
+if [ ! -x ".venv/bin/uv" ]; then
+    python3 -m pip install --upgrade pip uv
+fi
+uv pip install -r requirements.txt
 
 if [ ! -f ".env" ]; then
     echo "[*] Creating .env from .env.example..."
