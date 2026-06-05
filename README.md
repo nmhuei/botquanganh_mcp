@@ -1,213 +1,271 @@
 # Fallback Runner MCP
 
-Fallback Runner MCP is a specialized, secure Model Context Protocol (MCP) server designed to run CTF/lab solvers in isolated Docker containers on your local host **only when the LLM agent's sandbox fails to connect to the remote target**.
+MCP server để ChatGPT có thể dùng máy của bạn kiểm tra kết nối tới các target/server CTF hoặc lab.
 
-It acts as a secure, restricted **Fallback Runner** rather than a general-purpose internet proxy or arbitrary command executor.
+Repo có 2 chế độ:
 
----
-
-## 1. How It Works (Standard Workflow)
-
-```
-User sends CTF/challenge
-        ↓
-Assistant solves locally in its sandbox
-        ↓
-Assistant writes solver script
-        ↓
-Assistant attempts connection to remote target from its sandbox
-        ↓
-If connection succeeds:
-    Runs solver directly in sandbox and grabs flag
-If connection fails (Network isolated):
-    Calls MCP tool 'run_solver_fallback'
-        ↓
-MCP validates token, sandbox failure evidence, local success proof, and target allowlist
-        ↓
-MCP writes solver package to temporary run directory
-        ↓
-MCP starts isolated Docker container with strict CPU/RAM limits
-        ↓
-(Optional) MCP applies dynamic iptables rules to restrict container egress ONLY to target
-        ↓
-MCP executes solver inside container and captures stdout, stderr, hashes, and audit logs
-        ↓
-MCP tears down container, removes iptables rules, and compiles transcript
-        ↓
-Assistant verifies flag format and transcript integrity
-        ↓
-Assistant returns flag, proof, and execution log to User
-```
+- **Basic**: nhẹ nhất, dùng để test/local, chỉ expose tool kiểm tra kết nối.
+- **Full / Advanced**: cài thêm Docker runner images, phù hợp chạy trên VPS hoặc máy chủ cloud.
 
 ---
 
-## 2. Core Security Principles
+## Tool Modes
 
-- **No Arbitrary Commands**: Absolutely no `run_command`, `exec_shell`, or `bash` tools. The only tool that triggers execution is `run_solver_fallback`, which executes a fixed entrypoint (`solve.py` or Sage equivalent) via `subprocess(shell=False)`.
-- **Mandatory Sandbox Failure Proof**: Requests are rejected unless `sandbox_failure.attempted` is `true` with a non-empty failure reason.
-- **Mandatory Local Validation Summary**: Assistant must prove the solver worked against a local mockup before calling the fallback runner.
-- **Strict Target Allowlist**: The destination `host:port` must be listed in `ALLOWED_TCP_TARGETS` inside `.env`.
-- **IP Restrictions**: Private/local targets (like loopback, RFC1918, link-local, Google metadata) are blocked unless explicitly listed in `ALLOWED_TCP_TARGETS` for testing.
-- **Resource Constraints**: Runner containers are restricted to 512MB RAM, 1 CPU, 128 PIDs, and drop all kernel capabilities.
-- **Egress Firewall**: Container network traffic is restricted only to the allowed target IP and port using iptables (if `ENABLE_EGRESS_FIREWALL=true`).
-- **Data Escapes Blocked**: Paths are validated to block absolute paths or directory traversals (`../`).
-- **Secret Redaction**: Any auth headers, passwords, cookies, or private keys are automatically redacted from gateway and audit logs.
+### Basic Mode
 
----
+Basic là chế độ mặc định (`ENABLE_ADVANCED_TOOLS=false`). Không cần Docker image.
 
-## 3. Project Structure
+Tool basic:
 
+```text
+health_check
+get_capabilities
+check_target_allowed
+probe_target_from_runner
 ```
-fallback-runner-mcp/
-├── app/
-│   ├── __init__.py
-│   ├── main.py               # Server entry point
-│   ├── config.py             # Environment configuration parser
-│   ├── auth.py               # Token verification
-│   ├── schemas.py            # Pydantic request/response models
-│   ├── security.py           # Security checks (allowlist, IP blocks, bounds)
-│   ├── file_package.py       # Package decoder, file limit and safety checks
-│   ├── runner.py             # Execution coordinator
-│   ├── docker_runner.py      # Docker lifecycle management
-│   ├── egress_firewall.py    # iptables egress firewall rules
-│   ├── logging_audit.py      # Auditing and secrets redaction
-│   ├── transcript.py         # Structured run transcript generator
-│   └── tools/
-│       ├── __init__.py
-│       ├── health.py         # health_check tool
-│       ├── fallback.py       # run_solver_fallback tool
-│       ├── runs.py           # get_run_log, list_recent_runs, delete_run tools
-│       └── probe.py          # probe_target_from_runner tool
-├── runner_images/
-│   ├── python-ctf.Dockerfile # Python CTF image (pwntools, z3, etc.)
-│   ├── python-pwn.Dockerfile  # Python PWN image
-│   └── sage-ctf.Dockerfile   # Sagemath image
-├── tests/                    # Unit and integration test suites
-│   ├── test_auth.py
-│   ├── test_security.py
-│   ├── test_file_package.py
-│   ├── test_runner.py
-│   ├── test_logs.py
-│   └── test_firewall.py
-├── logs/                     # Audit trail and outputs
-│   ├── gateway.log
-│   └── runs/                 # Individual run folders (inputs, outputs, transcripts)
-├── examples/
-│   ├── solve_echo.py         # Sample pwntools solver
-│   └── sample_request.json   # Reference request schema
-└── scripts/
-    ├── build_runner_images.sh # Image compiler
-    ├── dev.sh                # Launch FastMCP dev server with local UI
-    ├── test.sh               # Run unit tests
-    └── cleanup_runs.sh       # Retention log scraper
+
+Dùng basic khi:
+
+- bạn chỉ muốn ChatGPT connect tới MCP server,
+- cần kiểm tra host/port từ mạng máy bạn,
+- đang test connector,
+- chạy trên laptop/local machine.
+
+### Full / Advanced Mode
+
+Full mode bật bằng `./scripts/install_advanced_tools.sh`.
+
+Tool advanced thêm:
+
+```text
+get_runner_environments
+run_solver_fallback
+validate_run_request
+upload_artifact
+rerun_run
+get_run_log
+list_recent_runs
+delete_run
+get_run_stdout
+get_run_stderr
+tail_run_output
+create_workspace
+upload_file_to_workspace
+list_workspace_files
+read_workspace_file
+delete_workspace
+run_command
+```
+
+Full mode sẽ build các Docker image nặng:
+
+```text
+ctf-python-runner:latest
+ctf-pwn-runner:latest
+ctf-sage-runner:latest
+ctf-forensics-runner:latest
 ```
 
 ---
 
-## 4. Setup & Running
+## Important Note
 
-### Prerequisites
-- Python 3.12+
-- Docker installed and running only if you want advanced runner tools
-- Docker Compose (optional, for server containerization)
-
-### Basic Installation
-This installs only the lightweight dependencies required for the MCP server and core tools to run.
-
-Core tools include health/capability checks, workspaces, and run log inspection. Docker runner tools are not exposed in this mode.
+For normal testing and ChatGPT connector setup, install **basic** only:
 
 ```bash
+./scripts/install_basic.sh
+```
+
+Install **full/advanced** only on a VPS or cloud server if you need containerized solver execution. The full install downloads and builds large Docker images and can take a long time on a laptop.
+
+---
+
+## Quick Start: Basic
+
+```bash
+cd /home/light/Workspace/agy/botquanganh_mcp
 chmod +x scripts/*.sh
 ./scripts/install_basic.sh
 ```
 
-Start the MCP server:
-```bash
-source .venv/bin/activate
-python3 -m app.main
+Edit `.env`:
+
+```env
+ENABLE_ADVANCED_TOOLS=false
+ALLOWED_TCP_TARGETS=target.host:port
+BLOCK_PRIVATE_IPS=true
 ```
 
-### Manual Basic Installation
-1. Clone the project.
-2. Initialize virtual environment and install dependencies:
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements.txt
-   ```
-3. Configure the environment by copying `.env.example` to `.env` and updating the values:
-   ```bash
-   cp .env.example .env
-   ```
-   *Make sure to change `GATEWAY_TOKEN` to a long, secure random token.*
-
-### Advanced Tools Installation
-Run this only when you need Docker-backed tools such as `run_solver_fallback`, `probe_target_from_runner`, and `run_command`.
-
-This builds the Python, PWN, Sage, and Forensics runner images, then sets `ENABLE_ADVANCED_TOOLS=true` in `.env`.
+Start MCP server with Cloudflare Tunnel:
 
 ```bash
+./scripts/start_tunnel_server.sh
+```
+
+The script prints a public endpoint like:
+
+```text
+https://xxxx.trycloudflare.com/mcp
+```
+
+Use that URL in ChatGPT MCP Connector settings.
+
+---
+
+## ChatGPT Connector Setup
+
+1. Run:
+
+   ```bash
+   ./scripts/start_tunnel_server.sh
+   ```
+
+2. Copy the printed URL ending in `/mcp`.
+
+3. In ChatGPT, create/add an MCP connector.
+
+4. Paste the URL, for example:
+
+   ```text
+   https://xxxx.trycloudflare.com/mcp
+   ```
+
+5. Test with:
+
+   ```text
+   health_check
+   ```
+
+In basic mode, ChatGPT should see exactly:
+
+```text
+health_check
+get_capabilities
+check_target_allowed
+probe_target_from_runner
+```
+
+---
+
+## Configure Allowed Targets
+
+`ALLOWED_TCP_TARGETS` controls which host:port ChatGPT may probe through your machine.
+
+Specific allowlist:
+
+```env
+ALLOWED_TCP_TARGETS=socket.cryptohack.org:13418,example.com:443
+```
+
+Wildcard:
+
+```env
+ALLOWED_TCP_TARGETS=*
+```
+
+Avoid `*` unless you understand the risk. This server uses your machine/network.
+
+Recommended:
+
+```env
+BLOCK_PRIVATE_IPS=true
+```
+
+This helps block localhost/private-network targets unless explicitly allowed for testing.
+
+---
+
+## Full Install For VPS / Cloud Server
+
+Use this only when you want ChatGPT to run solver scripts or shell commands inside isolated Docker containers.
+
+```bash
+cd /home/light/Workspace/agy/botquanganh_mcp
 chmod +x scripts/*.sh
 ./scripts/install_advanced_tools.sh
 ```
 
-Restart the MCP server after this install so it registers the advanced tools.
+After installation, restart the server:
 
-### Run Tests
-Execute the test suite to verify the security and orchestration constraints function correctly:
 ```bash
-./scripts/test.sh
+./scripts/start_tunnel_server.sh
 ```
 
-### Start Server
-Run the MCP server directly using Python (standard stdio mode):
+`install_advanced_tools.sh` will:
+
+- run basic install,
+- build all runner Docker images,
+- set `ENABLE_ADVANCED_TOOLS=true` in `.env`.
+
+---
+
+## Manual Server Start
+
+Without tunnel:
+
 ```bash
-python3 -m app.main
+source .venv/bin/activate
+PYTHONPATH=. python3 -m app.main
 ```
 
-Or start the server using the **FastMCP developer mode**, which launches a local dashboard at `http://localhost:5173` to test and inspect tools interactively:
+HTTP mode:
+
+```bash
+source .venv/bin/activate
+PYTHONPATH=. fastmcp run app/main.py --transport http --port 8000 --host 127.0.0.1
+```
+
+Dev UI:
+
 ```bash
 ./scripts/dev.sh
 ```
 
 ---
 
-## 5. Integrating with ChatGPT / Assistant
+## Test
 
-ChatGPT custom connector requires an HTTPS endpoint. You can expose your local server using a tunnel:
-
-### Expose using Cloudflare Tunnel (Automatic)
-The easiest way to start both the server (in HTTP mode) and a TryCloudflare tunnel is to run the automated startup script. This script performs only the basic install and will not build advanced Docker runner images automatically.
+For local testing, basic install is enough:
 
 ```bash
-./scripts/start_tunnel_server.sh
+./scripts/install_basic.sh
+./scripts/test.sh
 ```
-This script will start the server on port 8000, launch the Cloudflare Tunnel, wait for the public HTTPS URL to be generated, print it to the screen, and monitor both processes. Press `Ctrl+C` to gracefully terminate both.
 
-To expose advanced tools through the tunnel, run `./scripts/install_advanced_tools.sh` first, then restart `./scripts/start_tunnel_server.sh`.
-
-### Expose using Ngrok / Cloudflare Tunnel (Manual)
-If you prefer manual setup:
-1. Start your MCP server in SSE mode:
-   ```bash
-   fastmcp run app/main.py --transport sse --port 8000
-   ```
-2. Open a tunnel to port 8000:
-   ```bash
-   ngrok http 8000
-   ```
-3. Copy the secure HTTPS URL pointing to the SSE route (e.g., `https://<subdomain>.ngrok-free.app/sse/`). 
-   *Note: If you run with `--transport http`, use the `/mcp/` route instead (e.g., `https://<subdomain>.ngrok-free.app/mcp/`).*
-4. Go to ChatGPT: **Settings** -> **Apps & Connectors** -> **Advanced settings** -> Enable **Developer Mode**.
-5. Go to **Settings** -> **Connectors** -> **Create**.
-6. Paste the Tunnel HTTPS URL (including the route, like `/sse/`), name it `Fallback Runner MCP`, set up static token or mixed authentication, and click **Save**.
-7. Test the connection by invoking the `health_check` tool.
+The test suite uses mocks for Docker paths, so it does not require full install just to validate code.
 
 ---
 
-## 6. Cleanup
+## Project Layout
 
-To prevent disk usage build-up from logs and files written for each run, you can set up a cron job or manually execute `scripts/cleanup_runs.sh`. This script will purge all runs older than the retention period set in `.env` (defaults to 7 days).
-```bash
-./scripts/cleanup_runs.sh
+```text
+app/
+  main.py              MCP entrypoint
+  config.py            environment config
+  security.py          allowlist and safety checks
+  tools/
+    health.py          basic health/capability tools
+    probe.py           basic target connectivity probe
+    fallback.py        advanced solver runner tools
+    workspace.py       advanced workspace tools
+    runs.py            advanced run log tools
+    shell.py           advanced container command tool
+runner_images/         Dockerfiles for full install
+scripts/
+  install_basic.sh
+  install_advanced_tools.sh
+  start_tunnel_server.sh
+  build_runner_images.sh
+  test.sh
+logs/                  runtime logs, ignored by git
 ```
+
+---
+
+## Security Notes
+
+- Keep basic mode for laptop/local testing.
+- Use full mode mainly on VPS/cloud servers with Docker.
+- Keep `ALLOWED_TCP_TARGETS` narrow when possible.
+- Keep `BLOCK_PRIVATE_IPS=true` unless you are intentionally testing local targets.
+- Full mode exposes more powerful tools, including container execution and file workspace operations.

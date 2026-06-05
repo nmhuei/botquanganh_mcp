@@ -53,7 +53,15 @@ def get_capabilities() -> dict:
             "core_tools": [
                 "health_check",
                 "get_capabilities",
+                "check_target_allowed",
+                "probe_target_from_runner"
+            ],
+            "advanced_tools": [
                 "get_runner_environments",
+                "run_solver_fallback",
+                "validate_run_request",
+                "upload_artifact",
+                "rerun_run",
                 "create_workspace",
                 "upload_file_to_workspace",
                 "list_workspace_files",
@@ -64,14 +72,7 @@ def get_capabilities() -> dict:
                 "delete_run",
                 "get_run_stdout",
                 "get_run_stderr",
-                "tail_run_output"
-            ],
-            "advanced_tools": [
-                "run_solver_fallback",
-                "validate_run_request",
-                "upload_artifact",
-                "rerun_run",
-                "probe_target_from_runner",
+                "tail_run_output",
                 "run_command"
             ],
             "limits": {
@@ -99,11 +100,6 @@ def get_capabilities() -> dict:
         log_audit_event("GET_CAPABILITIES_FAIL", {"error": str(e)})
         return format_error_response(e)
 
-
-@mcp.tool(
-    name="get_runner_environments",
-    description="Retrieve details about pre-installed programming environments, CTF libraries (Crypto, SageMath, Z3, Pwntools, CloakBrowser), and their usage details."
-)
 def get_runner_environments() -> dict:
     """Returns a structured dictionary listing the available programming environments,
     pre-installed packages, and importing/execution guides for fallback runs.

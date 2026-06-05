@@ -2,17 +2,18 @@ import os
 import sys
 from app.mcp_server import mcp
 
-# Core tools: lightweight and enough for the MCP server to boot and operate.
+# Basic tools: lightweight server connectivity checks for ChatGPT.
 import app.tools.health
-import app.tools.runs
-import app.tools.workspace
+import app.tools.probe
 from app.config import MCP_BIND_HOST, MCP_PORT, ENABLE_ADVANCED_TOOLS
 
-# Advanced tools: Docker runner/probe/shell features. Enabled after running
+# Advanced tools: Docker runner/workspace/log features. Enabled after running
 # scripts/install_advanced_tools.sh or setting ENABLE_ADVANCED_TOOLS=true.
 if ENABLE_ADVANCED_TOOLS:
+    import app.tools.environments
     import app.tools.fallback
-    import app.tools.probe
+    import app.tools.runs
+    import app.tools.workspace
     import app.tools.shell
 
 from app.logging_audit import log_audit_event

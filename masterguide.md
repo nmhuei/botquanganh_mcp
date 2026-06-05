@@ -1,127 +1,287 @@
-# Hướng Dẫn Cấu Hình Workspace và Thiết Lập Server MCP
+# Master Guide: Fallback Runner MCP
 
-Tài liệu này cung cấp hướng dẫn chi tiết về cách thiết lập thư mục làm việc (Workspace), cấu hình tham số bảo mật và vận hành hệ thống **Fallback Runner MCP**.
+Tài liệu này hướng dẫn cách cài, chạy và nối **Fallback Runner MCP** với ChatGPT qua máy của bạn.
 
----
-
-## 1. Cấu Hình Workspace (`RUNS_DIR`)
-
-Workspace là thư mục lưu trữ toàn bộ mã nguồn solver gửi lên, kết quả đầu ra (stdout, stderr), transcript thực thi, và lịch sử chạy của container.
-
-### Cách thiết lập:
-Mở file `.env` và cấu hình biến `RUNS_DIR` trỏ về thư mục mong muốn:
-```env
-RUNS_DIR=/home/youruser/Workspace/agy/mcp_workspace
-```
-*(Nếu sử dụng đường dẫn tương đối, hệ thống sẽ tự động phân giải nó dựa trên thư mục gốc của dự án).*
-
-### Cơ chế hoạt động & Bảo mật:
-* **Tự khởi tạo**: Server tự động tạo thư mục này lúc khởi động qua hàm khởi dựng ở `app/config.py`.
-* **Chống thoát vùng chạy (Path Traversal Protection)**:
-  * Tất cả các file solver gửi lên được kiểm tra qua hàm `validate_relative_path` để đảm bảo chúng không dùng đường dẫn tuyệt đối hoặc chứa ký tự `..`.
-  * Hàm `write_files` trong `app/file_package.py` kiểm tra đường dẫn tuyệt đối sau khi giải quyết để chắc chắn toàn bộ file chỉ nằm trong thư mục con `mcp_workspace/run_xxxx`.
+Mục tiêu hiện tại:
+- **Basic mode**: nhẹ nhất, để ChatGPT connect tới server MCP và kiểm tra target/server qua máy bạn.
+- **Advanced mode**: cài thêm Docker runner images để chạy solver, workspace, log, shell command trong container.
 
 ---
 
-## 2. Các Thiết Lập Quan Trọng Của Server (Trong `.env`)
+## 1. Hai Chế Độ Tool
 
-Hệ thống điều khiển toàn bộ hành vi thông qua file cấu hình môi trường `.env`.
+### 1.1 Basic Mode
 
-### 2.1 Cấu Hình Mạng và Địa Chỉ Kết Nối
-* **`MCP_BIND_HOST`**: Địa chỉ IP mà server MCP lắng nghe (Mặc định: `0.0.0.0` để nhận kết nối từ ngoài container/tunnel).
-* **`MCP_PORT`**: Cổng dịch vụ chạy local (Mặc định: `8000`).
+Basic mode là mặc định. Không cần build Docker image.
 
-### 2.2 Cấu Hình Mục Tiêu Cho Phép (`ALLOWED_TCP_TARGETS`)
-Bảo vệ server khỏi việc bị lợi dụng để tấn công DDoS hoặc quét mạng tùy tiện.
-* **Cho phép mọi mục tiêu (Wildcard)**:
-  ```env
-  ALLOWED_TCP_TARGETS=*
-  ```
-* **Chỉ cho phép các mục tiêu cụ thể (Danh sách phân tách bằng dấu phẩy)**:
-  ```env
-  ALLOWED_TCP_TARGETS=13.238.150.105:36970,74.113.234.79:2222,localhost:31337
-  ```
+Tool basic hiện có:
 
-### 2.3 Chặn Địa Chỉ Nội Bộ (`BLOCK_PRIVATE_IPS`)
-* Ngăn chặn container kết nối tới các IP riêng tư hoặc loopback (`127.0.0.1`, `localhost`, `192.168.x.x`...) để tránh rò rỉ thông tin hạ tầng local.
-* Thiết lập: `BLOCK_PRIVATE_IPS=true` (khuyên dùng).
-* *Lưu ý: Nếu một mục tiêu local được ghi cụ thể trong `ALLOWED_TCP_TARGETS` (ví dụ `localhost:31337`), nó sẽ bỏ qua bộ lọc chặn này.*
-
-### 2.4 Cài Đặt Xác Thực (Token)
-* **Tắt xác thực (Hiện tại)**: Để trống hoặc bỏ qua biến `GATEWAY_TOKEN` trong `.env`. Các tool MCP của server hiện đã được lược bỏ tham số `token` để giảm thiểu sự rườm rà.
-* **Bật xác thực**: Thiết lập `GATEWAY_TOKEN=your-random-token-here`.
-
-### 2.5 Giới Hạn Tài Nguyên Docker (Docker Resource Caps)
-Đảm bảo các script solver CTF chạy độc lập và không thể làm treo hoặc ngốn tài nguyên máy chủ:
-* **`DOCKER_MEMORY=512m`**: Giới hạn tối đa 512MB RAM cho mỗi container chạy.
-* **`DOCKER_CPUS=1`**: Giới hạn tối đa sử dụng 1 CPU Core.
-* **`DOCKER_PIDS_LIMIT=128`**: Chặn đứng việc tạo quá nhiều tiến trình con (chống Fork Bomb).
-
----
-
-## 3. Quản Lý Tiến Trình và Tự Động Hóa
-
-### 3.1 Khởi động Hệ thống
-Install cơ bản chỉ cài `.venv`, Python dependencies và `.env`; đủ để MCP server chạy với các tool nhẹ:
-```bash
-./scripts/install_basic.sh
+```text
+health_check
+get_capabilities
+check_target_allowed
+probe_target_from_runner
 ```
 
-Sử dụng script tích hợp tự động hóa để bật server và Cloudflare Tunnel:
-```bash
-./scripts/start_tunnel_server.sh
-```
-* **Basic mode**: Script sẽ tự động đảm bảo `.env`, `.venv` và các thư viện Python cơ bản đã có. Nó không tự build Docker runner images.
-* **Advanced mode**: Muốn dùng các tool Docker runner như `run_solver_fallback`, `probe_target_from_runner`, `run_command`, chạy:
+Ý nghĩa:
+- `health_check`: kiểm tra MCP server còn sống.
+- `get_capabilities`: xem server đang basic hay advanced.
+- `check_target_allowed`: kiểm tra host:port có được phép probe không.
+- `probe_target_from_runner`: thử DNS/TCP/TLS/banner tới target qua máy bạn.
+
+Basic phù hợp khi bạn gặp bài liên quan tới server/network và muốn ChatGPT dùng máy bạn để kiểm tra kết nối thật.
+
+### 1.2 Advanced Mode
+
+Advanced mode bật sau khi chạy:
+
 ```bash
 ./scripts/install_advanced_tools.sh
 ```
-Script này build các image `ctf-python-runner`, `ctf-pwn-runner`, `ctf-sage-runner`, `ctf-forensics-runner` và bật `ENABLE_ADVANCED_TOOLS=true` trong `.env`. Sau đó restart server.
-* **Tunnel**: Đồng thời mở Cloudflare Tunnel và cung cấp đường dẫn endpoint `/mcp` công khai để điền trực tiếp vào ChatGPT.
 
-### 3.2 Kiểm Tra Trạng Thái
-Để xem các tiến trình đang chạy ngầm trên máy:
-```bash
-ps aux | grep -E 'fastmcp|cloudflared'
+Tool advanced sẽ có thêm:
+
+```text
+get_runner_environments
+run_solver_fallback
+validate_run_request
+upload_artifact
+rerun_run
+get_run_log
+list_recent_runs
+delete_run
+get_run_stdout
+get_run_stderr
+tail_run_output
+create_workspace
+upload_file_to_workspace
+list_workspace_files
+read_workspace_file
+delete_workspace
+run_command
 ```
 
-### 3.3 Chạy Bộ Test Unit
-Để kiểm tra tính toàn vẹn của mã nguồn:
+Advanced cần Docker và sẽ build các image:
+
+```text
+ctf-python-runner:latest
+ctf-pwn-runner:latest
+ctf-sage-runner:latest
+ctf-forensics-runner:latest
+```
+
+---
+
+## 2. Cài Đặt Basic
+
+Chạy từ thư mục repo:
+
+```bash
+cd /home/light/Workspace/agy/botquanganh_mcp
+chmod +x scripts/*.sh
+./scripts/install_basic.sh
+```
+
+Script này sẽ:
+- tạo `.venv` nếu chưa có,
+- cài dependency Python nhẹ trong `requirements.txt`,
+- tạo `.env` từ `.env.example` nếu chưa có.
+
+Không build Docker image.
+
+---
+
+## 3. Cấu Hình `.env`
+
+Các biến quan trọng:
+
+```env
+MCP_BIND_HOST=0.0.0.0
+MCP_PORT=8000
+ENABLE_ADVANCED_TOOLS=false
+ALLOWED_TCP_TARGETS=example.com:443,host.example:31337
+BLOCK_PRIVATE_IPS=true
+```
+
+### 3.1 `ENABLE_ADVANCED_TOOLS`
+
+Basic mode:
+
+```env
+ENABLE_ADVANCED_TOOLS=false
+```
+
+Advanced mode:
+
+```env
+ENABLE_ADVANCED_TOOLS=true
+```
+
+`install_advanced_tools.sh` sẽ tự bật biến này.
+
+### 3.2 `ALLOWED_TCP_TARGETS`
+
+Đây là allowlist cho tool `check_target_allowed` và `probe_target_from_runner`.
+
+Ví dụ chỉ cho phép vài target:
+
+```env
+ALLOWED_TCP_TARGETS=socket.cryptohack.org:13418,example.com:443
+```
+
+Cho phép mọi target:
+
+```env
+ALLOWED_TCP_TARGETS=*
+```
+
+Chỉ dùng `*` khi bạn hiểu rủi ro. Server này chạy qua máy bạn, nên allowlist càng cụ thể càng an toàn.
+
+### 3.3 `BLOCK_PRIVATE_IPS`
+
+Khuyến nghị:
+
+```env
+BLOCK_PRIVATE_IPS=true
+```
+
+Biến này chặn probe tới localhost/private IP như `127.0.0.1`, `192.168.x.x`, `10.x.x.x`, trừ khi target local được allowlist rõ cho mục đích test.
+
+---
+
+## 4. Chạy Server Và Tunnel
+
+Chạy server kèm Cloudflare Tunnel:
+
+```bash
+./scripts/start_tunnel_server.sh
+```
+
+Script sẽ:
+- đảm bảo basic install đã sẵn sàng,
+- start FastMCP HTTP server ở `127.0.0.1:8000`,
+- mở TryCloudflare tunnel,
+- in endpoint dạng:
+
+```text
+https://xxxx.trycloudflare.com/mcp
+```
+
+Dùng URL đó để tạo MCP connector trong ChatGPT.
+
+Dừng server:
+
+```text
+Ctrl+C
+```
+
+---
+
+## 5. Nối Với ChatGPT
+
+Trong ChatGPT:
+
+1. Vào phần tạo hoặc chỉnh GPT/Connector.
+2. Thêm MCP Connector.
+3. Dán URL tunnel, ví dụ:
+
+```text
+https://xxxx.trycloudflare.com/mcp
+```
+
+4. Lưu connector.
+5. Test bằng tool `health_check`.
+
+Nếu basic mode hoạt động đúng, ChatGPT sẽ thấy 4 tool:
+
+```text
+health_check
+get_capabilities
+check_target_allowed
+probe_target_from_runner
+```
+
+---
+
+## 6. Khi Nào Cần Advanced
+
+Dùng advanced khi bạn muốn ChatGPT:
+- chạy solver script qua Docker,
+- chạy Sage/PWN/Python CTF environment,
+- upload/read workspace file,
+- chạy command trong container,
+- xem stdout/stderr/log của các lần chạy.
+
+Cài advanced:
+
+```bash
+./scripts/install_advanced_tools.sh
+```
+
+Sau khi xong, restart server:
+
+```bash
+./scripts/start_tunnel_server.sh
+```
+
+---
+
+## 7. Kiểm Tra Nhanh
+
+Kiểm tra test suite:
+
 ```bash
 ./scripts/test.sh
 ```
 
----
+Xem process server/tunnel:
 
-## 4. Liên Kết Với ChatGPT (Connector Settings)
-
-1. Truy cập ChatGPT -> **Explore GPTs** -> **Develop GPTs** -> **Create a GPT** (hoặc edit Custom GPT hiện có).
-2. Cuộn xuống phần **Capabilities** -> chọn **Add MCP Connector**.
-3. Chọn giao thức kết nối: **Server-Sent Events (SSE)**.
-4. Điền URL lấy được từ script `start_tunnel_server.sh` (ví dụ: `https://xxxx.trycloudflare.com/mcp`).
-5. Hoàn tất kết nối. Ở basic mode, ChatGPT sẽ nhận các tool nhẹ như `health_check`, `get_capabilities`, workspace tools và run log tools. Sau khi bật advanced mode, các tool như `run_solver_fallback`, `probe_target_from_runner` và `run_command` sẽ xuất hiện thêm.
-
----
-
-## 5. Sử Dụng CloakBrowser Cho Web Exploitation / Automation
-
-Sau khi chạy `./scripts/install_advanced_tools.sh`, hệ thống có **CloakBrowser** (phiên bản Chromium tuỳ chỉnh chống phát hiện bot mức mã nguồn C++) cùng toàn bộ các thư viện hệ thống cần thiết (qua Playwright) trong các Docker runner images (`ctf-python-runner`, `ctf-pwn-runner`).
-
-### Cách sử dụng trong file solver:
-Khi viết script giải bài liên quan đến Web/Browser automation, hãy truyền tham số `--no-sandbox` khi khởi động browser do môi trường Docker chạy mặc định không có sandbox namespace:
-
-```python
-import cloakbrowser
-
-# Khởi chạy trình duyệt ở chế độ headless với tham số --no-sandbox
-browser = cloakbrowser.launch(
-    headless=True,
-    args=["--no-sandbox"]
-)
-
-page = browser.new_page()
-page.goto("https://httpbin.org/ip")
-print(page.content())
-
-browser.close()
+```bash
+ps aux | grep -E 'fastmcp|cloudflared'
 ```
+
+Xem log server:
+
+```bash
+tail -n 80 logs/server.log
+```
+
+Kiểm tra Docker image advanced:
+
+```bash
+docker images | grep 'ctf-.*runner'
+```
+
+---
+
+## 8. Workflow Gợi Ý
+
+### Chỉ cần ChatGPT probe server qua máy bạn
+
+```bash
+./scripts/install_basic.sh
+./scripts/start_tunnel_server.sh
+```
+
+Cấu hình target trong `.env`:
+
+```env
+ALLOWED_TCP_TARGETS=target.host:port
+ENABLE_ADVANCED_TOOLS=false
+```
+
+### Cần chạy solver/container
+
+```bash
+./scripts/install_advanced_tools.sh
+./scripts/start_tunnel_server.sh
+```
+
+---
+
+## 9. Ghi Chú Bảo Mật
+
+- Đừng dùng `ALLOWED_TCP_TARGETS=*` lâu dài nếu không cần.
+- Giữ `BLOCK_PRIVATE_IPS=true` trừ khi bạn đang test local có chủ đích.
+- Basic mode không chạy Docker command, không có workspace, không có shell tool.
+- Advanced mode mạnh hơn, nên chỉ bật khi cần.
