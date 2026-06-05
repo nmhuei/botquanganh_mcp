@@ -1,5 +1,6 @@
 from typing import List, Dict, Optional
 from pydantic import BaseModel, Field, field_validator, model_validator
+from app.config import DEFAULT_TIMEOUT_SECONDS
 
 class HealthCheckRequest(BaseModel):
     pass
@@ -71,7 +72,7 @@ class FallbackRequest(BaseModel):
     entrypoint: str = "solve.py"
     args: List[str] = Field(default_factory=list)
     env: Dict[str, str] = Field(default_factory=dict)
-    timeout_seconds: int = 30
+    timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS
     sandbox_failure: SandboxFailure
     local_validation: LocalValidation
     files: List[FileEntry]

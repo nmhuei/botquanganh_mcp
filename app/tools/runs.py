@@ -69,6 +69,7 @@ def get_run_log(run_id: str, include_transcript: bool = True) -> Dict[str, Any]:
 def list_recent_runs(limit: int = 20) -> Dict[str, Any]:
     """Retrieves summaries of the most recent solver runs, sorted newest first."""
     try:
+        limit = min(limit, 200)
         runs = []
         if RUNS_DIR.exists():
             for p in RUNS_DIR.iterdir():
@@ -132,6 +133,8 @@ def get_run_stdout(run_id: str, tail_lines: Optional[int] = None) -> Dict[str, A
     """Retrieves raw stdout trace from fallback run output."""
     try:
         validate_run_id_safe(run_id)
+        if tail_lines is not None:
+            tail_lines = min(tail_lines, 5000)
         stdout_path = RUNS_DIR / run_id / "output" / "stdout.txt"
         if not stdout_path.exists():
             raise FileNotFoundError(f"Stdout log for run '{run_id}' not found.")
@@ -159,6 +162,8 @@ def get_run_stderr(run_id: str, tail_lines: Optional[int] = None) -> Dict[str, A
     """Retrieves raw stderr trace from fallback run output."""
     try:
         validate_run_id_safe(run_id)
+        if tail_lines is not None:
+            tail_lines = min(tail_lines, 5000)
         stderr_path = RUNS_DIR / run_id / "output" / "stderr.txt"
         if not stderr_path.exists():
             raise FileNotFoundError(f"Stderr log for run '{run_id}' not found.")
@@ -186,6 +191,7 @@ def tail_run_output(run_id: str, tail_lines: int = 50) -> Dict[str, Any]:
     """Retrieves tailed content of both stdout and stderr for quick debugging."""
     try:
         validate_run_id_safe(run_id)
+        tail_lines = min(tail_lines, 5000)
         stdout_path = RUNS_DIR / run_id / "output" / "stdout.txt"
         stderr_path = RUNS_DIR / run_id / "output" / "stderr.txt"
         

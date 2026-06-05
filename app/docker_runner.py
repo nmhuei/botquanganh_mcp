@@ -11,6 +11,8 @@ from app.config import (
     RUNNER_IMAGE_PWN,
     RUNNER_IMAGE_SAGE,
     ENABLE_EGRESS_FIREWALL,
+    MINIFORGE_PATH,
+    RUNNER_IMAGE_FORENSICS,
 )
 from app.logging_audit import log_audit_event
 from app.egress_firewall import apply_egress_rules, remove_egress_rules
@@ -22,6 +24,8 @@ def get_runner_image(language: str) -> str:
         return RUNNER_IMAGE_PWN
     elif lang == "sage":
         return RUNNER_IMAGE_SAGE
+    elif lang == "forensics":
+        return RUNNER_IMAGE_FORENSICS
     return RUNNER_IMAGE_PYTHON
 
 def get_container_ip(container_name: str) -> str:
@@ -63,11 +67,15 @@ def run_in_docker(
         "--cap-drop", "ALL",
         "--security-opt", "no-new-privileges",
         "-v", f"{run_input_dir.resolve()}:/work:rw",
-        "-v", "/home/light/miniforge3:/home/light/miniforge3:ro",
+    ]
+    if MINIFORGE_PATH:
+        docker_run_cmd.extend(["-v", f"{MINIFORGE_PATH}:{MINIFORGE_PATH}:ro"])
+        
+    docker_run_cmd.extend([
         "-w", "/work",
         "-e", f"CTF_HOST={target_host}",
         "-e", f"CTF_PORT={target_port}",
-    ]
+    ])
     
     # Add environment variables requested by user
     for k, v in env.items():

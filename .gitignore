@@ -4,6 +4,7 @@ __pycache__/
 logs/
 .env
 mcp_workspace/
+runner_images/rockyou.txt
 .DS_Store
 .idea/
 .vscode/

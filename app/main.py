@@ -1,19 +1,28 @@
 import os
 import sys
 from app.mcp_server import mcp
-# Import all tools to register them with the FastMCP instance
+
+# Core tools: lightweight and enough for the MCP server to boot and operate.
 import app.tools.health
-import app.tools.fallback
 import app.tools.runs
-import app.tools.probe
+import app.tools.workspace
+from app.config import MCP_BIND_HOST, MCP_PORT, ENABLE_ADVANCED_TOOLS
+
+# Advanced tools: Docker runner/probe/shell features. Enabled after running
+# scripts/install_advanced_tools.sh or setting ENABLE_ADVANCED_TOOLS=true.
+if ENABLE_ADVANCED_TOOLS:
+    import app.tools.fallback
+    import app.tools.probe
+    import app.tools.shell
+
 from app.logging_audit import log_audit_event
-from app.config import MCP_BIND_HOST, MCP_PORT
 
 # Log server boot
 log_audit_event("SERVER_STARTUP", {
     "host": MCP_BIND_HOST,
     "port": MCP_PORT,
-    "pid": os.getpid()
+    "pid": os.getpid(),
+    "advanced_tools_enabled": ENABLE_ADVANCED_TOOLS,
 })
 
 if __name__ == "__main__":

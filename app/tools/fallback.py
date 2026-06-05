@@ -30,8 +30,8 @@ def run_solver_fallback(
     files: List[Dict[str, Any]],
     language: str = "python",
     entrypoint: str = "solve.py",
-    args: List[str] = [],
-    env: Dict[str, str] = {},
+    args: Optional[List[str]] = None,
+    env: Optional[Dict[str, str]] = None,
     timeout_seconds: int = 30
 ) -> Dict[str, Any]:
     """Runs a CTF solver package inside an isolated Docker container, returning execution outputs.
@@ -67,6 +67,10 @@ def run_solver_fallback(
     This tool is only for fallback runs and requires sandbox_failure reason, local_validation, and allowlisted target.
     """
     try:
+        if args is None:
+            args = []
+        if env is None:
+            env = {}
         # 1. Parse and Validate request schema
         req = FallbackRequest(
             target=target,
@@ -116,12 +120,16 @@ def validate_run_request(
     files: List[Dict[str, Any]],
     language: str = "python",
     entrypoint: str = "solve.py",
-    args: List[str] = [],
-    env: Dict[str, str] = {},
+    args: Optional[List[str]] = None,
+    env: Optional[Dict[str, str]] = None,
     timeout_seconds: int = 30
 ) -> Dict[str, Any]:
     """Dry-run validation of a solver fallback request."""
     try:
+        if args is None:
+            args = []
+        if env is None:
+            env = {}
         req = FallbackRequest(
             target=target,
             language=language,

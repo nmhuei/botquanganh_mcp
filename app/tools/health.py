@@ -1,14 +1,17 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from app.mcp_server import mcp
 from app.config import (
+    ENABLE_ADVANCED_TOOLS,
     RUNNER_IMAGE_PYTHON,
     RUNNER_IMAGE_PWN,
     RUNNER_IMAGE_SAGE,
+    RUNNER_IMAGE_FORENSICS,
     MAX_TIMEOUT_SECONDS,
     MAX_CODE_BYTES,
     MAX_SINGLE_FILE_BYTES,
     MAX_ARGS,
     MAX_ARG_LENGTH,
+    VERSION,
 )
 from app.logging_audit import log_audit_event
 from app.security import format_error_response
@@ -22,9 +25,11 @@ def health_check() -> dict:
         return {
             "ok": True,
             "service": "fallback-runner-mcp",
-            "version": "0.2.0",
-            "server_time": datetime.utcnow().isoformat() + "Z",
-            "runner_images": [RUNNER_IMAGE_PYTHON, RUNNER_IMAGE_PWN, RUNNER_IMAGE_SAGE]
+            "version": VERSION,
+            "server_time": datetime.now(timezone.utc).isoformat(),
+            "tool_profile": "advanced" if ENABLE_ADVANCED_TOOLS else "basic",
+            "advanced_tools_enabled": ENABLE_ADVANCED_TOOLS,
+            "runner_images": [RUNNER_IMAGE_PYTHON, RUNNER_IMAGE_PWN, RUNNER_IMAGE_SAGE, RUNNER_IMAGE_FORENSICS]
         }
     except Exception as e:
         log_audit_event("HEALTH_CHECK_FAIL", {"tool": "health_check", "error": str(e)})
@@ -42,7 +47,33 @@ def get_capabilities() -> dict:
         return {
             "ok": True,
             "service": "fallback-runner-mcp",
-            "version": "0.2.0",
+            "version": VERSION,
+            "tool_profile": "advanced" if ENABLE_ADVANCED_TOOLS else "basic",
+            "advanced_tools_enabled": ENABLE_ADVANCED_TOOLS,
+            "core_tools": [
+                "health_check",
+                "get_capabilities",
+                "get_runner_environments",
+                "create_workspace",
+                "upload_file_to_workspace",
+                "list_workspace_files",
+                "read_workspace_file",
+                "delete_workspace",
+                "get_run_log",
+                "list_recent_runs",
+                "delete_run",
+                "get_run_stdout",
+                "get_run_stderr",
+                "tail_run_output"
+            ],
+            "advanced_tools": [
+                "run_solver_fallback",
+                "validate_run_request",
+                "upload_artifact",
+                "rerun_run",
+                "probe_target_from_runner",
+                "run_command"
+            ],
             "limits": {
                 "max_timeout_seconds": MAX_TIMEOUT_SECONDS,
                 "max_total_file_bytes": MAX_CODE_BYTES,
@@ -51,12 +82,12 @@ def get_capabilities() -> dict:
                 "max_arg_length": MAX_ARG_LENGTH,
                 "accepted_file_encodings": ["text", "base64"]
             },
-            "supported_languages": ["python", "pwn", "sage"],
+            "supported_languages": ["python", "pwn", "sage", "forensics"] if ENABLE_ADVANCED_TOOLS else [],
             "features": {
                 "validate_only": True,
-                "rerun": True,
+                "rerun": ENABLE_ADVANCED_TOOLS,
                 "interactive_runs": False,
-                "artifact_upload": True,
+                "artifact_upload": ENABLE_ADVANCED_TOOLS,
                 "stdout_tail": True,
                 "stderr_tail": True
             },

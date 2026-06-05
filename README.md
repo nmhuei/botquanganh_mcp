@@ -108,10 +108,26 @@ fallback-runner-mcp/
 
 ### Prerequisites
 - Python 3.12+
-- Docker installed and running
+- Docker installed and running only if you want advanced runner tools
 - Docker Compose (optional, for server containerization)
 
-### Installation
+### Basic Installation
+This installs only the lightweight dependencies required for the MCP server and core tools to run.
+
+Core tools include health/capability checks, workspaces, and run log inspection. Docker runner tools are not exposed in this mode.
+
+```bash
+chmod +x scripts/*.sh
+./scripts/install_basic.sh
+```
+
+Start the MCP server:
+```bash
+source .venv/bin/activate
+python3 -m app.main
+```
+
+### Manual Basic Installation
 1. Clone the project.
 2. Initialize virtual environment and install dependencies:
    ```bash
@@ -125,12 +141,17 @@ fallback-runner-mcp/
    ```
    *Make sure to change `GATEWAY_TOKEN` to a long, secure random token.*
 
-### Build Runner Docker Images
-Run the script to build the runner images:
+### Advanced Tools Installation
+Run this only when you need Docker-backed tools such as `run_solver_fallback`, `probe_target_from_runner`, and `run_command`.
+
+This builds the Python, PWN, Sage, and Forensics runner images, then sets `ENABLE_ADVANCED_TOOLS=true` in `.env`.
+
 ```bash
 chmod +x scripts/*.sh
-./scripts/build_runner_images.sh
+./scripts/install_advanced_tools.sh
 ```
+
+Restart the MCP server after this install so it registers the advanced tools.
 
 ### Run Tests
 Execute the test suite to verify the security and orchestration constraints function correctly:
@@ -156,11 +177,14 @@ Or start the server using the **FastMCP developer mode**, which launches a local
 ChatGPT custom connector requires an HTTPS endpoint. You can expose your local server using a tunnel:
 
 ### Expose using Cloudflare Tunnel (Automatic)
-The easiest way to start both the server (in HTTP mode) and a TryCloudflare tunnel is to run the automated startup script:
+The easiest way to start both the server (in HTTP mode) and a TryCloudflare tunnel is to run the automated startup script. This script performs only the basic install and will not build advanced Docker runner images automatically.
+
 ```bash
 ./scripts/start_tunnel_server.sh
 ```
 This script will start the server on port 8000, launch the Cloudflare Tunnel, wait for the public HTTPS URL to be generated, print it to the screen, and monitor both processes. Press `Ctrl+C` to gracefully terminate both.
+
+To expose advanced tools through the tunnel, run `./scripts/install_advanced_tools.sh` first, then restart `./scripts/start_tunnel_server.sh`.
 
 ### Expose using Ngrok / Cloudflare Tunnel (Manual)
 If you prefer manual setup:

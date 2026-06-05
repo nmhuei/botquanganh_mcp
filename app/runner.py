@@ -2,7 +2,7 @@ import uuid
 import json
 import time
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from app.config import RUNS_DIR, MAX_OUTPUT_BYTES
 from app.schemas import FallbackRequest, FallbackResponse
@@ -13,14 +13,14 @@ from app.logging_audit import log_audit_event
 
 def create_run_id() -> str:
     """Generates a unique runner ID based on timestamp and randomness."""
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     rand = uuid.uuid4().hex[:8]
     return f"run_{timestamp}_{rand}"
 
 def execute_fallback_solver(req: FallbackRequest, derived_from: Optional[str] = None) -> FallbackResponse:
     """Orchestrates the entire solver execution cycle."""
     run_id = create_run_id()
-    created_at = datetime.utcnow().isoformat() + "Z"
+    created_at = datetime.now(timezone.utc).isoformat()
     
     # 1. Setup directories
     run_dir = RUNS_DIR / run_id

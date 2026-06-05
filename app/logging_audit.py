@@ -1,7 +1,7 @@
 import json
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 from app.config import LOG_FILE
 
@@ -65,7 +65,7 @@ def log_audit_event(event_type: str, details: Dict[str, Any] = None) -> None:
     clean_details = redact_sensitive_data(details)
     
     log_payload = {
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "event_type": event_type,
         "details": clean_details
     }

@@ -63,7 +63,7 @@ def validate_timeout(timeout_seconds: int) -> None:
 
 def validate_language(language: str) -> None:
     """Ensures the language/runner profile is supported."""
-    supported = ["python", "pwn", "sage"]
+    supported = ["python", "pwn", "sage", "forensics"]
     if language.lower() not in supported:
         raise ValueError(f"Language '{language}' is not supported. Supported: {supported}")
 

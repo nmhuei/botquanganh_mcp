@@ -11,7 +11,7 @@ Workspace là thư mục lưu trữ toàn bộ mã nguồn solver gửi lên, k�
 ### Cách thiết lập:
 Mở file `.env` và cấu hình biến `RUNS_DIR` trỏ về thư mục mong muốn:
 ```env
-RUNS_DIR=/home/light/Workspace/agy/mcp_workspace
+RUNS_DIR=/home/youruser/Workspace/agy/mcp_workspace
 ```
 *(Nếu sử dụng đường dẫn tương đối, hệ thống sẽ tự động phân giải nó dựa trên thư mục gốc của dự án).*
 
@@ -62,11 +62,21 @@ Bảo vệ server khỏi việc bị lợi dụng để tấn công DDoS hoặc 
 ## 3. Quản Lý Tiến Trình và Tự Động Hóa
 
 ### 3.1 Khởi động Hệ thống
-Sử dụng script tích hợp tự động hóa:
+Install cơ bản chỉ cài `.venv`, Python dependencies và `.env`; đủ để MCP server chạy với các tool nhẹ:
+```bash
+./scripts/install_basic.sh
+```
+
+Sử dụng script tích hợp tự động hóa để bật server và Cloudflare Tunnel:
 ```bash
 ./scripts/start_tunnel_server.sh
 ```
-* **Tự sửa lỗi (Self-healing)**: Script sẽ tự động kiểm tra xem máy bạn đã cài `.env`, `.venv`, các thư viện python và các Docker image (`ctf-python-runner`, `ctf-pwn-runner`, `ctf-sage-runner`) chưa. Nếu chưa có, script sẽ tự động tạo và build chúng trước khi bật dịch vụ.
+* **Basic mode**: Script sẽ tự động đảm bảo `.env`, `.venv` và các thư viện Python cơ bản đã có. Nó không tự build Docker runner images.
+* **Advanced mode**: Muốn dùng các tool Docker runner như `run_solver_fallback`, `probe_target_from_runner`, `run_command`, chạy:
+```bash
+./scripts/install_advanced_tools.sh
+```
+Script này build các image `ctf-python-runner`, `ctf-pwn-runner`, `ctf-sage-runner`, `ctf-forensics-runner` và bật `ENABLE_ADVANCED_TOOLS=true` trong `.env`. Sau đó restart server.
 * **Tunnel**: Đồng thời mở Cloudflare Tunnel và cung cấp đường dẫn endpoint `/mcp` công khai để điền trực tiếp vào ChatGPT.
 
 ### 3.2 Kiểm Tra Trạng Thái
@@ -89,13 +99,13 @@ ps aux | grep -E 'fastmcp|cloudflared'
 2. Cuộn xuống phần **Capabilities** -> chọn **Add MCP Connector**.
 3. Chọn giao thức kết nối: **Server-Sent Events (SSE)**.
 4. Điền URL lấy được từ script `start_tunnel_server.sh` (ví dụ: `https://xxxx.trycloudflare.com/mcp`).
-5. Hoàn tất kết nối. ChatGPT sẽ tự động nhận diện 6 công cụ chính: `health_check`, `run_solver_fallback`, `probe_target_from_runner`, `get_run_log`, `list_recent_runs`, và `delete_run`.
+5. Hoàn tất kết nối. Ở basic mode, ChatGPT sẽ nhận các tool nhẹ như `health_check`, `get_capabilities`, workspace tools và run log tools. Sau khi bật advanced mode, các tool như `run_solver_fallback`, `probe_target_from_runner` và `run_command` sẽ xuất hiện thêm.
 
 ---
 
 ## 5. Sử Dụng CloakBrowser Cho Web Exploitation / Automation
 
-Hệ thống đã được tích hợp sẵn **CloakBrowser** (phiên bản Chromium tuỳ chỉnh chống phát hiện bot mức mã nguồn C++) cùng toàn bộ các thư viện hệ thống cần thiết (qua Playwright) trong các Docker runner images (`ctf-python-runner`, `ctf-pwn-runner`).
+Sau khi chạy `./scripts/install_advanced_tools.sh`, hệ thống có **CloakBrowser** (phiên bản Chromium tuỳ chỉnh chống phát hiện bot mức mã nguồn C++) cùng toàn bộ các thư viện hệ thống cần thiết (qua Playwright) trong các Docker runner images (`ctf-python-runner`, `ctf-pwn-runner`).
 
 ### Cách sử dụng trong file solver:
 Khi viết script giải bài liên quan đến Web/Browser automation, hãy truyền tham số `--no-sandbox` khi khởi động browser do môi trường Docker chạy mặc định không có sandbox namespace:
@@ -115,4 +125,3 @@ print(page.content())
 
 browser.close()
 ```
-

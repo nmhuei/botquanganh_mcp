@@ -32,7 +32,7 @@ def check_target_allowed(host: str, port: int) -> Dict[str, Any]:
     except Exception as e:
         err = format_error_response(e)
         return {
-            "ok": True,
+            "ok": False,
             "allowed": False,
             "error": err["error"]
         }
@@ -94,6 +94,16 @@ def probe_target_from_runner(
                 reachable = True
                 tcp_duration_ms = int((time.time() - tcp_start) * 1000)
                 
+                # Trước khi wrap TLS, đọc banner trước nếu không phải 443
+                if port != 443:
+                    s.settimeout(1.0)
+                    try:
+                        banner_bytes = s.recv(1024)
+                        if banner_bytes:
+                            banner = banner_bytes.decode('utf-8', errors='replace')
+                    except Exception:
+                        pass
+
                 # Attempt TLS Handshake if it's HTTPS (443)
                 if port == 443:
                     tls_attempted = True
@@ -103,24 +113,16 @@ def probe_target_from_runner(
                             tls_handshake_ok = True
                     except Exception:
                         pass
-                
-                # Attempt to read a banner with a 1-second timeout
-                s.settimeout(1.0)
-                try:
-                    banner_bytes = s.recv(1024)
-                    if banner_bytes:
-                        banner = banner_bytes.decode('utf-8', errors='replace')
-                except socket.timeout:
-                    pass  # No banner returned in 1s is normal for some services
-                except Exception:
-                    pass
-                finally:
-                    s.close()
             except Exception as conn_err:
                 log_audit_event("PROBE_TARGET_FAILED_CONNECTION", {
                     "target": f"{host}:{port}",
                     "error": str(conn_err)
                 })
+            finally:
+                try:
+                    s.close()
+                except Exception:
+                    pass
                 
         duration_ms = int((time.time() - start_time) * 1000)
         

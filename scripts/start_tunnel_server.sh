@@ -3,34 +3,18 @@
 
 cd "$(dirname "$0")/.."
 
-# 1. Ensure Python virtual environment and dependencies are ready
-if [ ! -d ".venv" ]; then
-    echo "[*] Python virtual environment (.venv) not found. Creating it..."
-    python3 -m venv .venv
-fi
-
+# 1. Ensure only the basic Python environment is ready.
+# Advanced Docker runner images are intentionally installed separately via:
+#   ./scripts/install_advanced_tools.sh
+./scripts/install_basic.sh
 source .venv/bin/activate
 
-echo "[*] Checking and installing Python dependencies..."
-pip install --upgrade pip
-pip install -r requirements.txt
-
-# 2. Ensure all required Docker runner images are built
-echo "[*] Checking Docker runner images..."
-IMAGES_MISSING=false
-for img in "ctf-python-runner:latest" "ctf-pwn-runner:latest" "ctf-sage-runner:latest"; do
-    if ! docker image inspect "$img" >/dev/null 2>&1; then
-        echo "[-] Missing Docker image: $img"
-        IMAGES_MISSING=true
-    fi
-done
-
-if [ "$IMAGES_MISSING" = true ]; then
-    echo "[*] Auto-building missing runner images..."
-    chmod +x scripts/build_runner_images.sh
-    ./scripts/build_runner_images.sh
+ADVANCED_TOOLS_FLAG=$(grep -E '^ENABLE_ADVANCED_TOOLS=' .env 2>/dev/null | tail -n 1 | cut -d= -f2-)
+if [ "${ADVANCED_TOOLS_FLAG:-false}" != "true" ]; then
+    echo "[*] Starting in BASIC mode. Advanced Docker runner tools are disabled."
+    echo "[*] To enable them later, run: ./scripts/install_advanced_tools.sh"
 else
-    echo "[+] All required Docker runner images are present."
+    echo "[*] Starting in ADVANCED mode. Docker runner tools will be exposed."
 fi
 
 export PYTHONPATH=.

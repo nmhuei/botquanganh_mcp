@@ -30,7 +30,7 @@ class TestNewTools(unittest.TestCase):
 
         # Disallowed target
         res = check_target_allowed("8.8.8.8", 80)
-        self.assertTrue(res["ok"])
+        self.assertFalse(res["ok"])
         self.assertFalse(res["allowed"])
         self.assertEqual(res["error"]["code"], "TARGET_NOT_ALLOWLISTED")
 
@@ -155,6 +155,78 @@ class TestNewTools(unittest.TestCase):
         # Clean up mock directories
         import shutil
         shutil.rmtree(run_dir)
+
+    def test_workspace_lifecycle(self):
+        from app.tools.workspace import (
+            create_workspace,
+            upload_file_to_workspace,
+            list_workspace_files,
+            read_workspace_file,
+            delete_workspace
+        )
+        
+        # 1. Create workspace
+        create_res = create_workspace(label="test_ws")
+        self.assertTrue(create_res["ok"])
+        workspace_id = create_res["workspace_id"]
+        
+        # 2. Upload text file
+        upload_res = upload_file_to_workspace(
+            workspace_id=workspace_id,
+            filename="hello.txt",
+            content="Hello Workspace!",
+            encoding="text"
+        )
+        self.assertTrue(upload_res["ok"])
+        self.assertEqual(upload_res["filename"], "hello.txt")
+        
+        # 3. List files
+        list_res = list_workspace_files(workspace_id=workspace_id)
+        self.assertTrue(list_res["ok"])
+        self.assertEqual(len(list_res["files"]), 1)
+        self.assertEqual(list_res["files"][0]["name"], "hello.txt")
+        
+        # 4. Read file
+        read_res = read_workspace_file(
+            workspace_id=workspace_id,
+            filename="hello.txt",
+            encoding="text"
+        )
+        self.assertTrue(read_res["ok"])
+        self.assertEqual(read_res["content"], "Hello Workspace!")
+        
+        # 5. Delete workspace
+        delete_res = delete_workspace(workspace_id=workspace_id)
+        self.assertTrue(delete_res["ok"])
+
+    @patch("subprocess.run")
+    def test_run_command(self, mock_sub_run):
+        from app.tools.shell import run_command
+        from app.tools.workspace import create_workspace, delete_workspace
+        
+        # Setup workspace
+        ws_res = create_workspace(label="test_shell")
+        ws_id = ws_res["workspace_id"]
+        
+        # Mock subprocess return value
+        class DummyProcess:
+            returncode = 0
+            stdout = b"mock output\n"
+            stderr = b""
+        mock_sub_run.return_value = DummyProcess()
+        
+        res = run_command(
+            workspace_id=ws_id,
+            command="ls -la",
+            language="forensics",
+            timeout_seconds=10
+        )
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["exit_code"], 0)
+        self.assertEqual(res["stdout"], "mock output\n")
+        
+        # Cleanup
+        delete_workspace(ws_id)
 
 if __name__ == "__main__":
     unittest.main()

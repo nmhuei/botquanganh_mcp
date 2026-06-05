@@ -14,5 +14,7 @@ docker build --load -t ctf-pwn-runner:latest -f runner_images/python-pwn.Dockerf
 echo "[*] Building sage-ctf runner image (ctf-sage-runner:latest)..."
 docker build --load -t ctf-sage-runner:latest -f runner_images/sage-ctf.Dockerfile .
 
+echo "[*] Building forensics runner image (ctf-forensics-runner:latest)..."
+docker build --load -t ctf-forensics-runner:latest -f runner_images/ctf-forensics.Dockerfile .
 
 echo "[+] All runner images successfully built!"
