@@ -12,3 +12,8 @@ sympy
 gmpy2
 websocket-client
 websockets
+aiohttp
+requests-toolbelt
+pyjwt
+itsdangerous
+flask-unsign

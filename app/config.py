@@ -7,6 +7,7 @@ load_dotenv()
 
 # Project root path (where app/ is located)
 BASE_DIR = Path(__file__).resolve().parent.parent
+HOME_WORKSPACE_DIR = Path.home() / "Workspace"
 
 # MCP binding settings
 MCP_BIND_HOST = os.getenv("MCP_BIND_HOST", "0.0.0.0")
@@ -55,6 +56,20 @@ REQUIRE_LOCAL_VALIDATION = os.getenv("REQUIRE_LOCAL_VALIDATION", "true").lower()
 BLOCK_PRIVATE_IPS = os.getenv("BLOCK_PRIVATE_IPS", "true").lower() == "true"
 ENABLE_EGRESS_FIREWALL = os.getenv("ENABLE_EGRESS_FIREWALL", "false").lower() == "true"
 DELETE_RUN_FILES_AFTER_DAYS = int(os.getenv("DELETE_RUN_FILES_AFTER_DAYS", "7"))
+USE_DOCKER = os.getenv("USE_DOCKER", "true").lower() == "true"
+
+
+# Agent mode configuration
+ENABLE_AGENT_TOOLS = os.getenv("ENABLE_AGENT_TOOLS", "true").lower() == "true"
+AGENT_WORKSPACE_DIR_ENV = os.getenv("AGENT_WORKSPACE_DIR", "")
+if AGENT_WORKSPACE_DIR_ENV:
+    AGENT_WORKSPACE_DIR = Path(AGENT_WORKSPACE_DIR_ENV).expanduser()
+    if not AGENT_WORKSPACE_DIR.is_absolute():
+        AGENT_WORKSPACE_DIR = BASE_DIR / AGENT_WORKSPACE_DIR
+else:
+    AGENT_WORKSPACE_DIR = HOME_WORKSPACE_DIR if HOME_WORKSPACE_DIR.exists() else BASE_DIR
+AGENT_WORKSPACE_DIR = AGENT_WORKSPACE_DIR.resolve()
+AGENT_RESTRICT_TO_WORKSPACE = os.getenv("AGENT_RESTRICT_TO_WORKSPACE", "true").lower() == "true"
 
 # Docker parameters
 RUNNER_IMAGE_PYTHON = os.getenv("RUNNER_IMAGE_PYTHON", "ctf-python-runner:latest")

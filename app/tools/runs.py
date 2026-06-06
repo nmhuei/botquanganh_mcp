@@ -8,7 +8,7 @@ from app.config import RUNS_DIR
 from app.logging_audit import get_audit_logs_for_run, log_audit_event
 from app.security import format_error_response
 
-RUN_ID_PATTERN = re.compile(r"^run_[0-9]{8}_[0-9]{6}_[a-f0-9]+$")
+RUN_ID_PATTERN = re.compile(r"^(run|basic)_[0-9]{8}_[0-9]{6}_[a-f0-9]+$")
 
 def validate_run_id_safe(run_id: str) -> None:
     """Ensures the run_id format is valid, preventing path traversal via ID parameters."""
@@ -73,7 +73,7 @@ def list_recent_runs(limit: int = 20) -> Dict[str, Any]:
         runs = []
         if RUNS_DIR.exists():
             for p in RUNS_DIR.iterdir():
-                if p.is_dir() and p.name.startswith("run_"):
+                if p.is_dir() and (p.name.startswith("run_") or p.name.startswith("basic_")):
                     meta_path = p / "metadata.json"
                     if meta_path.exists():
                         try:
@@ -99,6 +99,55 @@ def list_recent_runs(limit: int = 20) -> Dict[str, Any]:
     except Exception as e:
         log_audit_event("LIST_RUNS_FAIL", {"error": str(e)})
         return format_error_response(e)
+
+
+@mcp.tool(
+    name="get_run_summary",
+    description=(
+        "Retrieve a compact stdout/stderr summary for a solver run created by this MCP. "
+        "Works with both run_* fallback runs and basic_* Python solver runs."
+    )
+)
+def get_run_summary(run_id: str, tail_lines: int = 40) -> Dict[str, Any]:
+    """Returns compact run metadata plus bounded stdout/stderr tails."""
+    try:
+        validate_run_id_safe(run_id)
+        tail_lines = min(max(int(tail_lines), 1), 200)
+
+        run_dir = RUNS_DIR / run_id
+        if not run_dir.exists():
+            raise FileNotFoundError(f"Run folder for run_id '{run_id}' not found.")
+
+        metadata_path = run_dir / "metadata.json"
+        if not metadata_path.exists():
+            raise FileNotFoundError(f"Metadata file for run_id '{run_id}' is missing.")
+
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        stdout_path = run_dir / "output" / "stdout.txt"
+        stderr_path = run_dir / "output" / "stderr.txt"
+
+        return {
+            "ok": True,
+            "run_id": run_id,
+            "target": metadata.get("target"),
+            "type": metadata.get("type", "fallback_solver"),
+            "language": metadata.get("language"),
+            "entrypoint": metadata.get("entrypoint"),
+            "exit_code": metadata.get("exit_code"),
+            "duration_ms": metadata.get("duration_ms"),
+            "created_at": metadata.get("created_at"),
+            "tail_lines": tail_lines,
+            "stdout_tail": tail_file(stdout_path, tail_lines),
+            "stderr_tail": tail_file(stderr_path, tail_lines),
+            "sha256": {
+                "stdout": metadata.get("stdout_sha256", ""),
+                "stderr": metadata.get("stderr_sha256", ""),
+                "transcript": metadata.get("transcript_sha256", ""),
+            },
+        }
+    except Exception as e:
+        return format_error_response(e)
+
 
 @mcp.tool(
     name="delete_run",

@@ -2,7 +2,14 @@ FROM python:3.12-slim
 
 RUN apt-get update && apt-get install -y \
     netcat-openbsd \
+    ncat \
+    nmap \
     socat \
+    wget \
+    jq \
+    dnsutils \
+    openssl \
+    iputils-ping \
     file \
     binutils \
     patchelf \
@@ -24,7 +31,10 @@ RUN pip install --no-cache-dir uv && \
     libnum \
     tqdm \
     pyasn1 \
-    pyasn1-modules
+    pyasn1-modules \
+    sqlmap \
+    dirsearch \
+    beautifulsoup4
 
 
 RUN playwright install-deps chromium
@@ -36,4 +46,3 @@ USER runner
 RUN python3 -m cloakbrowser install
 
 CMD ["python3"]
-

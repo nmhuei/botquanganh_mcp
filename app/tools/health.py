@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from app.mcp_server import mcp
 from app.config import (
     ENABLE_ADVANCED_TOOLS,
+    ENABLE_AGENT_TOOLS,
     RUNNER_IMAGE_PYTHON,
     RUNNER_IMAGE_PWN,
     RUNNER_IMAGE_SAGE,
@@ -29,6 +30,7 @@ def health_check() -> dict:
             "server_time": datetime.now(timezone.utc).isoformat(),
             "tool_profile": "advanced" if ENABLE_ADVANCED_TOOLS else "basic",
             "advanced_tools_enabled": ENABLE_ADVANCED_TOOLS,
+            "agent_tools_enabled": ENABLE_AGENT_TOOLS,
             "runner_images": [RUNNER_IMAGE_PYTHON, RUNNER_IMAGE_PWN, RUNNER_IMAGE_SAGE, RUNNER_IMAGE_FORENSICS]
         }
     except Exception as e:
@@ -50,12 +52,14 @@ def get_capabilities() -> dict:
             "version": VERSION,
             "tool_profile": "advanced" if ENABLE_ADVANCED_TOOLS else "basic",
             "advanced_tools_enabled": ENABLE_ADVANCED_TOOLS,
+            "agent_tools_enabled": ENABLE_AGENT_TOOLS,
             "core_tools": [
                 "health_check",
                 "get_capabilities",
                 "check_target_allowed",
                 "probe_target_from_runner",
-                "run_basic_python_solver"
+                "run_basic_python_solver",
+                "run_safe_smoke_test"
             ],
             "advanced_tools": [
                 "get_runner_environments",
@@ -70,12 +74,21 @@ def get_capabilities() -> dict:
                 "delete_workspace",
                 "get_run_log",
                 "list_recent_runs",
+                "get_run_summary",
                 "delete_run",
                 "get_run_stdout",
                 "get_run_stderr",
                 "tail_run_output",
                 "run_command"
             ],
+            "agent_tools": [
+                "agent_list_directory",
+                "agent_read_file",
+                "agent_write_file",
+                "agent_edit_file",
+                "agent_grep_search",
+                "agent_run_command"
+            ] if ENABLE_AGENT_TOOLS else [],
             "limits": {
                 "max_timeout_seconds": MAX_TIMEOUT_SECONDS,
                 "max_total_file_bytes": MAX_CODE_BYTES,
@@ -92,7 +105,8 @@ def get_capabilities() -> dict:
                 "interactive_runs": False,
                 "artifact_upload": ENABLE_ADVANCED_TOOLS,
                 "stdout_tail": True,
-                "stderr_tail": True
+                "stderr_tail": True,
+                "agent_mode": ENABLE_AGENT_TOOLS
             },
             "network_policy": {
                 "allowlist_required": True

@@ -266,7 +266,9 @@ def rerun_run(
         run_input_dir = run_dir / "input"
         
         for f_info in files_info:
-            path_str = f_info["path"]
+            path_str = f_info.get("path") or f_info.get("name")
+            if not path_str:
+                continue
             file_path = run_input_dir / path_str
             if file_path.exists():
                 content_bytes = file_path.read_bytes()
@@ -283,7 +285,12 @@ def rerun_run(
         patched_files_map = {f["path"]: f for f in reconstructed_files}
         
         for patch_file in workspace_patch.get("files", []):
-            patched_files_map[patch_file["path"]] = patch_file
+            path_val = patch_file.get("path") or patch_file.get("name")
+            if not path_val:
+                raise ValueError("Patch files must specify 'path' or 'name'.")
+            if "path" not in patch_file:
+                patch_file["path"] = path_val
+            patched_files_map[path_val] = patch_file
             
         final_files = list(patched_files_map.values())
         

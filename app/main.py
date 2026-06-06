@@ -6,7 +6,8 @@ from app.mcp_server import mcp
 import app.tools.health
 import app.tools.probe
 import app.tools.basic_runner
-from app.config import MCP_BIND_HOST, MCP_PORT, ENABLE_ADVANCED_TOOLS
+import app.tools.smoke
+from app.config import MCP_BIND_HOST, MCP_PORT, ENABLE_ADVANCED_TOOLS, ENABLE_AGENT_TOOLS
 
 # Advanced tools: Docker runner/workspace/log features. Enabled after running
 # scripts/install_advanced_tools.sh or setting ENABLE_ADVANCED_TOOLS=true.
@@ -16,6 +17,10 @@ if ENABLE_ADVANCED_TOOLS:
     import app.tools.runs
     import app.tools.workspace
     import app.tools.shell
+
+# Agent tools: Local workspace filesystem and shell tools.
+if ENABLE_AGENT_TOOLS:
+    import app.tools.agent
 
 from app.logging_audit import log_audit_event
 

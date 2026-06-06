@@ -18,9 +18,10 @@ class Target(BaseModel):
     protocol: str = "tcp"
 
 class SandboxFailure(BaseModel):
-    attempted: bool
+    attempted: bool = True
     attempted_at: Optional[str] = None
     reason: str
+    evidence: Optional[str] = None
     error_excerpt: Optional[str] = None
     command_summary: Optional[str] = None
 
@@ -37,9 +38,22 @@ class SandboxFailure(BaseModel):
         return v
 
 class LocalValidation(BaseModel):
-    solved_locally: bool
-    summary: str
+    solved_locally: bool = True
+    summary: str = ""
+    evidence: Optional[str] = None
     solver_sha256: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_aliases(cls, data):
+        if isinstance(data, dict):
+            if "status" in data and "solved_locally" not in data:
+                data = dict(data)
+                data["solved_locally"] = str(data["status"]).lower() in {"ok", "valid", "validated", "solved", "true"}
+            if "summary" not in data and data.get("evidence"):
+                data = dict(data)
+                data["summary"] = str(data["evidence"])[:500]
+        return data
 
     @field_validator("solved_locally")
     def validate_solved_locally(cls, v):
@@ -48,7 +62,8 @@ class LocalValidation(BaseModel):
         return v
 
 class FileEntry(BaseModel):
-    path: str
+    path: Optional[str] = None
+    name: Optional[str] = None
     encoding: Optional[str] = None  # "text" or "base64"
     content: Optional[str] = None
     artifact_id: Optional[str] = None
@@ -61,6 +76,12 @@ class FileEntry(BaseModel):
 
     @model_validator(mode="after")
     def validate_content_or_artifact(self):
+        if self.path is None and self.name is not None:
+            self.path = self.name
+        if self.path is None:
+            raise ValueError("Either path or name must be provided.")
+        if self.content is not None and self.encoding is None:
+            self.encoding = "text"
         if self.artifact_id is None:
             if self.encoding is None or self.content is None:
                 raise ValueError("Either (encoding and content) or artifact_id must be provided.")

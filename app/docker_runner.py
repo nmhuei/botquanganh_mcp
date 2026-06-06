@@ -73,6 +73,8 @@ def run_in_docker(
         
     docker_run_cmd.extend([
         "-w", "/work",
+        "-e", f"TARGET_HOST={target_host}",
+        "-e", f"TARGET_PORT={target_port}",
         "-e", f"CTF_HOST={target_host}",
         "-e", f"CTF_PORT={target_port}",
     ])
@@ -114,6 +116,13 @@ def run_in_docker(
         exec_executable = "sage" if language.lower() == "sage" else "python3"
         exec_cmd = ["docker", "exec"]
         
+        exec_cmd.extend([
+            "-e", f"TARGET_HOST={target_host}",
+            "-e", f"TARGET_PORT={target_port}",
+            "-e", f"CTF_HOST={target_host}",
+            "-e", f"CTF_PORT={target_port}",
+        ])
+
         # Inject environments to exec too
         for k, v in env.items():
             exec_cmd.extend(["-e", f"{k}={v}"])

@@ -22,6 +22,7 @@ get_capabilities
 check_target_allowed
 probe_target_from_runner
 run_basic_python_solver
+run_safe_smoke_test
 ```
 
 Ý nghĩa:
@@ -30,6 +31,7 @@ run_basic_python_solver
 - `check_target_allowed`: kiểm tra host:port có được phép probe không.
 - `probe_target_from_runner`: thử DNS/TCP/TLS/banner tới target qua máy bạn.
 - `run_basic_python_solver`: chạy solver Python nhẹ trong `.venv` host, phù hợp pwn/web cơ bản.
+- `run_safe_smoke_test`: test nhanh server/capabilities/basic solver bằng một call, không Docker, không connect target.
 
 Basic packages cho solver:
 
@@ -46,7 +48,7 @@ websocket-client
 websockets
 ```
 
-`run_basic_python_solver` bắt buộc truyền `target={"host": "...", "port": ...}`. Target đó phải nằm trong `ALLOWED_TCP_TARGETS`. Solver sẽ nhận `TARGET_HOST` và `TARGET_PORT` qua environment.
+`run_basic_python_solver` chấp nhận file dùng `path` hoặc `name`. Nếu truyền `content` mà thiếu `encoding`, server tự hiểu là `encoding="text"`. Khi chạy solver connect thật, truyền `target={"host": "...", "port": ...}`; target đó phải nằm trong `ALLOWED_TCP_TARGETS`. Solver sẽ nhận `TARGET_HOST` và `TARGET_PORT` qua environment. Nếu chỉ test import/package thì có thể bỏ `target`.
 
 Basic phù hợp khi bạn gặp bài liên quan tới server/network/pwn/web và muốn ChatGPT dùng máy bạn để connect thật, chạy solver nhẹ thật.
 
@@ -68,6 +70,7 @@ upload_artifact
 rerun_run
 get_run_log
 list_recent_runs
+get_run_summary
 delete_run
 get_run_stdout
 get_run_stderr

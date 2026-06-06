@@ -23,6 +23,7 @@ get_capabilities
 check_target_allowed
 probe_target_from_runner
 run_basic_python_solver
+run_safe_smoke_test
 ```
 
 Dùng basic khi:
@@ -48,7 +49,9 @@ websocket-client
 websockets
 ```
 
-`run_basic_python_solver` requires a `target` object (`host` and `port`). That target must be allowed by `ALLOWED_TCP_TARGETS`. The solver receives `TARGET_HOST` and `TARGET_PORT` in its environment.
+`run_basic_python_solver` accepts files with either `path` or `name`. If inline `content` is provided without `encoding`, it defaults to `encoding="text"`. For real pwn/web connections, pass a `target` object (`host` and `port`); that target must be allowed by `ALLOWED_TCP_TARGETS`, and the solver receives `TARGET_HOST` and `TARGET_PORT` in its environment. For import-only smoke tests, `target` may be omitted.
+
+`run_safe_smoke_test` is a harmless one-call check for ChatGPT connector setup. It runs health, capabilities, and a print-only basic Python solver without Docker or target network access.
 
 ### Full / Advanced Mode
 
@@ -64,6 +67,7 @@ upload_artifact
 rerun_run
 get_run_log
 list_recent_runs
+get_run_summary
 delete_run
 get_run_stdout
 get_run_stderr
@@ -232,7 +236,7 @@ HTTP mode:
 
 ```bash
 source .venv/bin/activate
-PYTHONPATH=. fastmcp run app/main.py --transport http --port 8000 --host 127.0.0.1
+PYTHONPATH=. fastmcp run app/main.py --transport streamable-http --port 8000 --host 127.0.0.1 --path /mcp
 ```
 
 Dev UI:

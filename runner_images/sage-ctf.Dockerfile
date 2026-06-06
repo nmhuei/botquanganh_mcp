@@ -4,8 +4,17 @@ FROM sagemath/sagemath:latest
 # We can install extra Python packages inside Sagemath's env if needed.
 USER root
 RUN apt-get update && apt-get install -y \
+    curl \
+    wget \
     netcat-openbsd \
+    ncat \
+    nmap \
     socat \
+    jq \
+    dnsutils \
+    openssl \
+    iputils-ping \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 USER sage
@@ -20,4 +29,3 @@ RUN sage -pip install --no-cache-dir \
     pyasn1-modules
 
 CMD ["sage"]
-

@@ -44,15 +44,25 @@ RUN sed -i 's/archive.ubuntu.com/vn.archive.ubuntu.com/g' /etc/apt/sources.list.
     libmagic1 \
     libmagic-dev \
     libffi-dev \
+    curl \
     wget \
+    netcat-openbsd \
+    ncat \
+    nmap \
+    socat \
+    jq \
+    dnsutils \
+    openssl \
+    iputils-ping \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 RUN wget https://github.com/RickdeJager/stegseek/releases/download/v0.6/stegseek_0.6-1.deb && \
-    apt-get update && apt-get install -y ./stegseek_0.6-1.deb && \
+    apt-get update && apt-get install -y ./stegseek_0.6-1.deb poppler-utils tesseract-ocr tesseract-ocr-eng && \
     rm stegseek_0.6-1.deb && \
     rm -rf /var/lib/apt/lists/*
 
-RUN gem install zsteg
+RUN gem install --no-document zsteg
 
 RUN pip3 install --no-cache-dir --break-system-packages uv && \
     uv pip install --system --no-cache-dir \

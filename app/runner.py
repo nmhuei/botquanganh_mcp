@@ -1,10 +1,12 @@
 import uuid
 import json
 import time
-from typing import Optional
+import os
+import subprocess
+from typing import Optional, List, Dict, Tuple
 from datetime import datetime, timezone
 from pathlib import Path
-from app.config import RUNS_DIR, MAX_OUTPUT_BYTES
+from app.config import RUNS_DIR, MAX_OUTPUT_BYTES, USE_DOCKER
 from app.schemas import FallbackRequest, FallbackResponse
 from app.file_package import check_total_size_and_validate, write_files, sha256_bytes
 from app.docker_runner import run_in_docker
@@ -16,6 +18,68 @@ def create_run_id() -> str:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     rand = uuid.uuid4().hex[:8]
     return f"run_{timestamp}_{rand}"
+
+def run_locally(
+    run_input_dir: Path,
+    entrypoint: str,
+    args: List[str],
+    env: Dict[str, str],
+    timeout: int,
+    language: str,
+    target_host: str,
+    target_port: int
+) -> Tuple[int, str, str, bool]:
+    """Runs the solver locally on the host machine using subprocess."""
+    exec_executable = "sage" if language.lower() == "sage" else "python3"
+    cmd = [exec_executable, entrypoint] + args
+    
+    local_env = os.environ.copy()
+    local_env.update({
+        "TARGET_HOST": target_host,
+        "TARGET_PORT": str(target_port),
+        "CTF_HOST": target_host,
+        "CTF_PORT": str(target_port),
+    })
+    local_env.update(env)
+    
+    log_audit_event("LOCAL_RUN_START", {
+        "entrypoint": entrypoint,
+        "timeout": timeout,
+        "target": f"{target_host}:{target_port}",
+        "language": language
+    })
+    
+    timed_out = False
+    exit_code = -1
+    stdout_bytes = b""
+    stderr_bytes = b""
+    
+    try:
+        res = subprocess.run(
+            cmd,
+            cwd=run_input_dir.resolve(),
+            env=local_env,
+            capture_output=True,
+            timeout=timeout
+        )
+        exit_code = res.returncode
+        stdout_bytes = res.stdout
+        stderr_bytes = res.stderr
+    except subprocess.TimeoutExpired as te:
+        timed_out = True
+        exit_code = -1
+        stdout_bytes = te.output or b""
+        stderr_bytes = (te.stderr or b"") + b"\n[MCP SERVER] Process timed out after " + str(timeout).encode() + b" seconds."
+        
+    stdout = stdout_bytes.decode("utf-8", errors="replace")
+    stderr = stderr_bytes.decode("utf-8", errors="replace")
+    
+    log_audit_event("LOCAL_RUN_END", {
+        "exit_code": exit_code,
+        "timed_out": timed_out
+    })
+    
+    return exit_code, stdout, stderr, timed_out
 
 def execute_fallback_solver(req: FallbackRequest, derived_from: Optional[str] = None) -> FallbackResponse:
     """Orchestrates the entire solver execution cycle."""
@@ -69,22 +133,34 @@ def execute_fallback_solver(req: FallbackRequest, derived_from: Optional[str] = 
         "total_bytes": sum(f["size"] for f in files_info)
     })
     
-    # 3. Trigger Docker isolation runner
-    container_name = f"fallback_{run_id}"
+    # 3. Trigger runner (either Docker or local)
     target_str = f"{req.target.host}:{req.target.port}"
     
     start_time = time.time()
-    exit_code, stdout, stderr, timed_out = run_in_docker(
-        container_name=container_name,
-        run_input_dir=input_dir,
-        entrypoint=req.entrypoint,
-        args=req.args,
-        env=req.env,
-        timeout=req.timeout_seconds,
-        language=req.language,
-        target_host=req.target.host,
-        target_port=req.target.port
-    )
+    if USE_DOCKER:
+        container_name = f"fallback_{run_id}"
+        exit_code, stdout, stderr, timed_out = run_in_docker(
+            container_name=container_name,
+            run_input_dir=input_dir,
+            entrypoint=req.entrypoint,
+            args=req.args,
+            env=req.env,
+            timeout=req.timeout_seconds,
+            language=req.language,
+            target_host=req.target.host,
+            target_port=req.target.port
+        )
+    else:
+        exit_code, stdout, stderr, timed_out = run_locally(
+            run_input_dir=input_dir,
+            entrypoint=req.entrypoint,
+            args=req.args,
+            env=req.env,
+            timeout=req.timeout_seconds,
+            language=req.language,
+            target_host=req.target.host,
+            target_port=req.target.port
+        )
     duration_ms = int((time.time() - start_time) * 1000)
     
     # 4. Truncate outputs if they exceed configured MAX_OUTPUT_BYTES

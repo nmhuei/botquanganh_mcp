@@ -1,7 +1,33 @@
 #!/bin/bash
-# Script to automate starting the MCP server in HTTP mode and launching Cloudflare Tunnel.
+# Start the MCP server in ChatGPT-compatible Streamable HTTP mode and expose it
+# through a Cloudflare quick tunnel.
 
 cd "$(dirname "$0")/.."
+
+MCP_HOST="${MCP_HOST:-127.0.0.1}"
+MCP_PORT="${MCP_PORT:-8000}"
+MCP_PATH="${MCP_PATH:-/mcp}"
+
+# Clean up any existing instances of the server port or quick tunnel.
+echo "[*] Detecting and stopping existing server/tunnel instances..."
+PORT_PIDS=$(lsof -t -i :"$MCP_PORT" 2>/dev/null)
+if [ ! -z "$PORT_PIDS" ]; then
+    echo "[*] Stopping existing server process(es) on port $MCP_PORT (PID: $PORT_PIDS)..."
+    kill -15 $PORT_PIDS 2>/dev/null
+    sleep 1
+    kill -9 $PORT_PIDS 2>/dev/null
+fi
+
+TUNNEL_PIDS=$(pgrep -f "cloudflared tunnel --url http://${MCP_HOST}:${MCP_PORT}" 2>/dev/null)
+if [ -z "$TUNNEL_PIDS" ] && [ "$MCP_HOST" = "127.0.0.1" ]; then
+    TUNNEL_PIDS=$(pgrep -f "cloudflared tunnel --url http://localhost:${MCP_PORT}" 2>/dev/null)
+fi
+if [ ! -z "$TUNNEL_PIDS" ]; then
+    echo "[*] Stopping existing cloudflared tunnel process(es) for port $MCP_PORT (PID: $TUNNEL_PIDS)..."
+    kill -15 $TUNNEL_PIDS 2>/dev/null
+    sleep 1
+    kill -9 $TUNNEL_PIDS 2>/dev/null
+fi
 
 # 1. Ensure only the basic Python environment is ready.
 # Advanced Docker runner images are intentionally installed separately via:
@@ -25,9 +51,10 @@ mkdir -p logs
 # Clean up previous logs
 rm -f logs/cloudflared.log
 
-echo "[*] Starting Fallback Runner MCP server on port 8000..."
-# Start server using the HTTP transport
-fastmcp run app/main.py --transport http --port 8000 --host 127.0.0.1 > logs/server.log 2>&1 &
+echo "[*] Starting Fallback Runner MCP server on ${MCP_HOST}:${MCP_PORT}${MCP_PATH}..."
+export FASTMCP_MESSAGE_PATH="$MCP_PATH"
+export MCP_DISABLE_DNS_REBINDING=1
+.venv/bin/fastmcp run app/main.py --transport streamable-http --port "$MCP_PORT" --host "$MCP_HOST" --path "$MCP_PATH" > logs/server.log 2>&1 &
 SERVER_PID=$!
 
 # Ensure server PID is cleaned up on exit
@@ -42,8 +69,26 @@ cleanup() {
 }
 trap cleanup SIGINT SIGTERM
 
-# Settle server boot
-sleep 2
+# Wait for the socket to be ready instead of probing MCP without a session.
+for _ in $(seq 1 30); do
+    if .venv/bin/python - "$MCP_HOST" "$MCP_PORT" <<'PY' >/dev/null 2>&1
+import socket
+import sys
+
+host = sys.argv[1]
+port = int(sys.argv[2])
+with socket.create_connection((host, port), timeout=0.3):
+    pass
+PY
+    then
+        break
+    fi
+    if ! kill -0 $SERVER_PID 2>/dev/null; then
+        echo "[-] Error: MCP server failed to start. Check logs/server.log for details."
+        exit 1
+    fi
+    sleep 0.5
+done
 
 # Check if server process is still running
 if ! kill -0 $SERVER_PID 2>/dev/null; then
@@ -53,8 +98,8 @@ fi
 echo "[+] MCP server started successfully (PID: $SERVER_PID)."
 
 echo "[*] Initiating Cloudflare Tunnel..."
-# Start cloudflared to forward port 8000
-cloudflared tunnel --url http://127.0.0.1:8000 > logs/cloudflared.log 2>&1 &
+# Start cloudflared to forward the MCP server port.
+cloudflared tunnel --url "http://${MCP_HOST}:${MCP_PORT}" > logs/cloudflared.log 2>&1 &
 TUNNEL_PID=$!
 echo "[+] Tunnel process launched (PID: $TUNNEL_PID)."
 
@@ -82,11 +127,11 @@ fi
 echo -e "\n=========================================================================="
 echo -e "[+++] CLOUDFLARE TUNNEL ESTABLISHED SUCCESSFULLY! [+++]"
 echo -e "=========================================================================="
-echo -e "Server Endpoint URL:   ${URL}/mcp"
+echo -e "Server Endpoint URL:   ${URL}${MCP_PATH}"
 echo -e "Logs Location:          logs/server.log, logs/cloudflared.log"
 echo -e "=========================================================================="
 echo -e "Use the following URL in ChatGPT Connector Settings:"
-echo -e "👉 \033[1;32m${URL}/mcp\033[0m"
+echo -e "\033[1;32m${URL}${MCP_PATH}\033[0m"
 echo -e "=========================================================================="
 echo -e "Press [Ctrl+C] to stop both the MCP server and the Cloudflare Tunnel."
 echo -e "=========================================================================="

@@ -1,9 +1,9 @@
+import json
 import os
 import subprocess
 import sys
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from app.config import MAX_OUTPUT_BYTES, RUNS_DIR
@@ -26,18 +26,26 @@ def _basic_run_id() -> str:
     return f"basic_{stamp}_{os.urandom(4).hex()}"
 
 
+def _normalize_file_payload(file_payload: Dict[str, Any]) -> Dict[str, Any]:
+    normalized = dict(file_payload)
+    if "path" not in normalized and "name" in normalized:
+        normalized["path"] = normalized.pop("name")
+    return normalized
+
+
 @mcp.tool(
     name="run_basic_python_solver",
     description=(
         "Run a lightweight Python pwn/web solver on this host in the MCP virtualenv. "
         "Use for basic CTF connectivity and solving without Docker. "
         "Installed packages include requests, beautifulsoup4, lxml, pwntools, pycryptodome, z3-solver, sympy, gmpy2, websocket-client, and websockets. "
-        "If target is provided, host:port must be allowlisted."
+        "Files may use either 'path' or 'name' for the file path. "
+        "If target is provided, host:port must be allowlisted and TARGET_HOST/TARGET_PORT are passed to the solver."
     ),
 )
 def run_basic_python_solver(
     files: List[Dict[str, Any]],
-    target: Dict[str, Any],
+    target: Optional[Dict[str, Any]] = None,
     entrypoint: str = "solve.py",
     args: Optional[List[str]] = None,
     env: Optional[Dict[str, str]] = None,
@@ -58,14 +66,23 @@ def run_basic_python_solver(
         validate_args(args)
         validate_relative_path(entrypoint)
 
-        target_host = target.get("host")
-        target_port = target.get("port")
-        if not target_host or target_port is None:
-            raise ValueError("target must include host and port.")
-        validate_target_allowlisted(str(target_host), int(target_port))
-        block_private_or_local_host(str(target_host), int(target_port))
+        target_host = None
+        target_port = None
+        warnings = []
+        if target is not None:
+            target_host = target.get("host")
+            target_port = target.get("port")
+            if not target_host or target_port is None:
+                raise ValueError("target must include host and port when provided.")
+            validate_target_allowlisted(str(target_host), int(target_port))
+            block_private_or_local_host(str(target_host), int(target_port))
+        else:
+            warnings.append(
+                "No target provided; TARGET_HOST/TARGET_PORT were not set. "
+                "Provide target={host, port} for real pwn/web connections."
+            )
 
-        file_entries = [FileEntry(**f) for f in files]
+        file_entries = [FileEntry(**_normalize_file_payload(f)) for f in files]
         decoded_files = check_total_size_and_validate(file_entries)
         if not any(path == entrypoint for path, _ in decoded_files):
             raise ValueError(f"Entrypoint file '{entrypoint}' is missing from files.")
@@ -79,8 +96,9 @@ def run_basic_python_solver(
 
         child_env = os.environ.copy()
         child_env.update({str(k): str(v) for k, v in env.items()})
-        child_env["TARGET_HOST"] = str(target_host)
-        child_env["TARGET_PORT"] = str(target_port)
+        if target_host is not None:
+            child_env["TARGET_HOST"] = str(target_host)
+            child_env["TARGET_PORT"] = str(target_port)
 
         command = [sys.executable, entrypoint] + args
         log_audit_event(
@@ -88,7 +106,7 @@ def run_basic_python_solver(
             {
                 "run_id": run_id,
                 "entrypoint": entrypoint,
-                "target": f"{target_host}:{target_port}",
+                "target": f"{target_host}:{target_port}" if target_host is not None else None,
                 "timeout_seconds": timeout_seconds,
             },
         )
@@ -129,6 +147,33 @@ def run_basic_python_solver(
         stderr = stderr_bytes.decode("utf-8", errors="replace")
         (output_dir / "stdout.txt").write_text(stdout, encoding="utf-8")
         (output_dir / "stderr.txt").write_text(stderr, encoding="utf-8")
+        transcript = (
+            f"run_id={run_id}\n"
+            f"type=basic_python_solver\n"
+            f"target={f'{target_host}:{target_port}' if target_host is not None else ''}\n"
+            f"entrypoint={entrypoint}\n"
+            f"exit_code={exit_code}\n"
+            f"duration_ms={duration_ms}\n"
+        )
+        (output_dir / "transcript.txt").write_text(transcript, encoding="utf-8")
+        transcript_sha256 = sha256_bytes(transcript.encode("utf-8"))
+
+        metadata = {
+            "run_id": run_id,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "type": "basic_python_solver",
+            "target": f"{target_host}:{target_port}" if target_host is not None else None,
+            "language": "python",
+            "entrypoint": entrypoint,
+            "timeout_seconds": timeout_seconds,
+            "exit_code": exit_code,
+            "duration_ms": duration_ms,
+            "files": [{"path": path, "size": len(content), "sha256": sha256_bytes(content)} for path, content in decoded_files],
+            "stdout_sha256": stdout_sha256,
+            "stderr_sha256": stderr_sha256,
+            "transcript_sha256": transcript_sha256,
+        }
+        (run_dir / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
         log_audit_event(
             "BASIC_RUN_COMPLETE",
@@ -151,7 +196,9 @@ def run_basic_python_solver(
             "stderr": stderr,
             "stdout_sha256": stdout_sha256,
             "stderr_sha256": stderr_sha256,
+            "transcript_sha256": transcript_sha256,
             "truncated": truncated,
+            "warnings": warnings,
         }
     except Exception as e:
         log_audit_event("BASIC_RUN_ERROR", {"error": str(e)})
