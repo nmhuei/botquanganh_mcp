@@ -2,7 +2,7 @@ import json
 import re
 import shutil
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from app.mcp_server import mcp
 from app.config import RUNS_DIR
 from app.logging_audit import get_audit_logs_for_run, log_audit_event
@@ -254,6 +254,89 @@ def tail_run_output(run_id: str, tail_lines: int = 50) -> Dict[str, Any]:
             "stdout": stdout_content,
             "stderr": stderr_content
         }
+    except Exception as e:
+        return format_error_response(e)
+
+
+@mcp.tool(
+    name="build_ctf_proof_bundle",
+    description=(
+        "Build a compact proof bundle for a completed solver run, including hashes, timestamps, target, "
+        "local-validation details, and optional regex-based flag matches from stdout/stderr/transcript."
+    )
+)
+def build_ctf_proof_bundle(
+    run_id: str,
+    flag_regex: str = r"([A-Za-z0-9_]+\{[^\n\r]{1,200}\})",
+    include_content: bool = False,
+) -> Dict[str, Any]:
+    """Constructs a machine-readable proof bundle for CTF reporting."""
+    try:
+        validate_run_id_safe(run_id)
+        run_dir = RUNS_DIR / run_id
+        if not run_dir.exists():
+            raise FileNotFoundError(f"Run folder for run_id '{run_id}' not found.")
+
+        metadata_path = run_dir / "metadata.json"
+        if not metadata_path.exists():
+            raise FileNotFoundError(f"Metadata file for run_id '{run_id}' is missing.")
+
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        stdout_path = run_dir / "output" / "stdout.txt"
+        stderr_path = run_dir / "output" / "stderr.txt"
+        transcript_path = run_dir / "output" / "transcript.txt"
+
+        stdout = stdout_path.read_text(encoding="utf-8", errors="replace") if stdout_path.exists() else ""
+        stderr = stderr_path.read_text(encoding="utf-8", errors="replace") if stderr_path.exists() else ""
+        transcript = transcript_path.read_text(encoding="utf-8", errors="replace") if transcript_path.exists() else ""
+
+        regex = re.compile(flag_regex, re.MULTILINE)
+
+        def _matches(source_name: str, content: str) -> List[Dict[str, str]]:
+            matches: List[Dict[str, str]] = []
+            for match in regex.finditer(content):
+                value = match.group(1) if match.groups() else match.group(0)
+                matches.append({"source": source_name, "value": value})
+            return matches
+
+        matches = _matches("stdout", stdout) + _matches("stderr", stderr) + _matches("transcript", transcript)
+
+        bundle: Dict[str, Any] = {
+            "ok": True,
+            "run_id": run_id,
+            "target": metadata.get("target"),
+            "created_at": metadata.get("created_at"),
+            "language": metadata.get("language"),
+            "entrypoint": metadata.get("entrypoint"),
+            "exit_code": metadata.get("exit_code"),
+            "duration_ms": metadata.get("duration_ms"),
+            "derived_from": metadata.get("derived_from"),
+            "sandbox_failure": metadata.get("sandbox_failure", {}),
+            "local_validation": metadata.get("local_validation", {}),
+            "files": metadata.get("files", []),
+            "sha256": {
+                "stdout": metadata.get("stdout_sha256", ""),
+                "stderr": metadata.get("stderr_sha256", ""),
+                "transcript": metadata.get("transcript_sha256", ""),
+            },
+            "flag_regex": flag_regex,
+            "flag_matches": matches,
+            "flag_match_count": len(matches),
+        }
+
+        if include_content:
+            bundle["content"] = {
+                "stdout": stdout,
+                "stderr": stderr,
+                "transcript": transcript,
+            }
+
+        log_audit_event("BUILD_CTF_PROOF_BUNDLE", {
+            "run_id": run_id,
+            "flag_match_count": len(matches),
+            "include_content": include_content,
+        })
+        return bundle
     except Exception as e:
         return format_error_response(e)
 

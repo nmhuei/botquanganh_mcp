@@ -149,3 +149,73 @@ def probe_target_from_runner(
     except Exception as e:
         log_audit_event("PROBE_ERROR", {"error": str(e)})
         return format_error_response(e)
+
+
+@mcp.tool(
+    name="tcp_connect_ssl",
+    description=(
+        "Open an SSL/TLS TCP connection to an allowlisted host:port, optionally send lines, and capture the response. "
+        "Useful for challenge services that are normally tested with ncat --ssl."
+    )
+)
+def tcp_connect_ssl(
+    host: str,
+    port: int,
+    send_lines: Optional[list[str]] = None,
+    server_name: Optional[str] = None,
+    recv_bytes: int = 4096,
+    timeout_seconds: int = 10,
+) -> Dict[str, Any]:
+    try:
+        validate_target_allowlisted(host, port)
+        block_private_or_local_host(host, port)
+
+        if send_lines is None:
+            send_lines = []
+        recv_bytes = max(1, min(int(recv_bytes), 65536))
+        timeout_seconds = max(1, min(int(timeout_seconds), 30))
+
+        context = ssl.create_default_context()
+        transcript = []
+        peer = {}
+        response_bytes = b""
+
+        with socket.create_connection((host, int(port)), timeout=timeout_seconds) as sock:
+            with context.wrap_socket(sock, server_hostname=server_name or host) as ssock:
+                ssock.settimeout(timeout_seconds)
+                cert = ssock.getpeercert()
+                peer = {
+                    "cipher": ssock.cipher(),
+                    "version": ssock.version(),
+                    "server_name": server_name or host,
+                    "peer_subject": cert.get("subject", []),
+                }
+                for line in send_lines:
+                    payload = line if line.endswith("\n") else line + "\n"
+                    ssock.sendall(payload.encode("utf-8"))
+                    transcript.append({"direction": "send", "data": payload})
+                try:
+                    response_bytes = ssock.recv(recv_bytes)
+                except socket.timeout:
+                    response_bytes = b""
+
+        response_text = response_bytes.decode("utf-8", errors="replace")
+        if response_text:
+            transcript.append({"direction": "recv", "data": response_text})
+
+        log_audit_event("TCP_CONNECT_SSL", {
+            "target": f"{host}:{port}",
+            "send_lines": len(send_lines),
+            "received_bytes": len(response_bytes),
+        })
+        return {
+            "ok": True,
+            "target": f"{host}:{port}",
+            "peer": peer,
+            "response": response_text,
+            "received_bytes": len(response_bytes),
+            "transcript": transcript,
+        }
+    except Exception as e:
+        log_audit_event("TCP_CONNECT_SSL_FAIL", {"target": f"{host}:{port}", "error": str(e)})
+        return format_error_response(e)

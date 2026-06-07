@@ -51,6 +51,7 @@ MAX_ARG_LENGTH = int(os.getenv("MAX_ARG_LENGTH", "200"))
 
 # Security flags
 ENABLE_ADVANCED_TOOLS = os.getenv("ENABLE_ADVANCED_TOOLS", "false").lower() == "true"
+ENABLE_WORKSPACE_TOOLS = os.getenv("ENABLE_WORKSPACE_TOOLS", "false").lower() == "true"
 REQUIRE_SANDBOX_FAILURE_REASON = os.getenv("REQUIRE_SANDBOX_FAILURE_REASON", "true").lower() == "true"
 REQUIRE_LOCAL_VALIDATION = os.getenv("REQUIRE_LOCAL_VALIDATION", "true").lower() == "true"
 BLOCK_PRIVATE_IPS = os.getenv("BLOCK_PRIVATE_IPS", "true").lower() == "true"

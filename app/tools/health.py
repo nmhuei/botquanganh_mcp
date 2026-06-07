@@ -3,6 +3,7 @@ from app.mcp_server import mcp
 from app.config import (
     ENABLE_ADVANCED_TOOLS,
     ENABLE_AGENT_TOOLS,
+    ENABLE_WORKSPACE_TOOLS,
     RUNNER_IMAGE_PYTHON,
     RUNNER_IMAGE_PWN,
     RUNNER_IMAGE_SAGE,
@@ -31,6 +32,7 @@ def health_check() -> dict:
             "tool_profile": "advanced" if ENABLE_ADVANCED_TOOLS else "basic",
             "advanced_tools_enabled": ENABLE_ADVANCED_TOOLS,
             "agent_tools_enabled": ENABLE_AGENT_TOOLS,
+            "workspace_tools_enabled": ENABLE_WORKSPACE_TOOLS,
             "runner_images": [RUNNER_IMAGE_PYTHON, RUNNER_IMAGE_PWN, RUNNER_IMAGE_SAGE, RUNNER_IMAGE_FORENSICS]
         }
     except Exception as e:
@@ -53,11 +55,13 @@ def get_capabilities() -> dict:
             "tool_profile": "advanced" if ENABLE_ADVANCED_TOOLS else "basic",
             "advanced_tools_enabled": ENABLE_ADVANCED_TOOLS,
             "agent_tools_enabled": ENABLE_AGENT_TOOLS,
+            "workspace_tools_enabled": ENABLE_WORKSPACE_TOOLS,
             "core_tools": [
                 "health_check",
                 "get_capabilities",
                 "check_target_allowed",
                 "probe_target_from_runner",
+                "tcp_connect_ssl",
                 "run_basic_python_solver",
                 "run_safe_smoke_test"
             ],
@@ -67,27 +71,42 @@ def get_capabilities() -> dict:
                 "validate_run_request",
                 "upload_artifact",
                 "rerun_run",
-                "create_workspace",
-                "upload_file_to_workspace",
-                "list_workspace_files",
-                "read_workspace_file",
-                "delete_workspace",
+                "run_host_command",
+                "policy_check_command",
+                "github_clone_or_sync",
+                "github_list_prs",
+                "github_open_pr",
+                "github_get_run_logs",
                 "get_run_log",
                 "list_recent_runs",
                 "get_run_summary",
+                "build_ctf_proof_bundle",
                 "delete_run",
                 "get_run_stdout",
                 "get_run_stderr",
                 "tail_run_output",
                 "run_command"
             ],
+            "workspace_tools": [
+                "create_workspace",
+                "upload_file_to_workspace",
+                "import_path_to_workspace",
+                "list_workspace_files",
+                "read_workspace_file",
+                "delete_workspace",
+                "run_workspace_command"
+            ] if ENABLE_WORKSPACE_TOOLS else [],
             "agent_tools": [
                 "agent_list_directory",
                 "agent_read_file",
                 "agent_write_file",
                 "agent_edit_file",
                 "agent_grep_search",
-                "agent_run_command"
+                "agent_run_command",
+                "write_file",
+                "replace_in_file",
+                "append_file",
+                "mkdir_p"
             ] if ENABLE_AGENT_TOOLS else [],
             "limits": {
                 "max_timeout_seconds": MAX_TIMEOUT_SECONDS,
@@ -106,7 +125,13 @@ def get_capabilities() -> dict:
                 "artifact_upload": ENABLE_ADVANCED_TOOLS,
                 "stdout_tail": True,
                 "stderr_tail": True,
-                "agent_mode": ENABLE_AGENT_TOOLS
+                "agent_mode": ENABLE_AGENT_TOOLS,
+                "proof_bundle": True,
+                "workspace_mode": ENABLE_WORKSPACE_TOOLS,
+                "default_command_mode": "host",
+                "scoped_github_tools": True,
+                "ssl_helper": True,
+                "policy_dry_run": True
             },
             "network_policy": {
                 "allowlist_required": True
@@ -186,6 +211,44 @@ def get_runner_environments() -> dict:
                     "special_notes": [
                         "Runs directly inside the SageMath python environment.",
                         "Import packages (e.g. z3, Crypto) from within your Sage script normally."
+                    ]
+                },
+                "forensics": {
+                    "base_image": RUNNER_IMAGE_FORENSICS,
+                    "description": "Ubuntu-based forensic and file-analysis environment for stego, pcap, disk, archive, and malware triage workflows.",
+                    "pre_installed_packages": {
+                        "binwalk": "Firmware and embedded file extraction",
+                        "exiftool": "Metadata extraction for media/documents",
+                        "foremost": "File carving utility",
+                        "steghide": "JPEG/WAV steganography extraction",
+                        "stegseek": "Fast steghide password cracking helper",
+                        "zsteg": "PNG/BMP steganography analysis",
+                        "tshark": "CLI packet analysis",
+                        "tcpdump": "Packet capture and inspection",
+                        "volatility3": "Memory forensics framework",
+                        "scapy": "Packet crafting and parsing",
+                        "yara": "Malware/forensics pattern matching",
+                        "oletools": "Office document analysis",
+                        "pdfminer.six": "PDF parsing and text extraction",
+                        "python-magic": "File type detection",
+                        "pyshark": "Python wrapper for tshark",
+                        "outguess": "Stego tool for JPEGs",
+                        "pngcheck": "PNG chunk validation",
+                        "sox": "Audio processing",
+                        "ffmpeg": "Audio/video decoding and conversion",
+                        "imagemagick": "Image conversion and inspection",
+                        "sleuthkit": "Disk image investigation",
+                        "scalpel": "File carving",
+                        "john": "Password cracking",
+                        "ncat": "Network client with SSL support",
+                        "nmap": "Network probing",
+                        "jq": "JSON parsing",
+                        "openssl": "TLS and x509 tooling"
+                    },
+                    "special_notes": [
+                        "Good fit for archives, pcap, image/audio stego, disk/memory triage, and mixed binary analysis.",
+                        "Includes both CLI tools and Python packages, so you can script repeatable extraction pipelines.",
+                        "Use run_workspace_command with language='forensics' for shell-heavy forensic workflows."
                     ]
                 }
             }

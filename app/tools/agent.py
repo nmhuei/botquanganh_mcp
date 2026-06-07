@@ -125,6 +125,27 @@ def agent_write_file(path: str, content: str) -> Dict[str, Any]:
     except Exception as e:
         return format_error_response(e)
 
+
+@mcp.tool(
+    name="write_file",
+    description="Write or create a text file on the host inside the configured agent workspace."
+)
+def write_file(path: str, content: str, create: bool = True) -> Dict[str, Any]:
+    try:
+        resolved = resolve_agent_path(path)
+        existed_before = resolved.exists()
+        if resolved.exists() and not resolved.is_file():
+            raise ValueError(f"Path is not a file: {path}")
+        if not resolved.exists() and not create:
+            raise FileNotFoundError(f"File not found: {path}")
+
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        resolved.write_text(content, encoding="utf-8")
+        log_audit_event("WRITE_FILE", {"path": str(resolved), "size": len(content), "created": not existed_before})
+        return {"ok": True, "path": path, "size": len(content)}
+    except Exception as e:
+        return format_error_response(e)
+
 @mcp.tool(
     name="agent_edit_file",
     description="Edit a file on the local machine by replacing a unique block of text (target) with replacement text."
@@ -152,6 +173,69 @@ def agent_edit_file(path: str, target: str, replacement: str) -> Dict[str, Any]:
         
         log_audit_event("AGENT_EDIT_FILE", {"path": str(resolved)})
         return {"ok": True, "message": f"Successfully edited file '{path}'"}
+    except Exception as e:
+        return format_error_response(e)
+
+
+@mcp.tool(
+    name="replace_in_file",
+    description="Replace text in a host file with an expected occurrence count, avoiding fragile one-shot edit behavior."
+)
+def replace_in_file(path: str, old: str, new: str, expected_count: int = 1) -> Dict[str, Any]:
+    try:
+        resolved = resolve_agent_path(path)
+        if not resolved.exists():
+            raise FileNotFoundError(f"File not found: {path}")
+        if not resolved.is_file():
+            raise ValueError(f"Path is not a file: {path}")
+
+        content = resolved.read_text(encoding="utf-8")
+        count = content.count(old)
+        if count == 0:
+            raise ValueError("Target content not found in the file.")
+        if expected_count >= 0 and count != expected_count:
+            raise ValueError(
+                f"Expected {expected_count} occurrence(s) of target content, but found {count}."
+            )
+
+        new_content = content.replace(old, new)
+        resolved.write_text(new_content, encoding="utf-8")
+        log_audit_event("REPLACE_IN_FILE", {
+            "path": str(resolved),
+            "expected_count": expected_count,
+            "actual_count": count,
+        })
+        return {"ok": True, "path": path, "replacements": count}
+    except Exception as e:
+        return format_error_response(e)
+
+
+@mcp.tool(
+    name="append_file",
+    description="Append text content to the end of a file on the host inside the configured agent workspace."
+)
+def append_file(path: str, content: str) -> Dict[str, Any]:
+    try:
+        resolved = resolve_agent_path(path)
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        with open(resolved, "a", encoding="utf-8") as f:
+            f.write(content)
+        log_audit_event("APPEND_FILE", {"path": str(resolved), "size": len(content)})
+        return {"ok": True, "path": path, "appended_bytes": len(content.encode('utf-8'))}
+    except Exception as e:
+        return format_error_response(e)
+
+
+@mcp.tool(
+    name="mkdir_p",
+    description="Create a directory tree on the host inside the configured agent workspace."
+)
+def mkdir_p(path: str) -> Dict[str, Any]:
+    try:
+        resolved = resolve_agent_path(path)
+        resolved.mkdir(parents=True, exist_ok=True)
+        log_audit_event("MKDIR_P", {"path": str(resolved)})
+        return {"ok": True, "path": path}
     except Exception as e:
         return format_error_response(e)
 

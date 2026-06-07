@@ -7,6 +7,7 @@ from app.security import (
     validate_timeout,
     validate_language,
     validate_args,
+    validate_relative_path,
     format_error_response,
 )
 from app.runner import execute_fallback_solver
@@ -161,9 +162,32 @@ def validate_run_request(
             "valid": True,
             "normalized": {
                 "language": req.language,
-                "timeout_seconds": req.timeout_seconds
+                "timeout_seconds": req.timeout_seconds,
+                "entrypoint": req.entrypoint,
+                "target": {
+                    "host": req.target.host,
+                    "port": req.target.port,
+                },
+                "local_validation": req.local_validation.model_dump(),
+                "sandbox_failure": req.sandbox_failure.model_dump(),
             },
-            "warnings": []
+            "warnings": [
+                "Fallback execution is intended for cases where the solver already worked locally.",
+                "Use local_validation.solved_locally=true and provide summary/evidence to make proof easier later."
+            ],
+            "schema_hints": {
+                "local_validation": {
+                    "solved_locally": True,
+                    "summary": "solver worked locally against a local or mirrored target",
+                    "evidence": "brief proof of the local solve",
+                    "solver_sha256": "optional sha256 of the local solver file"
+                },
+                "sandbox_failure": {
+                    "attempted": True,
+                    "reason": "connection_failed_in_sandbox",
+                    "evidence": "optional details from the failing sandbox attempt"
+                }
+            }
         }
     except Exception as e:
         err = format_error_response(e)
@@ -189,9 +213,7 @@ def upload_artifact(
         import hashlib
         import base64
         
-        # Validate filename
-        if not filename or "/" in filename or "\\" in filename or ".." in filename:
-            raise ValueError(f"Invalid filename: '{filename}'")
+        validate_relative_path(filename)
             
         if encoding not in ("text", "base64"):
             raise ValueError("encoding must be 'text' or 'base64'")

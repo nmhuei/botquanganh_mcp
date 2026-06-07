@@ -10,7 +10,11 @@ from app.tools.agent import (
     agent_edit_file,
     agent_grep_search,
     agent_run_command,
-    resolve_agent_path
+    resolve_agent_path,
+    write_file,
+    replace_in_file,
+    append_file,
+    mkdir_p,
 )
 import app.config
 
@@ -102,6 +106,24 @@ class TestAgentTools(unittest.TestCase):
         res_read = agent_read_file("edit_test.txt")
         self.assertEqual(res_read["content"], "line 1\nline 2 is updated\nline 3")
 
+    def test_generic_file_tools(self):
+        res_mkdir = mkdir_p("nested/dir")
+        self.assertTrue(res_mkdir["ok"])
+
+        res_write = write_file("nested/dir/file.txt", "alpha\nbeta\n")
+        self.assertTrue(res_write["ok"])
+
+        res_append = append_file("nested/dir/file.txt", "gamma\n")
+        self.assertTrue(res_append["ok"])
+
+        res_replace = replace_in_file("nested/dir/file.txt", "beta", "BETA", expected_count=1)
+        self.assertTrue(res_replace["ok"])
+        self.assertEqual(res_replace["replacements"], 1)
+
+        res_read = agent_read_file("nested/dir/file.txt")
+        self.assertIn("BETA", res_read["content"])
+        self.assertIn("gamma", res_read["content"])
+
     def test_agent_grep_search(self):
         agent_write_file("dir1/a.txt", "matching query here")
         agent_write_file("dir2/b.txt", "no match here")
@@ -133,7 +155,7 @@ class TestAgentTools(unittest.TestCase):
         # Test blocked commands return error responses
         res_blocked2 = agent_run_command("rm -rf /")
         self.assertFalse(res_blocked2["ok"])
-        self.assertEqual(res_blocked2["error"]["code"], "SCHEMA_INVALID")
+        self.assertEqual(res_blocked2["error"]["code"], "POLICY_BLOCKED")
 
 if __name__ == "__main__":
     unittest.main()

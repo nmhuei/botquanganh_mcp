@@ -107,6 +107,18 @@ def format_error_response(e: Exception) -> dict:
         else:
             code = "POLICY_BLOCKED"
             suggestion = "Verify that the target endpoint is not a private, local, or blocked IP/host address."
+            if "blocked_command_rule=" in message:
+                for part in message.split(";"):
+                    if "=" not in part:
+                        continue
+                    key, value = part.split("=", 1)
+                    details[key.strip()] = value.strip()
+                if "suggested_alternative" in details:
+                    suggestion = details["suggested_alternative"]
+            elif "outside the agent workspace directory" in message:
+                details["blocked_reason"] = "cwd_outside_workspace"
+            elif "workspace tools are disabled" in msg:
+                details["blocked_reason"] = "workspace_mode_disabled"
     elif isinstance(e, ValueError):
         if "timeout" in msg:
             code = "TIMEOUT_INVALID"

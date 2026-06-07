@@ -1,5 +1,6 @@
 import unittest
 from unittest.mock import patch
+from pathlib import Path
 from app.tools.health import get_capabilities, get_runner_environments
 from app.tools.probe import check_target_allowed
 from app.tools.fallback import validate_run_request
@@ -13,6 +14,8 @@ class TestNewTools(unittest.TestCase):
         self.assertIn("max_timeout_seconds", res["limits"])
         self.assertIn("supported_languages", res)
         self.assertIn("features", res)
+        self.assertIn("github_list_prs", res["advanced_tools"])
+        self.assertIn("policy_check_command", res["advanced_tools"])
 
     def test_get_runner_environments(self):
         res = get_runner_environments()
@@ -20,6 +23,7 @@ class TestNewTools(unittest.TestCase):
         self.assertIn("environments", res)
         self.assertIn("python", res["environments"])
         self.assertIn("sage", res["environments"])
+        self.assertIn("forensics", res["environments"])
 
     @patch("app.security.ALLOWED_TCP_TARGETS", ["1.1.1.1:80"])
     @patch("app.security.BLOCK_PRIVATE_IPS", True)
@@ -48,6 +52,8 @@ class TestNewTools(unittest.TestCase):
         )
         self.assertTrue(res["ok"])
         self.assertTrue(res["valid"])
+        self.assertIn("schema_hints", res)
+        self.assertTrue(res["normalized"]["local_validation"]["solved_locally"])
 
         # Invalid due to missing entrypoint
         res = validate_run_request(
@@ -97,6 +103,16 @@ class TestNewTools(unittest.TestCase):
         self.assertTrue(res["ok"])
         self.assertIn("artifact_id", res)
         self.assertTrue(res["artifact_id"].startswith("art_"))
+
+    def test_upload_artifact_accepts_relative_subpaths(self):
+        from app.tools.fallback import upload_artifact
+        res = upload_artifact(
+            filename="payloads/web/solve.py",
+            content="print('nested artifact path')",
+            encoding="text"
+        )
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["filename"], "payloads/web/solve.py")
 
     @patch("app.security.ALLOWED_TCP_TARGETS", ["1.1.1.1:80"])
     @patch("app.tools.fallback.execute_fallback_solver")
@@ -150,7 +166,13 @@ class TestNewTools(unittest.TestCase):
         shutil.rmtree(run_dir)
 
     def test_log_tailing_tools(self):
-        from app.tools.runs import get_run_stdout, get_run_stderr, get_run_summary, tail_run_output
+        from app.tools.runs import (
+            get_run_stdout,
+            get_run_stderr,
+            get_run_summary,
+            tail_run_output,
+            build_ctf_proof_bundle,
+        )
         from app.config import RUNS_DIR
         import json
         
@@ -190,6 +212,11 @@ class TestNewTools(unittest.TestCase):
         self.assertTrue(res["ok"])
         self.assertEqual(res["stdout"], "line3\n")
         self.assertEqual(res["stderr"], "error2\n")
+
+        bundle = build_ctf_proof_bundle(run_id=run_id, flag_regex=r"(line3)")
+        self.assertTrue(bundle["ok"])
+        self.assertEqual(bundle["flag_match_count"], 1)
+        self.assertEqual(bundle["flag_matches"][0]["value"], "line3")
 
         # Clean up mock directories
         import shutil
@@ -248,14 +275,17 @@ class TestNewTools(unittest.TestCase):
             for run_id in run_ids:
                 shutil.rmtree(RUNS_DIR / run_id, ignore_errors=True)
 
+    @patch("app.tools.workspace.ENABLE_WORKSPACE_TOOLS", True)
     def test_workspace_lifecycle(self):
         from app.tools.workspace import (
             create_workspace,
             upload_file_to_workspace,
+            import_path_to_workspace,
             list_workspace_files,
             read_workspace_file,
             delete_workspace
         )
+        from app.tools.agent import write_file
         
         # 1. Create workspace
         create_res = create_workspace(label="test_ws")
@@ -265,32 +295,50 @@ class TestNewTools(unittest.TestCase):
         # 2. Upload text file
         upload_res = upload_file_to_workspace(
             workspace_id=workspace_id,
-            filename="hello.txt",
+            filename="payloads/hello.txt",
             content="Hello Workspace!",
             encoding="text"
         )
         self.assertTrue(upload_res["ok"])
-        self.assertEqual(upload_res["filename"], "hello.txt")
+        self.assertEqual(upload_res["filename"], "payloads/hello.txt")
         
         # 3. List files
         list_res = list_workspace_files(workspace_id=workspace_id)
         self.assertTrue(list_res["ok"])
         self.assertEqual(len(list_res["files"]), 1)
-        self.assertEqual(list_res["files"][0]["name"], "hello.txt")
+        self.assertEqual(list_res["files"][0]["name"], "payloads/hello.txt")
         
         # 4. Read file
         read_res = read_workspace_file(
             workspace_id=workspace_id,
-            filename="hello.txt",
+            filename="payloads/hello.txt",
             encoding="text"
         )
         self.assertTrue(read_res["ok"])
         self.assertEqual(read_res["content"], "Hello Workspace!")
+
+        write_file("import-src.txt", "IMPORT ME\n")
+        import_res = import_path_to_workspace(
+            workspace_id=workspace_id,
+            src_path="import-src.txt",
+            dst_path="imports/imported.txt"
+        )
+        self.assertTrue(import_res["ok"])
+
+        imported_read = read_workspace_file(
+            workspace_id=workspace_id,
+            filename="imports/imported.txt",
+            encoding="text"
+        )
+        self.assertTrue(imported_read["ok"])
+        self.assertEqual(imported_read["content"], "IMPORT ME\n")
+        Path("/home/light/Workspace/import-src.txt").unlink(missing_ok=True)
         
         # 5. Delete workspace
         delete_res = delete_workspace(workspace_id=workspace_id)
         self.assertTrue(delete_res["ok"])
 
+    @patch("app.tools.workspace.ENABLE_WORKSPACE_TOOLS", True)
     @patch("subprocess.run")
     def test_run_command(self, mock_sub_run):
         from app.tools.shell import run_command
@@ -335,6 +383,26 @@ class TestNewTools(unittest.TestCase):
         self.assertEqual(res["mode"], "host")
         self.assertEqual(res["exit_code"], 0)
         self.assertEqual(res["stdout"], "repo files\n")
+        self.assertIn("warnings", res)
+
+    def test_run_workspace_command_blocked_when_workspace_mode_disabled(self):
+        from app.tools.shell import run_workspace_command
+        res = run_workspace_command(
+            workspace_id="ws_20260606_000000_deadbeef",
+            command="ls",
+            language="forensics",
+            timeout_seconds=10,
+        )
+        self.assertFalse(res["ok"])
+        self.assertEqual(res["error"]["code"], "POLICY_BLOCKED")
+
+    def test_policy_check_command_reports_block_details(self):
+        from app.tools.shell import policy_check_command
+        res = policy_check_command("rm -rf /")
+        self.assertTrue(res["ok"])
+        self.assertFalse(res["allowed"])
+        self.assertEqual(res["blocked_reason"], "destructive_rm_root")
+        self.assertIn("matched_fragment", res)
 
     @patch("app.security.ALLOWED_TCP_TARGETS", ["1.1.1.1:80"])
     def test_run_basic_python_solver(self):
@@ -370,6 +438,32 @@ class TestNewTools(unittest.TestCase):
         self.assertEqual(res["exit_code"], 0)
         self.assertIn("import-only smoke test", res["stdout"])
         self.assertTrue(res["warnings"])
+
+    @patch("subprocess.run")
+    def test_github_list_prs(self, mock_sub_run):
+        from app.tools.github_ops import github_list_prs
+
+        class DummyProcess:
+            stdout = '[{"number":1,"title":"Test PR","headRefName":"feature","baseRefName":"main","state":"OPEN","url":"https://example/pr/1","author":{"login":"light"}}]'
+            stderr = ""
+        mock_sub_run.return_value = DummyProcess()
+
+        res = github_list_prs("owner/repo")
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["pull_requests"][0]["number"], 1)
+
+    @patch("subprocess.run")
+    def test_github_open_pr(self, mock_sub_run):
+        from app.tools.github_ops import github_open_pr
+
+        class DummyProcess:
+            stdout = "https://github.com/owner/repo/pull/1\n"
+            stderr = ""
+        mock_sub_run.return_value = DummyProcess()
+
+        res = github_open_pr("owner/repo", "feature", "main", "Title", "Body")
+        self.assertTrue(res["ok"])
+        self.assertIn("/pull/1", res["url"])
 
 
 if __name__ == "__main__":

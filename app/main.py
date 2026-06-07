@@ -7,16 +7,24 @@ import app.tools.health
 import app.tools.probe
 import app.tools.basic_runner
 import app.tools.smoke
-from app.config import MCP_BIND_HOST, MCP_PORT, ENABLE_ADVANCED_TOOLS, ENABLE_AGENT_TOOLS
+from app.config import (
+    MCP_BIND_HOST,
+    MCP_PORT,
+    ENABLE_ADVANCED_TOOLS,
+    ENABLE_AGENT_TOOLS,
+    ENABLE_WORKSPACE_TOOLS,
+)
 
 # Advanced tools: Docker runner/workspace/log features. Enabled after running
 # scripts/install_advanced_tools.sh or setting ENABLE_ADVANCED_TOOLS=true.
 if ENABLE_ADVANCED_TOOLS:
     import app.tools.environments
     import app.tools.fallback
+    import app.tools.github_ops
     import app.tools.runs
-    import app.tools.workspace
     import app.tools.shell
+    if ENABLE_WORKSPACE_TOOLS:
+        import app.tools.workspace
 
 # Agent tools: Local workspace filesystem and shell tools.
 if ENABLE_AGENT_TOOLS:
@@ -30,6 +38,7 @@ log_audit_event("SERVER_STARTUP", {
     "port": MCP_PORT,
     "pid": os.getpid(),
     "advanced_tools_enabled": ENABLE_ADVANCED_TOOLS,
+    "workspace_tools_enabled": ENABLE_WORKSPACE_TOOLS,
 })
 
 if __name__ == "__main__":
