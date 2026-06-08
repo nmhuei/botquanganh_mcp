@@ -63,9 +63,24 @@ def get_capabilities() -> dict:
                 "probe_target_from_runner",
                 "tcp_connect_ssl",
                 "run_basic_python_solver",
-                "run_safe_smoke_test"
+                "run_safe_smoke_test",
+                "ctf_harness_capabilities",
+                "ctf_harness_instructions",
+                "ctf_harness_init",
+                "ctf_harness_check",
+                "ctf_harness_local",
+                "ctf_harness_solve",
+                "ctf_harness_verify",
+                "ctf_harness_report",
+                "ctf_harness_pack"
             ],
             "advanced_tools": [
+                "agent_goal_create",
+                "agent_toolchain_capabilities",
+                "agent_step",
+                "agent_status",
+                "agent_cancel",
+                "agent_report",
                 "get_runner_environments",
                 "run_solver_fallback",
                 "validate_run_request",
@@ -86,7 +101,7 @@ def get_capabilities() -> dict:
                 "get_run_stderr",
                 "tail_run_output",
                 "run_command"
-            ],
+            ] if ENABLE_ADVANCED_TOOLS else [],
             "workspace_tools": [
                 "create_workspace",
                 "upload_file_to_workspace",
@@ -131,7 +146,9 @@ def get_capabilities() -> dict:
                 "default_command_mode": "host",
                 "scoped_github_tools": True,
                 "ssl_helper": True,
-                "policy_dry_run": True
+                "policy_dry_run": True,
+                "ctf_harness": True,
+                "autonomous_agent": ENABLE_ADVANCED_TOOLS
             },
             "network_policy": {
                 "allowlist_required": True

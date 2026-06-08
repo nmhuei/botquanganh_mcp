@@ -7,17 +7,30 @@ import app.tools.health
 import app.tools.probe
 import app.tools.basic_runner
 import app.tools.smoke
+import app.tools.ctf_harness
 from app.config import (
     MCP_BIND_HOST,
     MCP_PORT,
     ENABLE_ADVANCED_TOOLS,
     ENABLE_AGENT_TOOLS,
     ENABLE_WORKSPACE_TOOLS,
+    GATEWAY_TOKEN,
 )
+
+# 1.2 Startup check for GATEWAY_TOKEN in non-stdio mode
+is_stdio = True
+for arg in sys.argv:
+    if any(mode in arg for mode in ["sse", "streamable-http", "http"]):
+        is_stdio = False
+
+if not is_stdio and not GATEWAY_TOKEN:
+    print("Error: GATEWAY_TOKEN is not configured. Non-stdio mode requires a non-empty GATEWAY_TOKEN for security.", file=sys.stderr)
+    sys.exit(1)
 
 # Advanced tools: Docker runner/workspace/log features. Enabled after running
 # scripts/install_advanced_tools.sh or setting ENABLE_ADVANCED_TOOLS=true.
 if ENABLE_ADVANCED_TOOLS:
+    import app.tools.autonomous_agent
     import app.tools.environments
     import app.tools.fallback
     import app.tools.github_ops

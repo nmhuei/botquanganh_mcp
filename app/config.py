@@ -72,6 +72,28 @@ else:
 AGENT_WORKSPACE_DIR = AGENT_WORKSPACE_DIR.resolve()
 AGENT_RESTRICT_TO_WORKSPACE = os.getenv("AGENT_RESTRICT_TO_WORKSPACE", "true").lower() == "true"
 
+# Enforce RUNS_DIR separation from AGENT_WORKSPACE_DIR
+def _is_subdir(path1: Path, path2: Path) -> bool:
+    try:
+        path1.relative_to(path2)
+        return True
+    except ValueError:
+        return False
+
+runs_dir_resolved = RUNS_DIR.resolve()
+if _is_subdir(runs_dir_resolved, AGENT_WORKSPACE_DIR) or _is_subdir(AGENT_WORKSPACE_DIR, runs_dir_resolved):
+    # Overriding setting was invalid, fallback to the safe default logs/runs
+    default_runs_dir = (BASE_DIR / "logs" / "runs").resolve()
+    if _is_subdir(default_runs_dir, AGENT_WORKSPACE_DIR) or _is_subdir(AGENT_WORKSPACE_DIR, default_runs_dir):
+        raise ValueError(
+            f"Insecure directory overlap: AGENT_WORKSPACE_DIR ({AGENT_WORKSPACE_DIR}) and RUNS_DIR ({default_runs_dir}) "
+            f"must not overlap or be subdirectories of each other."
+        )
+    RUNS_DIR = default_runs_dir
+    RUNS_DIR.mkdir(parents=True, exist_ok=True)
+else:
+    RUNS_DIR = runs_dir_resolved
+
 # Docker parameters
 RUNNER_IMAGE_PYTHON = os.getenv("RUNNER_IMAGE_PYTHON", "ctf-python-runner:latest")
 RUNNER_IMAGE_PWN = os.getenv("RUNNER_IMAGE_PWN", "ctf-pwn-runner:latest")

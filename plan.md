@@ -1,383 +1,324 @@
-# Ke hoach cai tien botquanganh_mcp
 
-Tham chieu chinh: `openclaw/openclaw.git` tai `https://github.com/openclaw/openclaw.git`.
+Đủ context rồi. Để plan chính xác hơn, tôi đọc lại code hiện tại trước:Đủ thông tin rồi. Viết plan:
 
-Muc tieu cua plan nay la bien repo MCP hien tai thanh mot tool executor muot hon cho ChatGPT web: mac dinh host-first, co che do VPS/Docker ro rang, it false positive hon, log/bang chung tot hon, va tra observation gon, ro, de ChatGPT web lam nao dieu phoi.
+---
 
-## 1. Bai hoc nen muon tu OpenClaw
+# Phase 3 — SSE Event Stream + Approval Tool
 
-OpenClaw lon hon repo nay rat nhieu, nhung co may pattern dang ap dung:
+## Bức tranh tổng thể
 
-- `Gateway la control plane`: OpenClaw xem gateway la lop dieu phoi tools, logs, nodes va events. Repo MCP nay nen coi FastMCP server la execution gateway cho runner, host ops, workspace va proof logs; ChatGPT web giu phan suy luan/context.
-- `Host-first, sandbox khi can`: OpenClaw security model mac dinh la host cho trusted operator, sandbox cho non-main/untrusted sessions. Repo nay nen giu mac dinh host mode, chi bat workspace/Docker khi cau hinh VPS.
-- `Doctor/onboard`: OpenClaw co onboarding va `doctor` de kiem tra config, service, auth, logs. Repo nay nen co `doctor_mcp` va script setup tuong tu de giam loi cau hinh.
-- `Tool chuyen dung thay vi shell generic`: OpenClaw co tool/capability rieng theo nhom. Repo nay nen tiep tuc tach GitHub, SSL, file ops, workspace import, proof bundle ra tool rieng.
-- `Logs co cau truc`: OpenClaw dung JSONL, rotation, redaction, CLI tail. Repo nay dang co audit log, nen nang thanh JSONL co trace id, rotation va tool tail tot hon.
-- `Workflow test theo vung thay doi`: OpenClaw co docs chi ro check/test/build gate theo module. Repo nay nen co matrix test nho: basic, advanced, Docker, tunnel, policy, live network.
-- `Security model viet ro`: OpenClaw noi thang ve trusted-operator model va false-positive pattern. Repo nay can document ro: day la MCP trusted local operator, khong phai multi-tenant sandbox.
+Trước khi implement, cần hiểu rõ constraint quan trọng: **ChatGPT web không thể tự mở SSE connection** từ phía tool call. ChatGPT chỉ có thể gọi MCP tools (HTTP request → response). Vì vậy kiến trúc phải là:
 
-## 1.1 Nguyen tac thiet ke: ChatGPT web la nao
+* **SSE endpoint** (`GET /events/{goal_id}`) — dành cho một browser tab riêng hoặc script monitoring, không phải GPT trực tiếp subscribe.
+* **GPT side** dùng polling qua `agent_status` tool, hoặc GPT hướng dẫn user mở URL SSE trong browser để xem live stream.
+* **Approval** — GPT gọi `agent_approve(goal_id)` sau khi user confirm trong chat → MCP tool resolve Future → `agent_goal_start` loop tiếp tục.
 
-Repo nay khong can tro thanh agent runtime doc lap. Context, ke hoach, reasoning va quyet dinh buoc tiep theo se nam trong ChatGPT web.
+Hiện tại `event_bus.publish` đã được gọi trong `_append_event`, và `event_bus.register_approval` / `resolve_approval` đã có. Việc còn lại: (1) mount SSE HTTP endpoint, (2) thêm `agent_approve` MCP tool, (3) bỏ WebSocket khỏi `event_bus`, (4) fix `get_event_loop`.
 
-MCP chi nen lam cac viec sau:
+---
 
-- expose tool chuyen dung, de ChatGPT web goi dung viec;
-- thuc thi command/file/network/GitHub/runner mot cach on dinh;
-- kiem tra policy truoc khi lam viec nhay cam;
-- ghi log, hashes, transcript, proof;
-- tra ve observation ngan gon, co cau truc, de ChatGPT web doc tiep;
-- khong luu memory dai han, khong tu lap plan, khong tu chay loop agent.
+## Bước 0 — Fix 3 lỗi trước (prerequisite)
 
-Non-goal ro rang:
+### 0.1 Token trong query string
 
-- Khong them `agent_run_task`, `agent_step`, planner loop, memory store, hay autonomous executor.
-- Neu can state, chi giu state ky thuat toi thieu nhu `run_id`, `workspace_id`, `trace_id`, `artifact_id`.
+`app/mcp_server.py` — trong `TokenAuthMiddleware.__call__`, xóa block:
 
-## 2. Trang thai hien tai cua repo
-
-Nhung diem da tot:
-
-- Co 2 lop tool: core/basic va advanced.
-- Co `run_basic_python_solver`, `run_solver_fallback`, runner Docker, workspace, logs, transcript, SHA256.
-- Co `agent_*` host tools va dang tien toi host-first mode.
-- Da co policy allowlist target, private IP block, egress firewall tuy chon.
-- Da co proof primitives: run id, stdout/stderr/transcript hash.
-
-Nhung diem can lam muot:
-
-- Tool registry va docs chua dong bo voi code moi.
-- Chua co `doctor` de noi config nao dang sai.
-- Logs con la string audit event trong file log, chua phai JSONL sach de tail/filter.
-- `run_command`, workspace, agent, fallback va GitHub tools con nam rai rac, chua co layer policy chung.
-- Workspace/Docker mode can ro rang hon: mac dinh host, Docker chi khi `ENABLE_WORKSPACE_TOOLS=true` hoac VPS profile.
-- Chua co setup/onboarding script hoi nguoi dung chon profile: local, CTF host, VPS runner.
-- Chua co regression test cho tunnel/public connector.
-
-## 3. Kien truc muc tieu
-
-### 3.1 Execution gateway
-
-Tao mot lop `app/executor_core/` hoac `app/core/` gom:
-
-- `capabilities.py`: mo ta toan bo tool surface theo config.
-- `policy.py`: policy decision chung cho command, path, network, workspace.
-- `diagnostics.py`: doctor checks va health snapshots.
-- `events.py`: structured events/log schema.
-- `profiles.py`: local/ctf/vps profile resolver.
-- `observations.py`: format ket qua tool ngan gon, co `ok`, `summary`, `details`, `artifacts`.
-
-Tieu chi xong:
-
-- `health_check` va `get_capabilities` lay du lieu tu mot source of truth.
-- Them tool moi khong can sua nhieu file roi de docs/capabilities bi lech.
-- Tool tra ve ket qua vua du cho ChatGPT web tiep tuc, khong phai doc log dai moi hieu.
-
-### 3.2 Tool surface theo profile
-
-Profile de xuat:
-
-- `local`: mac dinh, host-first, agent tools bat, workspace Docker tat.
-- `ctf`: host-first, network allowlist linh hoat, basic solver bat, proof bundle bat.
-- `vps`: workspace Docker bat, runner images bat, egress firewall co the bat.
-- `locked`: chi health/capabilities/smoke/probe, dung de test connector.
-
-Bien moi de xet:
-
-```env
-MCP_PROFILE=local
-ENABLE_ADVANCED_TOOLS=true
-ENABLE_AGENT_TOOLS=true
-ENABLE_WORKSPACE_TOOLS=false
+```python
+# XÓA đoạn này:
+if not token:
+    for q_key in ("token", "gateway_token", "authorization"):
+        if q_key in params:
+            token = params[q_key][0]
+            break
 ```
 
-Tieu chi xong:
+Chỉ giữ `Authorization: Bearer` header và `X-Gateway-Token` header. SSE client dùng `EventSource` API không set custom header được — nhưng ChatGPT web gọi qua MCP tool (HTTP), không phải EventSource trực tiếp, nên không ảnh hưởng.
 
-- `MCP_PROFILE=local` khong expose workspace Docker tools.
-- `MCP_PROFILE=vps` expose workspace tools va doctor canh bao neu Docker image thieu.
+**Lưu ý quan trọng:** nếu sau này muốn browser EventSource subscribe SSE endpoint mà cần auth, dùng query param `?token=` chỉ cho path `/events/*` thôi, không phải toàn bộ middleware. Sẽ cover ở Bước 2.
 
-## 4. Roadmap uu tien
+### 0.2 `get_event_loop` deprecated
 
-### Phase 1: Doctor va onboarding
+`app/event_bus.py` — `register_approval`:
 
-Them:
+```python
+# CŨ:
+loop = asyncio.get_event_loop()
+fut = loop.create_future()
 
-- `doctor_mcp()`: tool tra ve config health, missing deps, port, tunnel, Docker, gh auth, cloudflared, writable dirs.
-- `scripts/doctor.sh`: chay local khong can MCP client.
-- `scripts/onboard.sh`: hoi profile local/ctf/vps, tao `.env`, chay install tuong ung.
+# MỚI:
+loop = asyncio.get_running_loop()
+fut = loop.create_future()
+```
 
-Doctor checks:
+`get_running_loop()` raise `RuntimeError` nếu không có loop đang chạy — đây là behavior đúng, vì `register_approval` chỉ được gọi từ trong `async def agent_step`.
 
-- Python/venv/fastmcp import duoc.
-- `.env` parse duoc va path resolve dung.
-- `AGENT_WORKSPACE_DIR` ton tai, writable.
-- `RUNS_DIR`, `ARTIFACTS_DIR`, `WORKSPACES_DIR`, `LOG_FILE` writable.
-- `cloudflared` co trong PATH neu dung tunnel.
-- `gh auth status` neu GitHub tools bat.
-- Docker daemon va runner images neu `ENABLE_WORKSPACE_TOOLS=true`.
-- `ALLOWED_TCP_TARGETS=*` canh bao ro.
-- `BLOCK_PRIVATE_IPS=false` canh bao ro.
-
-Test:
+### 0.3 Untrack logs đã bị commit
 
 ```bash
-./.venv/bin/python -m pytest tests/test_doctor.py -q
-./scripts/doctor.sh
+git rm -r --cached logs/
+echo "logs/" >> .gitignore   # đã có nhưng đảm bảo
+git commit -m "chore: untrack committed log files"
 ```
 
-### Phase 2: Structured logging va trace
+---
 
-Nang logging theo huong OpenClaw:
+## Bước 1 — Refactor `event_bus.py`
 
-- Chuyen audit event sang JSONL thuan, mot event moi dong.
-- Them `trace_id`, `tool_name`, `run_id`, `workspace_id`, `request_id` neu co.
-- Them rotation theo size/ngay.
-- Redact theo key pattern hien co, nhung test ky hon.
-- Them tools:
-  - `tail_gateway_log(lines=100, follow_hint=false)`
-  - `search_gateway_log(query, event_type="", limit=100)`
-  - `get_trace(trace_id)`
+Bỏ hết phần WebSocket, chỉ giữ pub/sub queue và approval Future. File mới gọn lại:
 
-Tieu chi xong:
+```python
+# app/event_bus.py
+import asyncio
+import json
+from typing import Dict, Set
 
-- Moi tool quan trong log start/end/fail.
-- Loi `POLICY_BLOCKED` co `blocked_reason`, `matched_fragment`, `suggested_tool`.
-- Co the debug 502 bang log gan nhat theo trace/request.
+# --- Pub/Sub cho SSE streaming ---
+_listeners: Dict[str, Set[asyncio.Queue]] = {}
 
-### Phase 3: Policy engine giam false positive
+def subscribe(goal_id: str) -> asyncio.Queue:
+    q: asyncio.Queue = asyncio.Queue()
+    _listeners.setdefault(goal_id, set()).add(q)
+    return q
 
-Tao mot policy decision object chung:
+def unsubscribe(goal_id: str, queue: asyncio.Queue) -> None:
+    if goal_id in _listeners:
+        _listeners[goal_id].discard(queue)
+        if not _listeners[goal_id]:
+            del _listeners[goal_id]
 
-```json
-{
-  "allowed": true,
-  "risk": "low|medium|high",
-  "rule": "string",
-  "matched_fragment": "string",
-  "suggested_tool": "string",
-  "scope": {
-    "cwd": "...",
-    "target": "...",
-    "repo": "..."
-  }
-}
+def publish(goal_id: str, event: dict) -> None:
+    for q in _listeners.get(goal_id, set()):
+        q.put_nowait(event)
+
+def has_subscribers(goal_id: str) -> bool:
+    return bool(_listeners.get(goal_id))
+
+# --- Approval gate ---
+_approvals: Dict[str, asyncio.Future] = {}
+
+def register_approval(goal_id: str) -> "asyncio.Future[bool]":
+    loop = asyncio.get_running_loop()   # FIX: không dùng get_event_loop()
+    fut: asyncio.Future[bool] = loop.create_future()
+    _approvals[goal_id] = fut
+    return fut
+
+def resolve_approval(goal_id: str, approved: bool) -> None:
+    fut = _approvals.pop(goal_id, None)
+    if fut and not fut.done():
+        fut.set_result(approved)
+
+def pending_approval(goal_id: str) -> bool:
+    return goal_id in _approvals
 ```
 
-Them:
+Không có gì khác — không import `websockets`, không WebSocket handler.
 
-- `policy_check_tool_call(tool, args)`
-- `policy_check_command(command, cwd)`
-- `policy_explain_last_block()`
+---
 
-Rules nen co:
+## Bước 2 — SSE endpoint (`app/sse_events.py`)
 
-- Path rule: workspace/home/root profile.
-- Network rule: allowlist target, private IP, github/api.github.com, CTF host.
-- Shell rule: chi chan destructive primitives that su nguy hiem.
-- Tool alternative hints: `gh pr list` -> `github_list_prs`, `ncat --ssl` -> `tcp_connect_ssl`.
+Tạo file mới. Đây là Starlette endpoint thuần, không liên quan FastMCP:
 
-Tieu chi xong:
+```python
+# app/sse_events.py
+import asyncio
+import json
+from starlette.requests import Request
+from starlette.responses import Response
+from starlette.routing import Route
+from app import event_bus
+from app.auth import verify_token
+from app.config import GATEWAY_TOKEN
 
-- Shell hop le nhu `gh pr list`, `gh api`, `ncat --ssl` khong bi chan vi heuristic mo ho, hoac duoc route sang tool chuyen dung.
-- Moi block tra ve rule name va cach retry.
+HEARTBEAT_INTERVAL = 15  # seconds
 
-### Phase 4: File API va patch API chuan
+async def sse_events_endpoint(request: Request) -> Response:
+    goal_id = request.path_params["goal_id"]
 
-Chuan hoa file tools:
+    # Auth: SSE client không thể set Authorization header qua EventSource
+    # → chấp nhận token qua query param CHỈ cho endpoint này
+    token = request.query_params.get("token", "")
+    if GATEWAY_TOKEN and not verify_token(token):
+        return Response("Unauthorized", status_code=401)
 
-- `read_file(path, start_line=None, end_line=None)`
-- `write_file(path, content, create=true)`
-- `replace_in_file(path, old, new, expected_count=1)`
-- `apply_unified_diff(path_or_root, diff, dry_run=false)`
-- `append_file(path, content)`
-- `mkdir_p(path)`
-- `delete_path(path, recursive=false)`
-- `move_path(src, dst)`
-- `copy_path(src, dst)`
+    async def event_stream():
+        queue = event_bus.subscribe(goal_id)
+        try:
+            yield f"data: {json.dumps({'type': 'connected', 'goal_id': goal_id})}\n\n"
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=HEARTBEAT_INTERVAL)
+                    yield f"data: {json.dumps(event)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": heartbeat\n\n"  # SSE comment, giữ connection alive
+        except asyncio.CancelledError:
+            pass
+        finally:
+            event_bus.unsubscribe(goal_id, queue)
 
-Guardrail:
+    return Response(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",   # tắt nginx buffering nếu có proxy
+            "Connection": "keep-alive",
+        },
+    )
 
-- Mac dinh chi trong `AGENT_WORKSPACE_DIR`.
-- Profile `local` co the doc/ghi trong `~/Workspace`.
-- Profile `vps` uu tien workspace managed.
-- Log diff summary: file, line count, bytes before/after, sha256 before/after.
-
-Tieu chi xong:
-
-- Khong can nhung noi dung source code dai vao shell.
-- `agent_edit_file` co the giu lai de tuong thich, nhung docs huong sang `replace_in_file`/`apply_unified_diff`.
-
-### Phase 5: GitHub va network tools chuyen dung
-
-GitHub tools:
-
-- `github_clone_or_sync(repo, branch, dst_in_workspace)`
-- `github_create_branch(repo, from_ref, new_branch)`
-- `github_commit_files(repo, branch, files, message)`
-- `github_open_pr(repo, head, base, title, body)`
-- `github_list_prs(repo, state, limit)`
-- `github_get_run_logs(repo, run_id)`
-- `github_api_request(method, path, body=None)` co allowlist repo/path.
-
-Network tools:
-
-- `tcp_connect(host, port, send_lines=[], recv_bytes=4096)`
-- `tcp_connect_ssl(host, port, send_lines=[], server_name=None)`
-- `http_request(method, url, headers={}, body="")` voi allowlist.
-- `probe_ssl_banner(host, port)`.
-
-Tieu chi xong:
-
-- Workflow GitHub PR khong can `gh ...` shell generic.
-- CTF TLS service khong can viet socket boilerplate moi lan.
-- Network policy van gate theo host/port/url.
-
-### Phase 6: Workspace import va scoped allowlist theo request
-
-Them:
-
-- `import_path_to_workspace(src, dst)`
-- `sync_git_repo_to_workspace(repo_url_or_local_path, dst, branch="")`
-- `policy_check_scope(paths=[], repos=[], hosts=[])`
-- `with_scope(tool_name, args, paths=[], repos=[], hosts=[])`
-
-Y tuong:
-
-- ChatGPT web truyen scope truc tiep trong tool call khi can.
-- MCP khong can nho task context; no chi kiem tra scope cua request hien tai.
-- Neu sau nay can cache scope ngan han, chi nen dung TTL rat ngan va tra ve `scope_id`, khong bien no thanh memory.
-
-Tieu chi xong:
-
-- Repo nam o `~/GitHub/...` co duong import chinh thuc vao `~/Workspace/...`.
-- Mot request CTF/GitHub co the allow host + repo/path cu the ma khong mo het may.
-
-### Phase 7: Proof bundle va writeup artifacts
-
-Mo rong `build_ctf_proof_bundle`:
-
-- solver file SHA256.
-- stdout/stderr/transcript SHA256.
-- target host/port.
-- flag regex match.
-- raw proof excerpt co cap length.
-- environment summary.
-- command transcript.
-- timestamps.
-- local validation evidence.
-
-Them:
-
-- `export_run_artifacts(run_id, dst_dir)`
-- `generate_writeup_skeleton(run_id, language="vi")`
-
-Tieu chi xong:
-
-- Sau mot run thanh cong, co the tao `proof.json`, `proof.txt`, `solve.py`, `commands.log`, `writeup.md`.
-- Dung tot cho CTF workflow local-before-remote.
-- ChatGPT web la noi viet narrative/writeup; MCP chi xuat artifact va proof co cau truc.
-
-### Phase 8: Interactive/pseudo-TTY runner
-
-Them runner stateful:
-
-- `start_interactive_run(language, files, entrypoint, target=None)`
-- `send_stdin(session_id, data)`
-- `recv_until(session_id, pattern="", timeout_seconds=5)`
-- `close_interactive_run(session_id)`
-
-Backend:
-
-- Ban dau dung local subprocess + pipes.
-- Sau do Docker exec voi `pty` neu can.
-
-Tieu chi xong:
-
-- Pwn/ncat/debug flow khong phai viet script hoan chinh moi lan.
-- Log van duoc ghi vao run folder.
-- ChatGPT web doc observation tu `recv_until` va quyet dinh input tiep theo.
-
-### Phase 9: Test gate va CI
-
-Hoc tu OpenClaw: co check scripts theo module.
-
-Them scripts:
-
-- `scripts/check_basic.sh`
-- `scripts/check_policy.sh`
-- `scripts/check_advanced.sh`
-- `scripts/check_docker_images.sh`
-- `scripts/check_tunnel.sh`
-- `scripts/check_all.sh`
-
-Test matrix:
-
-- Unit: schemas, security, file package, agent tools.
-- Integration local: basic solver, run logs, proof bundle.
-- Integration workspace: workspace lifecycle, Docker command, import path.
-- Live optional: tunnel, GitHub auth, allowlisted target probe.
-
-Tieu chi xong:
-
-```bash
-./scripts/check_basic.sh
-./scripts/check_policy.sh
-./.venv/bin/python -m pytest -q
+# Route object để mount vào app
+sse_route = Route("/events/{goal_id}", endpoint=sse_events_endpoint, methods=["GET"])
 ```
 
-### Phase 10: Docs va operator UX
+**Tại sao query param auth chỉ cho endpoint này:** EventSource browser API không cho phép set custom header. Nếu dùng `fetch` với `ReadableStream` thì set header được, nhưng EventSource đơn giản hơn. Scope token-in-URL ở đây là chấp nhận được vì: (1) endpoint chỉ đọc, không write, (2) scoped path cụ thể `/events/*`, không phải toàn bộ MCP API.
 
-Docs can co:
+---
 
-- `docs/security-model.md`: trusted operator, host-first, VPS/workspace mode, scope allowlist.
-- `docs/profiles.md`: local/ctf/vps/locked.
-- `docs/doctor.md`: cach doc output doctor.
-- `docs/tools.md`: tool nao dung thay shell.
-- `docs/ctf-workflow.md`: local-before-remote + proof bundle.
-- `docs/github-workflow.md`: clone/branch/commit/PR/log.
-- `docs/troubleshooting.md`: 502, policy block, tunnel, Docker, gh auth.
+## Bước 3 — Mount SSE route vào FastMCP app
 
-README nen rut gon:
+Sửa `patched_http_app` trong `app/mcp_server.py`:
 
-- Quick start local.
-- Quick start VPS.
-- Connector setup.
-- Safety defaults.
-- Link docs chi tiet.
+```python
+from app.sse_events import sse_route
 
-## 5. Thu tu lam ngay
+def patched_http_app(self, *args, **kwargs):
+    app = original_http_app(self, *args, **kwargs)
+    transport = kwargs.get("transport", "http")
 
-Nen lam theo thu tu nay de co loi ich nhanh:
+    # Inject SSE events route
+    app.router.routes.append(sse_route)
 
-1. `doctor_mcp` + `scripts/doctor.sh`.
-2. JSONL audit log + tail/search log tools.
-3. Policy decision object + `policy_check_tool_call`.
-4. File API day du + `apply_unified_diff`.
-5. GitHub tools day du + SSL helper.
-6. Workspace import/sync + scoped allowlist theo request.
-7. Proof bundle/export writeup.
-8. Interactive runner.
-9. Check scripts + docs.
+    app.add_middleware(TokenAuthMiddleware)
 
-## 6. Non-goals
+    if transport == "sse":
+        # ... existing SSE route combining logic ...
+        pass
 
-- Khong bien MCP nay thanh multi-tenant security boundary.
-- Khong bien MCP nay thanh agent runtime tu dong; ChatGPT web la nao.
-- Khong luu context/memory dai han trong MCP.
-- Khong mo shell unrestricted theo mac dinh.
-- Khong bat Docker/workspace mode tren laptop neu chua can.
-- Khong thay FastMCP neu chua co ly do ro.
-- Khong copy OpenClaw architecture nguyen khoi; chi muon pattern phu hop voi repo nho nay.
+    return app
+```
 
-## 7. Definition of done cho ban "muot"
+**Thứ tự quan trọng:** append `sse_route` trước khi `add_middleware` để middleware bọc toàn bộ kể cả SSE endpoint. `TokenAuthMiddleware` sẽ pass-through `/events/*` vì `sse_events_endpoint` tự xử lý auth của mình (token qua query param).
 
-Repo duoc coi la muot hon khi:
+Thêm bypass trong `TokenAuthMiddleware.__call__`:
 
-- Cai dat moi co `onboard` hoac `doctor` noi ro can sua gi.
-- ChatGPT connector co `run_safe_smoke_test` pass bang mot call.
-- Loi policy block noi ro rule va tool thay the.
-- GitHub/SSL/file patch workflow khong can shell generic.
-- Host mode la mac dinh; workspace/Docker mode la profile rieng.
-- Moi run co logs, hashes, transcript va proof bundle.
-- Moi tool result co summary/observation ngan gon de ChatGPT web tiep tuc xu ly.
-- Co check script nho de test nhanh truoc khi restart/push.
+```python
+path = scope.get("path", "")
+if path.startswith("/events/"):
+    await self.app(scope, receive, send)
+    return
+```
+
+---
+
+## Bước 4 — `agent_approve` MCP tool
+
+Thêm vào `app/tools/autonomous_agent.py`:
+
+```python
+@mcp.tool(
+    name="agent_approve",
+    description=(
+        "Approve a pending risky action for an assisted-autonomous goal. "
+        "Call this after the user explicitly confirms they want to proceed. "
+        "Returns immediately if no approval is pending."
+    ),
+)
+def agent_approve(goal_id: str) -> dict:
+    try:
+        goal = _load_goal(goal_id)
+        if not event_bus.pending_approval(goal_id):
+            return {
+                **_summarize_goal(goal),
+                "ok": False,
+                "message": "No pending approval for this goal.",
+            }
+        event_bus.resolve_approval(goal_id, approved=True)
+        _append_event(goal_id, {"kind": "approval_resolved", "via": "mcp_tool"})
+        log_audit_event("AGENT_APPROVED", {"goal_id": goal_id})
+        return {
+            **_summarize_goal(goal),
+            "ok": True,
+            "message": "Approval granted. agent_goal_start will resume.",
+        }
+    except Exception as e:
+        return format_error_response(e)
+
+
+@mcp.tool(
+    name="agent_reject",
+    description="Reject a pending risky action and cancel the goal.",
+)
+def agent_reject(goal_id: str) -> dict:
+    try:
+        goal = _load_goal(goal_id)
+        event_bus.resolve_approval(goal_id, approved=False)
+        goal["status"] = "cancelled"
+        _save_goal(goal)
+        _append_event(goal_id, {"kind": "approval_rejected", "via": "mcp_tool"})
+        log_audit_event("AGENT_REJECTED", {"goal_id": goal_id})
+        return {**_summarize_goal(goal), "ok": True, "message": "Goal cancelled."}
+    except Exception as e:
+        return format_error_response(e)
+```
+
+`agent_reject` cần thiết vì nếu user nói "không, dừng lại" trong chat, GPT cần có tool để cancel thay vì `agent_goal_start` timeout sau 60 giây.
+
+---
+
+## Bước 5 — Wire `agent_approve` import vào `main.py`
+
+`agent_approve` và `agent_reject` được định nghĩa trong `autonomous_agent.py` và tự register qua `@mcp.tool` — không cần thêm import riêng nếu `app.tools.autonomous_agent` đã được import trong `main.py` khi `ENABLE_ADVANCED_TOOLS=true`. Kiểm tra lại để chắc.
+
+---
+
+## Flow hoàn chỉnh sau Phase 3
+
+```
+User: "solve pwn challenge này"
+GPT: agent_goal_create(objective="pwn: ...", cwd="~/Workspace/chall")
+     → goal_id = "goal_abc123"
+GPT: agent_goal_start(goal_id="goal_abc123")
+     → loop bắt đầu: tool_status → recon → gadgets → ...
+     → gặp risky action (ví dụ: sudo install)
+     → agent_step returns needs_approval, loop pause, await Future (60s)
+
+GPT → User: "Agent cần approve để chạy lệnh X. Gọi agent_approve để tiếp tục,
+             hoặc xem live log tại: https://tunnel.trycloudflare.com/events/goal_abc123?token=..."
+
+[Browser tab]: GET /events/goal_abc123?token=... → SSE stream hiện events real-time
+
+User: "ok approve đi"
+GPT: agent_approve(goal_id="goal_abc123")
+     → resolve_approval(True) → Future resolved → agent_step tiếp tục
+     → loop resume, chạy nốt các bước còn lại
+     → complete hoặc blocked khi hết budget
+```
+
+---
+
+## Checklist implement theo thứ tự
+
+```
+[ ] 0.1  Xóa token query param khỏi TokenAuthMiddleware (toàn bộ)
+[ ] 0.2  Fix get_event_loop → get_running_loop trong event_bus.py
+[ ] 0.3  git rm -r --cached logs/ && commit
+[ ] 1    Refactor event_bus.py: xóa WebSocket section
+[ ] 2    Tạo app/sse_events.py
+[ ] 3    Mount sse_route trong patched_http_app, thêm bypass trong TokenAuthMiddleware
+[ ] 4    Thêm agent_approve + agent_reject vào autonomous_agent.py
+[ ] 5    Verify import chain trong main.py
+[ ] 6    Test thủ công:
+         - curl -N "http://localhost:8000/events/goal_xyz?token=..." → SSE stream
+         - agent_goal_start → gặp risky → agent_approve → resume
+         - agent_reject → goal cancelled
+```
+
+---
+
+## Các rủi ro cần lưu ý
+
+**Cloudflare tunnel timeout SSE connection** — Cloudflare free tunnel có idle timeout ~100 giây. Heartbeat 15 giây trong `sse_events_endpoint` (`": heartbeat\n\n"`) giải quyết được.
+
+**`agent_goal_start` là `async def` nhưng chạy trong FastMCP thread pool** — nếu FastMCP gọi async tool trong event loop đúng cách thì `await asyncio.wait_for(fut, timeout=60)` hoạt động. Cần test thực tế với `fastmcp==3.4.0` vì behavior phụ thuộc vào cách FastMCP dispatch async tools.
+
+**Multiple subscriber cùng goal** — `event_bus` dùng `Set[Queue]`, nhiều browser tab có thể subscribe cùng lúc mà không conflict. Không cần xử lý thêm.

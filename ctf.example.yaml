@@ -1,0 +1,39 @@
+challenge:
+  name: sample-challenge
+  category: web       # web | pwn | rev/reverse | crypto | forensics | misc | osint | ai-ml | cloud-ci
+  workspace: workspaces
+  flag_regex: '(?i)(?:FLAG|CTF|picoCTF|HTB|DUCTF|SEKAI|idekCTF|ictf|TBTL|KCSC|GPNCTF|THCON|1337UP|L3AK|n00bz)\{[^}\r\n]{4,300}\}'
+
+policy:
+  local_first: true
+  require_remote_evidence: true
+  reject_decoy_words: [fake, dummy, test, local, example, placeholder]
+  authorized_remote_domains:
+    - ctf.kitctf.de
+    - localhost
+    - 127.0.0.1
+
+local:
+  build:
+    - 'echo "[stub] put docker build / compile command here"'
+  start:
+    - 'echo "[stub] put docker compose up -d / run local service here"'
+  smoke:
+    - 'echo "[stub] put curl/nc health check here"'
+  stop:
+    - 'echo "[stub] put docker compose down / cleanup here"'
+
+solver:
+  local: 'python3 workspaces/sample-challenge/exploit/solve.py'
+  remote: 'REMOTE_URL="$REMOTE_URL" python3 workspaces/sample-challenge/exploit/solve.py REMOTE'
+
+remote:
+  target: 'https://example.ctf.kitctf.de'
+  env:
+    REMOTE_URL: 'https://example.ctf.kitctf.de'
+
+proof:
+  # Optional final verifier. Receives FLAG, MODE, TARGET in env.
+  # Use a real CTFd API/checker here to upgrade candidate -> verified.
+  # Example: 'python3 scripts/submit_or_check_flag.py "$FLAG"'
+  command: ''

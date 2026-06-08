@@ -10,11 +10,41 @@ from app.security import validate_language, validate_timeout, format_error_respo
 from app.logging_audit import log_audit_event
 
 
+SAFE_COMMAND_PREFIXES = {
+    # Navigation / basic utilities
+    "cd", "ls", "pwd", "cat", "echo", "clear", "grep", "rg", "find", "head", "tail", "less", "mkdir", "cp", "mv", "rm", "tar", "unzip", "zip",
+    # PWN
+    "file", "strings", "readelf", "objdump", "checksec", "ROPgadget", "ropper", "gdb", "python3", "python", "pwndbg",
+    # Crypto
+    "sage", "openssl", "z3", "RsaCtfTool",
+    # Forensics
+    "exiftool", "binwalk", "foremost", "xxd", "tshark", "volatility3", "zsteg",
+    # Web
+    "curl", "wget", "ffuf", "nmap"
+}
+
+def _is_nmap_safe(parts: list) -> bool:
+    """Checks if nmap is run with safe flags. Denies aggressive/script flags."""
+    for part in parts[1:]:
+        if part.startswith("-"):
+            allowed = False
+            for safe_flag in ["-p", "-sV", "-sC", "-F", "-T", "-v", "--open", "-A", "-Pn"]:
+                if part.startswith(safe_flag):
+                    allowed = True
+                    break
+            # Explicitly block unsafe options
+            if part in ("-p-", "--script") or part.startswith("--script="):
+                allowed = False
+            if not allowed:
+                return False
+    return True
+
 def _inspect_command_policy(command: str) -> Optional[Dict[str, str]]:
     if not command or not command.strip():
         raise ValueError("Command must not be empty.")
 
-    blocked_patterns = [
+    # Critical forbidden patterns (never allowed)
+    forbidden_patterns = [
         ("destructive_rm_root", "rm -rf /", "Use write_file/replace_in_file/delete tools instead of destructive shell removal."),
         ("destructive_rm_glob_root", "rm -rf /*", "Use scoped file-management tools instead of deleting from root."),
         ("filesystem_format", "mkfs", "Formatting disks is blocked in MCP shell mode."),
@@ -26,24 +56,70 @@ def _inspect_command_policy(command: str) -> Optional[Dict[str, str]]:
         ("poweroff_host", "poweroff", "Host poweroff is blocked in MCP shell mode."),
     ]
     command_lower = command.lower()
-    for rule_name, fragment, suggested_alternative in blocked_patterns:
+    for rule_name, fragment, suggested_alternative in forbidden_patterns:
         if fragment in command_lower:
             return {
                 "blocked_command_rule": rule_name,
                 "matched_fragment": fragment,
                 "suggested_alternative": suggested_alternative,
+                "severity": "forbidden"
             }
+
+    # Allowlist parsing: Split by command chain operators
+    import re
+    # Split by ;, &&, ||, |
+    parts = re.split(r';|&&|\|\||\|', command)
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        words = part.split()
+        if not words:
+            continue
+        
+        # Clean variable assignments/env prefixes (e.g. PORT=8000 python3)
+        word_idx = 0
+        while word_idx < len(words) and "=" in words[word_idx]:
+            word_idx += 1
+        if word_idx >= len(words):
+            continue
+        first_word = words[word_idx]
+
+        if first_word not in SAFE_COMMAND_PREFIXES:
+            return {
+                "blocked_command_rule": "unknown_command_allowlist_violation",
+                "matched_fragment": first_word,
+                "suggested_alternative": f"Command '{first_word}' is not in the safe allowlist. Requires explicit approval.",
+                "severity": "needs_approval"
+            }
+
+        if first_word == "nmap":
+            if not _is_nmap_safe(words[word_idx:]):
+                return {
+                    "blocked_command_rule": "nmap_aggressive_scan_violation",
+                    "matched_fragment": part,
+                    "suggested_alternative": "nmap scan uses aggressive or unsafe flags. Requires explicit approval.",
+                    "severity": "needs_approval"
+                }
+
     return None
 
 
-def _validate_command_safe_enough(command: str) -> None:
+def _validate_command_safe_enough(command: str, approval: str = "auto_safe") -> None:
     blocked = _inspect_command_policy(command)
     if blocked:
-        raise PermissionError(
-            f"blocked_command_rule={blocked['blocked_command_rule']}; "
-            f"matched_fragment={blocked['matched_fragment']}; "
-            f"suggested_alternative={blocked['suggested_alternative']}"
-        )
+        if blocked.get("severity") == "forbidden":
+            raise PermissionError(
+                f"Command is strictly forbidden: blocked_command_rule={blocked['blocked_command_rule']}; "
+                f"matched_fragment={blocked['matched_fragment']}; "
+                f"suggested_alternative={blocked['suggested_alternative']}"
+            )
+        if blocked.get("severity") == "needs_approval" and approval != "approved":
+            raise PermissionError(
+                f"Command requires explicit approval: blocked_command_rule={blocked['blocked_command_rule']}; "
+                f"matched_fragment={blocked['matched_fragment']}; "
+                f"suggested_alternative={blocked['suggested_alternative']}"
+            )
 
 
 def _resolve_host_cwd(cwd: Optional[str]) -> Path:
@@ -84,6 +160,7 @@ def policy_check_command(command: str, cwd: Optional[str] = None) -> Dict[str, A
                 "blocked_reason": blocked["blocked_command_rule"],
                 "matched_fragment": blocked["matched_fragment"],
                 "suggested_alternative": blocked["suggested_alternative"],
+                "severity": blocked.get("severity", "forbidden"),
             }
 
         resolved_cwd = _resolve_host_cwd(cwd)
@@ -222,10 +299,10 @@ def _run_workspace_command_impl(
         "Use this instead of run_command when you do not need a managed workspace_id."
     )
 )
-def run_host_command(command: str, timeout_seconds: int = 30, cwd: Optional[str] = None) -> Dict[str, Any]:
+def run_host_command(command: str, timeout_seconds: int = 30, cwd: Optional[str] = None, approval: str = "auto_safe") -> Dict[str, Any]:
     try:
         validate_timeout(timeout_seconds)
-        _validate_command_safe_enough(command)
+        _validate_command_safe_enough(command, approval)
         return _run_host_command_impl(command, timeout_seconds, cwd)
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": {"code": "TIMEOUT", "message": f"Command timed out after {timeout_seconds}s"}}
@@ -245,10 +322,11 @@ def run_workspace_command(
     command: str,
     language: str = "forensics",
     timeout_seconds: int = 30,
+    approval: str = "auto_safe",
 ) -> Dict[str, Any]:
     try:
         validate_timeout(timeout_seconds)
-        _validate_command_safe_enough(command)
+        _validate_command_safe_enough(command, approval)
         return _run_workspace_command_impl(command, workspace_id, language, timeout_seconds)
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": {"code": "TIMEOUT", "message": f"Command timed out after {timeout_seconds}s"}}
@@ -271,11 +349,12 @@ def run_command(
     language: str = "host",
     timeout_seconds: int = 30,
     cwd: Optional[str] = None,
+    approval: str = "auto_safe",
 ) -> Dict[str, Any]:
     """Runs a shell command on the host workspace or inside an isolated workspace container."""
     try:
         validate_timeout(timeout_seconds)
-        _validate_command_safe_enough(command)
+        _validate_command_safe_enough(command, approval)
         if workspace_id:
             return _run_workspace_command_impl(command, workspace_id, language, timeout_seconds)
 

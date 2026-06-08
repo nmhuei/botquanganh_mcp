@@ -7,7 +7,60 @@ from starlette.routing import Route, Mount
 # Set up logging
 logger = logging.getLogger("fallback_runner_audit")
 
+# FASTMCP Compatibility Version check
+FASTMCP_COMPAT_VERSION = "3.4.0"
+
+import fastmcp
+if getattr(fastmcp, "__version__", "") != FASTMCP_COMPAT_VERSION:
+    logger.warning(
+        f"Warning: FastMCP version '{getattr(fastmcp, '__version__', 'unknown')}' does not match "
+        f"tested compatibility version '{FASTMCP_COMPAT_VERSION}'. Patches may fail or behave unexpectedly."
+    )
+
+class TokenAuthMiddleware:
+    """ASGI Middleware to enforce GATEWAY_TOKEN authentication for HTTP and WebSocket requests in non-stdio transports."""
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        path = scope.get("path", "")
+        if path.startswith("/events/"):
+            await self.app(scope, receive, send)
+            return
+
+        if scope.get("type") in ("http", "websocket"):
+            # Extract headers
+            headers = {}
+            for k, v in scope.get("headers", []):
+                headers[k.decode("latin-1").lower()] = v.decode("latin-1")
+            
+            # Try getting token from different sources:
+            # 1. Authorization header: "Bearer <token>" or "<token>"
+            # 2. X-Gateway-Token header: "<token>"
+            token = ""
+            auth_header = headers.get("authorization", "")
+            if auth_header:
+                if auth_header.lower().startswith("bearer "):
+                    token = auth_header[7:]
+                else:
+                    token = auth_header
+            
+            if not token:
+                token = headers.get("x-gateway-token", "")
+            
+            from app.auth import verify_token
+            if not verify_token(token):
+                logger.warning("Unauthorized access attempt rejected (invalid or missing token).")
+                from starlette.responses import Response
+                response = Response("Unauthorized: Invalid or missing token.", status_code=401)
+                await response(scope, receive, send)
+                return
+                
+        await self.app(scope, receive, send)
+
 # --- Patch 0: Allow any Content-Type for POST requests (ChatGPT compatibility) ---
+# Rationale: ChatGPT web interface often sends JSON-RPC requests with non-standard or missing Content-Type headers.
+# This patch overrides TransportSecurityMiddleware._validate_content_type to prevent returning 415 Unsupported Media Type.
 from mcp.server.transport_security import TransportSecurityMiddleware
 TransportSecurityMiddleware._validate_content_type = lambda self, content_type: True
 
@@ -141,10 +194,19 @@ class McpAsgiDispatcher:
 
 def patched_http_app(self, *args, **kwargs):
     app = original_http_app(self, *args, **kwargs)
-
     transport = kwargs.get("transport", "http")
 
+    # Inject SSE events route
+    from app.sse_events import sse_route
+    app.router.routes.append(sse_route)
+
+    # Add Token Authentication Middleware to the ASGI app
+    app.add_middleware(TokenAuthMiddleware)
+
     # We only customize the routes if the transport is "sse"
+    # Rationale: SseServerTransport sessionless POST handler mapping + Combine GET & POST Mount
+    # is required because ChatGPT does not maintain the SSE session_id parameter across GET and POST.
+    # We combine GET Route and POST Mount to avoid 405 Method Not Allowed when route resolving.
     if transport == "sse":
         routes = app.router.routes
         get_routes = {r.path: r for r in routes if isinstance(r, Route) and "GET" in r.methods}

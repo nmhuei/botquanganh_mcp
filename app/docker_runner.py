@@ -55,12 +55,17 @@ def run_in_docker(
     """Orchestrates container lifecycle, applies firewall, execs code, captures logs, and cleans up."""
     image = get_runner_image(language)
     
+    # 2.4 Docker network isolation
+    is_networked = bool(target_host and target_host not in ("localhost", "127.0.0.1"))
+    network_mode = "bridge" if is_networked else "none"
+
     # 1. Construct the docker run command to start a detached sleeper container
     # Sagemath usually runs as uid 1000, python runs under uid 1000 inside the Dockerfile.
     # We enforce limits here.
     docker_run_cmd = [
         "docker", "run", "-d",
         "--name", container_name,
+        "--network", network_mode,
         "--memory", DOCKER_MEMORY,
         "--cpus", str(DOCKER_CPUS),
         "--pids-limit", str(DOCKER_PIDS_LIMIT),
@@ -99,18 +104,19 @@ def run_in_docker(
     except subprocess.CalledProcessError as e:
         log_audit_event("DOCKER_START_FAIL", {"error": e.stderr})
         return -1, "", f"Failed to start Docker container: {e.stderr}", False
-
+ 
     container_ip = ""
     firewall_applied = False
     
     try:
-        # 3. Fetch container IP and apply egress firewall
-        if ENABLE_EGRESS_FIREWALL:
+        # 3. Fetch container IP and apply egress firewall if networked
+        if ENABLE_EGRESS_FIREWALL and is_networked:
             # Settle network setup briefly
             time.sleep(0.5)
             container_ip = get_container_ip(container_name)
-            apply_egress_rules(container_ip, target_host, target_port)
-            firewall_applied = True
+            if container_ip:
+                apply_egress_rules(container_ip, target_host, target_port)
+                firewall_applied = True
             
         # 4. Construct execution command
         exec_executable = "sage" if language.lower() == "sage" else "python3"

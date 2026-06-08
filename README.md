@@ -24,6 +24,14 @@ check_target_allowed
 probe_target_from_runner
 run_basic_python_solver
 run_safe_smoke_test
+ctf_harness_capabilities
+ctf_harness_init
+ctf_harness_check
+ctf_harness_local
+ctf_harness_solve
+ctf_harness_verify
+ctf_harness_report
+ctf_harness_pack
 ```
 
 Dùng basic khi:
@@ -53,6 +61,39 @@ websockets
 
 `run_safe_smoke_test` is a harmless one-call check for ChatGPT connector setup. It runs health, capabilities, and a print-only basic Python solver without Docker or target network access.
 
+### CTF Harness
+
+Repo also includes a local-first CTF harness imported from `ctf_harness_full_fixed_v030.zip`.
+`GPT.md` also folds in operating rules adapted from `multica-ai/andrej-karpathy-skills`: think before coding, keep solvers simple, make surgical changes, and define verification criteria.
+
+Direct CLI:
+
+```bash
+./scripts/ctfh init --name baby-web --category web --force
+./scripts/ctfh check
+./scripts/ctfh local --solve
+./scripts/ctfh verify --mode local
+./scripts/ctfh report
+```
+
+ChatGPT/MCP tools:
+
+```text
+ctf_harness_capabilities
+ctf_harness_instructions
+ctf_harness_init
+ctf_harness_check
+ctf_harness_local
+ctf_harness_solve
+ctf_harness_verify
+ctf_harness_report
+ctf_harness_pack
+```
+
+Before working on a CTF challenge, ChatGPT should call `ctf_harness_instructions` first. That tool returns `GPT.md`, which contains the required pipeline, coding guardrails, verification rules, and reporting rules.
+
+The harness keeps challenge context in `ctf.yaml` and `workspaces/<challenge>/`, records logs/proofs/reports, and treats remote flag-like output as a candidate unless an explicit verifier accepts it.
+
 ### Full / Advanced Mode
 
 Full mode bật bằng `./scripts/install_advanced_tools.sh`.
@@ -60,6 +101,12 @@ Full mode bật bằng `./scripts/install_advanced_tools.sh`.
 Tool advanced thêm:
 
 ```text
+agent_goal_create
+agent_toolchain_capabilities
+agent_step
+agent_status
+agent_cancel
+agent_report
 get_runner_environments
 run_solver_fallback
 validate_run_request
@@ -79,6 +126,8 @@ read_workspace_file
 delete_workspace
 run_command
 ```
+
+Autonomous agent mode is assisted by default: create a goal with scope/budget, then call `agent_step` repeatedly. Each step runs one safe action and persists state under `logs/agent_goals/<goal_id>/`. Risky actions return `needs_approval` instead of executing.
 
 Full mode sẽ build các Docker image nặng:
 
