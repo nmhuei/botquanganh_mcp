@@ -1,8 +1,10 @@
 import hmac
-from app.config import GATEWAY_TOKEN
+from app.config import GATEWAY_TOKEN, REQUIRE_AUTH
 
 def verify_token(token: str = "") -> bool:
     """Verifies the authorization token securely using constant-time comparison."""
+    if not REQUIRE_AUTH:
+        return True
     if not GATEWAY_TOKEN:
         return False  # Do not allow any execution if token is not set
     return hmac.compare_digest(str(token), str(GATEWAY_TOKEN))

@@ -5,11 +5,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+from app.agent_paths import resolve_agent_path
 from app.config import BASE_DIR, MAX_OUTPUT_BYTES
 from app.logging_audit import log_audit_event
 from app.mcp_server import mcp
 from app.security import format_error_response
-from app.tools.agent import resolve_agent_path
 
 
 CTFH_SUPPORTED_CATEGORIES = [

@@ -15,9 +15,12 @@ MCP_PORT = int(os.getenv("MCP_PORT", "8000"))
 
 # Gateway authentication token (optional)
 GATEWAY_TOKEN = os.getenv("GATEWAY_TOKEN", "")
+REQUIRE_AUTH = os.getenv("REQUIRE_AUTH", "true").lower() == "true"
 
 # Allowed TCP Targets
 ALLOWED_TCP_TARGETS = [t.strip() for t in os.getenv("ALLOWED_TCP_TARGETS", "").split(",") if t.strip()]
+if os.getenv("DISABLE_SECURITY_POLICIES", "false").lower() == "true":
+    ALLOWED_TCP_TARGETS = ["*"]
 
 # Directories
 RUNS_DIR = Path(os.getenv("RUNS_DIR", "./logs/runs"))
@@ -50,11 +53,14 @@ MAX_ARGS = int(os.getenv("MAX_ARGS", "16"))
 MAX_ARG_LENGTH = int(os.getenv("MAX_ARG_LENGTH", "200"))
 
 # Security flags
+DISABLE_SECURITY_POLICIES = os.getenv("DISABLE_SECURITY_POLICIES", "false").lower() == "true"
 ENABLE_ADVANCED_TOOLS = os.getenv("ENABLE_ADVANCED_TOOLS", "false").lower() == "true"
 ENABLE_WORKSPACE_TOOLS = os.getenv("ENABLE_WORKSPACE_TOOLS", "false").lower() == "true"
 REQUIRE_SANDBOX_FAILURE_REASON = os.getenv("REQUIRE_SANDBOX_FAILURE_REASON", "true").lower() == "true"
 REQUIRE_LOCAL_VALIDATION = os.getenv("REQUIRE_LOCAL_VALIDATION", "true").lower() == "true"
 BLOCK_PRIVATE_IPS = os.getenv("BLOCK_PRIVATE_IPS", "true").lower() == "true"
+if DISABLE_SECURITY_POLICIES:
+    BLOCK_PRIVATE_IPS = False
 ENABLE_EGRESS_FIREWALL = os.getenv("ENABLE_EGRESS_FIREWALL", "false").lower() == "true"
 DELETE_RUN_FILES_AFTER_DAYS = int(os.getenv("DELETE_RUN_FILES_AFTER_DAYS", "7"))
 USE_DOCKER = os.getenv("USE_DOCKER", "true").lower() == "true"
@@ -71,6 +77,8 @@ else:
     AGENT_WORKSPACE_DIR = HOME_WORKSPACE_DIR if HOME_WORKSPACE_DIR.exists() else BASE_DIR
 AGENT_WORKSPACE_DIR = AGENT_WORKSPACE_DIR.resolve()
 AGENT_RESTRICT_TO_WORKSPACE = os.getenv("AGENT_RESTRICT_TO_WORKSPACE", "true").lower() == "true"
+if DISABLE_SECURITY_POLICIES:
+    AGENT_RESTRICT_TO_WORKSPACE = False
 
 # Enforce RUNS_DIR separation from AGENT_WORKSPACE_DIR
 def _is_subdir(path1: Path, path2: Path) -> bool:
@@ -85,10 +93,11 @@ if _is_subdir(runs_dir_resolved, AGENT_WORKSPACE_DIR) or _is_subdir(AGENT_WORKSP
     # Overriding setting was invalid, fallback to the safe default logs/runs
     default_runs_dir = (BASE_DIR / "logs" / "runs").resolve()
     if _is_subdir(default_runs_dir, AGENT_WORKSPACE_DIR) or _is_subdir(AGENT_WORKSPACE_DIR, default_runs_dir):
-        raise ValueError(
-            f"Insecure directory overlap: AGENT_WORKSPACE_DIR ({AGENT_WORKSPACE_DIR}) and RUNS_DIR ({default_runs_dir}) "
-            f"must not overlap or be subdirectories of each other."
-        )
+        if not DISABLE_SECURITY_POLICIES:
+            raise ValueError(
+                f"Insecure directory overlap: AGENT_WORKSPACE_DIR ({AGENT_WORKSPACE_DIR}) and RUNS_DIR ({default_runs_dir}) "
+                f"must not overlap or be subdirectories of each other."
+            )
     RUNS_DIR = default_runs_dir
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
 else:

@@ -2,10 +2,10 @@ import json
 import subprocess
 from typing import Any, Dict, Optional
 
+from app.agent_paths import resolve_agent_path
 from app.mcp_server import mcp
 from app.logging_audit import log_audit_event
 from app.security import format_error_response, validate_relative_path
-from app.tools.agent import resolve_agent_path
 
 
 def _validate_repo(repo: str) -> None:

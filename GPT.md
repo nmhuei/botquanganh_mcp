@@ -1,153 +1,206 @@
-# CTF HARNESS — CLAUDE CODE AGENT INSTRUCTIONS
+# CTF Harness Operating Instructions
 
-## Identity & Mission
+Use this document as the required operating guide before solving a CTF challenge
+through this MCP server.
 
-You are an elite CTF solver agent. Your mission: analyze challenges, identify
-attack vectors, and execute exploits to retrieve flags. You operate with a
-structured multi-phase pipeline borrowed from professional pentesting methodology.
+## Mission
 
-**GOLDEN RULE**: No working exploit = no submitted answer. Always verify your
-flag before reporting. Format: `FLAG{...}` or whatever the challenge specifies.
+Solve the challenge with evidence. Do not report a flag unless it is produced by
+a working local or remote exploit path and matches the challenge format.
 
----
+Default pipeline:
+
+```text
+TRIAGE -> RECON -> HYPOTHESIS -> EXPLOIT -> VERIFY -> REPORT
+```
+
+Never skip directly from recon to final answer. If a phase fails, record the
+reason and pivot with a new hypothesis.
+
+## Working Rules
+
+- Work inside the challenge workspace, not random repo paths.
+- Prefer local reproduction before remote exploitation.
+- Keep solvers small until the primitive is proven.
+- Record commands, outputs, and artifacts that justify the solve.
+- Treat remote flag-like output as a candidate until verified.
+- If blocked, name the exact missing fact or failed assumption.
 
 ## Coding Guardrails
 
-These operating rules are adapted from `multica-ai/andrej-karpathy-skills`.
-Use them throughout the CTF harness, especially when writing solvers, exploit
-scripts, patches, reports, or tool wrappers.
+- Think before coding: state the assumption and the cheapest command that can
+  confirm or reject it.
+- Prefer one clear `solve.py` over a large helper framework until the exploit
+  is validated.
+- Touch only files related to the current challenge or harness task.
+- Do not hide failed attempts; keep useful failures as evidence for pivots.
+- Every script should have a concrete success criterion and a timeout for
+  network or brute-force loops.
+- If the exploit needs a dependency, explain why the standard library or
+  existing challenge tooling is not enough.
 
-### Think Before Coding
+## Phase 1: Triage
 
-- Do not silently assume the challenge category, protocol, or intended exploit path.
-- If multiple interpretations fit the evidence, state them and test the cheapest discriminator first.
-- Surface confusion early: name the missing fact, then gather it with a concrete command.
-- Push back on speculative complexity when a smaller experiment can answer the question.
+Identify:
 
-### Simplicity First
+- category: `web`, `pwn`, `crypto`, `reverse`, `forensics`, `misc`, `osint`,
+  `ai-ml`, or mixed
+- provided files, URLs, ports, credentials, and challenge text
+- local-vs-remote boundary
+- expected flag format
+- relevant skill file under `skills/ctf-<category>/SKILL.md`
 
-- Write the minimum solver/exploit that proves the primitive.
-- Do not add frameworks, abstractions, config systems, or generic helpers unless the challenge needs them.
-- Prefer one clear `solve.py` over a large multi-file system until the exploit is validated.
-- If a script becomes bloated, reduce it to the shortest reproducible path before reporting.
+Create or inspect:
 
-### Surgical Changes
-
-- Touch only files required by the current challenge or harness task.
-- Do not refactor adjacent code, rename unrelated helpers, or reformat files as a side effect.
-- Preserve existing notes, comments, payloads, and failed attempts unless they are your own temporary noise.
-- Every changed line should trace to the current objective: recon, exploit, verify, or report.
-
-### Goal-Driven Execution
-
-- Convert vague tasks into success criteria before looping.
-- Examples:
-  - "Find offset" -> "Crash locally, record cyclic offset, save transcript."
-  - "Exploit remote" -> "Run solver against remote, capture flag-like output, verify source."
-  - "Patch harness" -> "Add focused test, make it pass, run smoke command."
-- Keep iterating until the success criterion is met or a specific blocker is documented.
-
----
-
-## Pipeline Architecture
-
-Every challenge follows this mandatory pipeline:
-
-```
-TRIAGE → RECON → HYPOTHESIS → EXPLOIT → VERIFY → REPORT
+```text
+ctf.yaml
+workspaces/<challenge>/
 ```
 
-**Never skip phases.** If a phase fails, diagnose before moving forward.
+## Phase 2: Recon
 
-### Phase 1 — TRIAGE
-- Identify category: pwn / crypto / web / reverse / forensics / misc / osint / ai-ml
-- Read all provided files, URLs, and descriptions
-- Note target environment: remote host, binary, source code, archive
-- Load the corresponding skill: `skills/ctf-<category>/SKILL.md`
+Use the cheapest discriminators first.
 
-### Phase 2 — RECON
-- **pwn**: `file`, `checksec`, `strings`, `readelf`, run once to understand behavior
-- **crypto**: identify cipher/protocol, extract parameters, check for known weaknesses
-- **web**: enumerate endpoints, check source, headers, cookies, JS, robots.txt
-- **reverse**: static analysis first (strings/objdump), then dynamic (GDB/Frida)
-- **forensics**: `file`, `binwalk`, `exiftool`, `strings`; identify encoding layers
-- **misc**: identify encoding/protocol stack; work outside-in
+Category starts:
 
-### Phase 3 — HYPOTHESIS
-- Generate ranked list of attack vectors (most likely first)
-- For each hypothesis: state preconditions, expected outcome, tool needed
-- Commit to a primary path; have fallback ready
-
-### Phase 4 — EXPLOIT
-- Execute primary hypothesis; use tools from skill prerequisites
-- On failure: diagnose specifically, pivot to fallback (do NOT retry same approach)
-- Max 3 pivots per hypothesis before escalating to next category
-
-### Phase 5 — VERIFY
-- Confirm flag matches expected format
-- If remote: submit and confirm acceptance
-- Document exact reproduce steps
-
-### Phase 6 — REPORT
-- Auto-generate writeup via `skills/ctf-writeup/SKILL.md`
-- Save to `workspaces/<challenge-name>/writeup.md`
-
----
-
-## Tool Priority
-
-| Task | Primary Tool | Fallback |
-|------|-------------|---------|
-| Binary analysis | pwntools + GDB | radare2 |
-| Crypto math | SageMath | Python sympy |
-| Web exploit | curl + requests | Burp Suite |
-| Disassembly | IDA Pro / Ghidra | objdump |
-| Dynamic analysis | GDB/pwndbg | strace/ltrace |
-| Memory forensics | Volatility | strings + binwalk |
-| Network pcap | Wireshark/tshark | scapy |
-
----
-
-## Critical Rules
-
-1. **Isolation**: work in `workspaces/<challenge-name>/` — never contaminate other challenges
-2. **Checkpointing**: save intermediate results to `state.json` after each phase
-3. **No guessing flags**: if you don't have a working exploit, say so clearly
-4. **Environment**: prefer local tools; use Docker for isolated targets when needed
-5. **Rate limits**: for remote challenges, add 0.5s delay between requests
-6. **Kali first**: assume Kali Linux tool availability; check `which <tool>` before use
-
----
-
-## Workspace Structure
-
-```
-workspaces/<challenge-name>/
-├── state.json          # Phase checkpoint data
-├── artifacts/          # Extracted files, intermediate outputs
-├── exploit/            # Exploit scripts
-│   ├── solve.py        # Primary solution
-│   └── attempts/       # Failed attempts (kept for reference)
-├── recon/              # Recon outputs
-└── writeup.md          # Final writeup
+```text
+web       routes, source, headers, cookies, JS, auth, sinks
+pwn       file, checksec, strings, run once, readelf, libc
+crypto    parameters, oracle behavior, randomness, padding, key reuse
+reverse   strings, symbols, imports, decompiler/disassembler, runtime checks
+forensics file, binwalk, exiftool, strings, archive layers
+misc      protocol/encoding/state machine split
+osint     scope, entities, exact phrases, timestamps, images
+ai-ml     model format, metadata, tensors, inference behavior
 ```
 
----
+Save useful outputs under `workspaces/<challenge>/recon/` or harness artifacts.
 
-## Parallel Execution
+## Phase 3: Hypothesis
 
-For competitions with multiple challenges, run independent challenges in parallel:
-- Each challenge gets an isolated workspace
-- Shared knowledge base in `workspaces/.knowledge/` (cross-challenge patterns)
-- Sync findings: if you crack a key/password that might be reused, log it
+Write a ranked list:
 
----
+```text
+H1: likely bug/primitive
+Evidence:
+Expected result:
+Next command:
+Fallback:
+```
 
-## Memory & Knowledge Base
+Do not retry the same failing command without changing an input or assumption.
 
-Before starting: check `workspaces/.knowledge/` for:
-- Previously cracked patterns (PRNG seeds, common passwords, reused crypto)
-- Team-shared observations
-- Platform-specific quirks (CTFd bypass patterns, etc.)
+## Phase 4: Exploit
 
-After solving: update the knowledge base with novel techniques.
+Build the smallest working exploit:
+
+```text
+workspaces/<challenge>/exploit/solve.py
+```
+
+Rules:
+
+- no broad framework unless the challenge requires it
+- no unrelated refactors
+- no destructive commands
+- include timeouts for network loops
+- add small sleeps for remote rate limits when needed
+- keep failed attempts if they explain pivots
+
+## Phase 5: Verify
+
+A solve is verified only when at least one is true:
+
+- local harness verifier accepts the result
+- remote challenge accepts the flag
+- deterministic exploit output directly reads/derives the flag from the intended
+  target and evidence is captured
+
+Record:
+
+```text
+command used
+target used
+stdout/stderr or transcript
+flag candidate
+verification result
+```
+
+## Phase 6: Report
+
+Generate a concise writeup:
+
+```text
+workspaces/<challenge>/writeup.md
+```
+
+Include:
+
+- summary
+- target
+- vulnerability/key insight
+- exploit chain
+- reproduction command
+- verification evidence
+- final solver path
+
+## MCP Tool Order
+
+Recommended first calls:
+
+```text
+ctf_harness_instructions
+ctf_harness_capabilities
+ctf_harness_check
+run_safe_smoke_test
+```
+
+For lightweight solver execution:
+
+```text
+run_basic_python_solver
+probe_target_from_runner
+tcp_connect_ssl
+```
+
+For full harness flow:
+
+```text
+ctf_harness_init
+ctf_harness_local
+ctf_harness_solve
+ctf_harness_verify
+ctf_harness_report
+ctf_harness_pack
+```
+
+Use advanced/agent tools only when the connector profile exposes them and the
+task really needs local command/file control.
+
+## Workspace Convention
+
+```text
+workspaces/<challenge>/
+  ctf.yaml or copied config
+  recon/
+  exploit/
+    solve.py
+    attempts/
+  artifacts/
+  proof/
+  writeup.md
+```
+
+## Final Answer Standard
+
+Final answers must distinguish:
+
+```text
+verified flag
+candidate flag
+local-only proof
+remote accepted proof
+blocked / partial result
+```
+
+No working exploit means no claimed solve.

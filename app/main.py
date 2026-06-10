@@ -15,6 +15,7 @@ from app.config import (
     ENABLE_AGENT_TOOLS,
     ENABLE_WORKSPACE_TOOLS,
     GATEWAY_TOKEN,
+    REQUIRE_AUTH,
 )
 
 # 1.2 Startup check for GATEWAY_TOKEN in non-stdio mode
@@ -23,7 +24,7 @@ for arg in sys.argv:
     if any(mode in arg for mode in ["sse", "streamable-http", "http"]):
         is_stdio = False
 
-if not is_stdio and not GATEWAY_TOKEN:
+if REQUIRE_AUTH and not is_stdio and not GATEWAY_TOKEN:
     print("Error: GATEWAY_TOKEN is not configured. Non-stdio mode requires a non-empty GATEWAY_TOKEN for security.", file=sys.stderr)
     sys.exit(1)
 

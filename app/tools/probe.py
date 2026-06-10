@@ -3,12 +3,7 @@ import socket
 import ssl
 from typing import Any, Dict, Optional
 from app.mcp_server import mcp
-from app.security import (
-    validate_target_allowlisted,
-    block_private_or_local_host,
-    resolve_host_to_ips,
-    format_error_response
-)
+import app.security as security
 from app.logging_audit import log_audit_event
 
 
@@ -20,9 +15,9 @@ def check_target_allowed(host: str, port: int) -> Dict[str, Any]:
     """Checks target allowlist status and policy blocks."""
     try:
         # Check target allowlisted
-        validate_target_allowlisted(host, port)
+        security.validate_target_allowlisted(host, port)
         # Check block private/local
-        block_private_or_local_host(host, port)
+        security.block_private_or_local_host(host, port)
         return {
             "ok": True,
             "allowed": True,
@@ -30,7 +25,7 @@ def check_target_allowed(host: str, port: int) -> Dict[str, Any]:
             "message": f"Target '{host}:{port}' is allowed."
         }
     except Exception as e:
-        err = format_error_response(e)
+        err = security.format_error_response(e)
         return {
             "ok": False,
             "allowed": False,
@@ -61,8 +56,8 @@ def probe_target_from_runner(
             raise ValueError("Target host and port must be specified in the target field.")
             
         # Security validations
-        validate_target_allowlisted(host, port)
-        block_private_or_local_host(host, port)
+        security.validate_target_allowlisted(host, port)
+        security.block_private_or_local_host(host, port)
         
         log_audit_event("PROBE_TARGET_REQUEST", {
             "target": f"{host}:{port}",
@@ -74,7 +69,7 @@ def probe_target_from_runner(
         banner: Optional[str] = None
         
         # DNS diagnostic
-        ips = resolve_host_to_ips(host)
+        ips = security.resolve_host_to_ips(host)
         dns_ok = len(ips) > 0
         
         # TCP/TLS diagnostics
@@ -148,7 +143,7 @@ def probe_target_from_runner(
         
     except Exception as e:
         log_audit_event("PROBE_ERROR", {"error": str(e)})
-        return format_error_response(e)
+        return security.format_error_response(e)
 
 
 @mcp.tool(
@@ -167,8 +162,8 @@ def tcp_connect_ssl(
     timeout_seconds: int = 10,
 ) -> Dict[str, Any]:
     try:
-        validate_target_allowlisted(host, port)
-        block_private_or_local_host(host, port)
+        security.validate_target_allowlisted(host, port)
+        security.block_private_or_local_host(host, port)
 
         if send_lines is None:
             send_lines = []
@@ -218,4 +213,4 @@ def tcp_connect_ssl(
         }
     except Exception as e:
         log_audit_event("TCP_CONNECT_SSL_FAIL", {"target": f"{host}:{port}", "error": str(e)})
-        return format_error_response(e)
+        return security.format_error_response(e)

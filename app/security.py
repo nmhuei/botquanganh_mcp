@@ -8,6 +8,7 @@ from app.config import (
     MAX_TIMEOUT_SECONDS,
     MAX_ARGS,
     MAX_ARG_LENGTH,
+    DISABLE_SECURITY_POLICIES,
 )
 
 def is_ip_private(ip_str: str) -> bool:
@@ -28,6 +29,8 @@ def resolve_host_to_ips(host: str) -> List[str]:
 
 def validate_target_allowlisted(host: str, port: int) -> None:
     """Enforces that the host and port are explicitly allowlisted."""
+    if DISABLE_SECURITY_POLICIES:
+        return
     if "*" in ALLOWED_TCP_TARGETS:
         return
     target_key = f"{host}:{port}"
@@ -36,6 +39,8 @@ def validate_target_allowlisted(host: str, port: int) -> None:
 
 def block_private_or_local_host(host: str, port: int) -> None:
     """Blocks requests targeting private IPs or local network endpoints unless explicitly allowlisted."""
+    if DISABLE_SECURITY_POLICIES:
+        return
     if not BLOCK_PRIVATE_IPS:
         return
 
@@ -56,6 +61,8 @@ def block_private_or_local_host(host: str, port: int) -> None:
 
 def validate_timeout(timeout_seconds: int) -> None:
     """Ensures timeout is within allowed bounds."""
+    if DISABLE_SECURITY_POLICIES:
+        return
     if timeout_seconds <= 0:
         raise ValueError("Timeout must be greater than 0.")
     if timeout_seconds > MAX_TIMEOUT_SECONDS:
@@ -63,12 +70,16 @@ def validate_timeout(timeout_seconds: int) -> None:
 
 def validate_language(language: str) -> None:
     """Ensures the language/runner profile is supported."""
+    if DISABLE_SECURITY_POLICIES:
+        return
     supported = ["python", "pwn", "sage", "forensics"]
     if language.lower() not in supported:
         raise ValueError(f"Language '{language}' is not supported. Supported: {supported}")
 
 def validate_args(args: List[str]) -> None:
     """Ensures number of arguments and argument lengths are within limits."""
+    if DISABLE_SECURITY_POLICIES:
+        return
     if len(args) > MAX_ARGS:
         raise ValueError(f"Number of arguments {len(args)} exceeds MAX_ARGS ({MAX_ARGS}).")
     for idx, arg in enumerate(args):
@@ -77,6 +88,8 @@ def validate_args(args: List[str]) -> None:
 
 def validate_relative_path(path: str) -> None:
     """Prevents absolute path or path traversal attacks."""
+    if DISABLE_SECURITY_POLICIES:
+        return
     p = PurePosixPath(path)
     if p.is_absolute():
         raise ValueError(f"Absolute path '{path}' is not allowed.")

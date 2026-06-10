@@ -1,84 +1,148 @@
-# Fallback Runner MCP
+# botquanganh MCP
 
-MCP server để ChatGPT có thể dùng máy của bạn kiểm tra kết nối tới các target/server CTF hoặc lab.
+FastMCP server để ChatGPT hoặc MCP client khác dùng máy của bạn làm runner cho
+CTF/lab: kiểm tra target, chạy solver Python, quản lý harness, và nếu bật thêm
+advanced mode thì chạy workflow/Docker/toolchain nặng hơn.
 
-Repo có 2 chế độ:
+Runtime hiện tại dùng MCP Streamable HTTP tại một endpoint duy nhất, thường là
+`/mcp`. Khi public qua Cloudflare Quick Tunnel, URL sẽ có dạng:
 
-- **Basic**: nhẹ, dùng để test/local, có tool kiểm tra kết nối và chạy solver Python pwn/web cơ bản.
-- **Full / Advanced**: cài thêm Docker runner images, phù hợp chạy trên VPS hoặc máy chủ cloud.
+```text
+https://<random>.trycloudflare.com/mcp
+```
 
----
+Quick Tunnel là URL tạm thời. Mỗi lần restart tunnel có thể đổi URL.
 
-## Tool Modes
+## Mental Model
 
-### Basic Mode
+```text
+ChatGPT / MCP client
+  -> https://<trycloudflare>/mcp
+  -> cloudflared tunnel
+  -> 127.0.0.1:8000/mcp
+  -> FastMCP app/main.py
+  -> app/tools/*
+```
 
-Basic là chế độ mặc định (`ENABLE_ADVANCED_TOOLS=false`). Không cần Docker image.
+Các tool được register theo `.env`:
 
-Tool basic:
+```text
+Always on:
+  health/probe/basic runner/smoke/ctf harness
+
+ENABLE_ADVANCED_TOOLS=true:
+  Docker runners, run logs, shell helpers, GitHub helpers, autonomous agent
+
+ENABLE_WORKSPACE_TOOLS=true:
+  workspace file helpers
+
+ENABLE_AGENT_TOOLS=true:
+  agent_* local file and command helpers
+```
+
+## Quick Start
+
+```bash
+cd /home/light/Workspace/agy/botquanganh_mcp
+chmod +x scripts/*.sh
+./scripts/install_basic.sh
+./scripts/start_tunnel_server.sh
+```
+
+Copy URL được in ra, ví dụ:
+
+```text
+https://example.trycloudflare.com/mcp
+```
+
+Dùng URL đó trong ChatGPT connector.
+
+Smoke test từ ChatGPT:
+
+```text
+health_check
+run_safe_smoke_test
+```
+
+## Important Config
+
+File chính: `.env`
+
+Các biến hay chỉnh nhất:
+
+```env
+MCP_BIND_HOST=0.0.0.0
+MCP_PORT=8000
+FASTMCP_MESSAGE_PATH=/mcp
+
+REQUIRE_AUTH=false
+GATEWAY_TOKEN=...
+
+DISABLE_SECURITY_POLICIES=true
+ALLOWED_TCP_TARGETS=*
+BLOCK_PRIVATE_IPS=true
+
+ENABLE_ADVANCED_TOOLS=true
+ENABLE_WORKSPACE_TOOLS=false
+ENABLE_AGENT_TOOLS=true
+```
+
+Khuyến nghị khi expose public:
+
+```env
+DISABLE_SECURITY_POLICIES=false
+ALLOWED_TCP_TARGETS=target.host:port
+BLOCK_PRIVATE_IPS=true
+ENABLE_AGENT_TOOLS=false
+ENABLE_WORKSPACE_TOOLS=false
+```
+
+Lưu ý: thay đổi `.env` chỉ có hiệu lực sau khi restart server.
+
+## Start, Restart, Stop
+
+Start server + Cloudflare tunnel:
+
+```bash
+./scripts/start_tunnel_server.sh
+```
+
+Restart server nhưng giữ tunnel hiện tại:
+
+```bash
+./scripts/restart_server_only.sh
+```
+
+Kiểm tra process:
+
+```bash
+cat logs/launcher.pid logs/server.pid logs/tunnel.pid
+ps -p "$(cat logs/launcher.pid logs/server.pid logs/tunnel.pid | paste -sd, -)" -o pid,ppid,comm,args
+```
+
+Stop toàn bộ runtime:
+
+```bash
+kill "$(cat logs/launcher.pid)"
+```
+
+## Tool Profiles
+
+### Basic Profile
+
+Basic profile không cần Docker image. Phù hợp để test connector, kiểm tra
+host/port, chạy solver Python nhẹ, và dùng CTF harness.
+
+Nhóm tool chính:
 
 ```text
 health_check
 get_capabilities
 check_target_allowed
 probe_target_from_runner
+tcp_connect_ssl
 run_basic_python_solver
 run_safe_smoke_test
-ctf_harness_capabilities
-ctf_harness_init
-ctf_harness_check
-ctf_harness_local
-ctf_harness_solve
-ctf_harness_verify
-ctf_harness_report
-ctf_harness_pack
-```
-
-Dùng basic khi:
-
-- bạn chỉ muốn ChatGPT connect tới MCP server,
-- cần kiểm tra host/port từ mạng máy bạn,
-- cần chạy solver Python nhẹ cho pwn/web qua máy bạn,
-- đang test connector,
-- chạy trên laptop/local machine.
-
-Basic Python packages:
-
-```text
-requests
-beautifulsoup4
-lxml
-pwntools
-pycryptodome
-z3-solver
-sympy
-gmpy2
-websocket-client
-websockets
-```
-
-`run_basic_python_solver` accepts files with either `path` or `name`. If inline `content` is provided without `encoding`, it defaults to `encoding="text"`. For real pwn/web connections, pass a `target` object (`host` and `port`); that target must be allowed by `ALLOWED_TCP_TARGETS`, and the solver receives `TARGET_HOST` and `TARGET_PORT` in its environment. For import-only smoke tests, `target` may be omitted.
-
-`run_safe_smoke_test` is a harmless one-call check for ChatGPT connector setup. It runs health, capabilities, and a print-only basic Python solver without Docker or target network access.
-
-### CTF Harness
-
-Repo also includes a local-first CTF harness imported from `ctf_harness_full_fixed_v030.zip`.
-`GPT.md` also folds in operating rules adapted from `multica-ai/andrej-karpathy-skills`: think before coding, keep solvers simple, make surgical changes, and define verification criteria.
-
-Direct CLI:
-
-```bash
-./scripts/ctfh init --name baby-web --category web --force
-./scripts/ctfh check
-./scripts/ctfh local --solve
-./scripts/ctfh verify --mode local
-./scripts/ctfh report
-```
-
-ChatGPT/MCP tools:
-
-```text
 ctf_harness_capabilities
 ctf_harness_instructions
 ctf_harness_init
@@ -90,256 +154,162 @@ ctf_harness_report
 ctf_harness_pack
 ```
 
-Before working on a CTF challenge, ChatGPT should call `ctf_harness_instructions` first. That tool returns `GPT.md`, which contains the required pipeline, coding guardrails, verification rules, and reporting rules.
+`run_basic_python_solver` nhận danh sách file:
 
-The harness keeps challenge context in `ctf.yaml` and `workspaces/<challenge>/`, records logs/proofs/reports, and treats remote flag-like output as a candidate unless an explicit verifier accepts it.
+```json
+{
+  "files": [
+    {"path": "solve.py", "content": "print('hello')\n"}
+  ],
+  "entrypoint": "solve.py",
+  "timeout_seconds": 10
+}
+```
 
-### Full / Advanced Mode
+Nếu solver cần connect remote, truyền thêm target và target đó phải match
+`ALLOWED_TCP_TARGETS`:
 
-Full mode bật bằng `./scripts/install_advanced_tools.sh`.
+```json
+{
+  "target": {"host": "chal.example", "port": 1337}
+}
+```
 
-Tool advanced thêm:
+### Advanced Profile
+
+Bật bằng:
+
+```bash
+./scripts/install_advanced_tools.sh
+```
+
+Advanced profile thêm:
 
 ```text
-agent_goal_create
-agent_toolchain_capabilities
-agent_step
-agent_status
-agent_cancel
-agent_report
-get_runner_environments
 run_solver_fallback
 validate_run_request
 upload_artifact
 rerun_run
-get_run_log
-list_recent_runs
-get_run_summary
-delete_run
-get_run_stdout
-get_run_stderr
-tail_run_output
-create_workspace
-upload_file_to_workspace
-list_workspace_files
-read_workspace_file
-delete_workspace
-run_command
+get_run_log / list_recent_runs / get_run_summary
+get_run_stdout / get_run_stderr / tail_run_output
+run_command / run_host_command / run_workspace_command
+github_* helpers
+agent_goal_create / agent_step / agent_status / agent_report
 ```
 
-Autonomous agent mode is assisted by default: create a goal with scope/budget, then call `agent_step` repeatedly. Each step runs one safe action and persists state under `logs/agent_goals/<goal_id>/`. Risky actions return `needs_approval` instead of executing.
+Advanced profile phù hợp cho VPS hoặc máy riêng có Docker/toolchain. Không nên
+bật rộng trên public connector nếu chưa khóa policy.
 
-Full mode sẽ build các Docker image nặng:
+### Agent Tools
+
+`ENABLE_AGENT_TOOLS=true` expose các tool thao tác local workspace:
 
 ```text
-ctf-python-runner:latest
-ctf-pwn-runner:latest
-ctf-sage-runner:latest
-ctf-forensics-runner:latest
+agent_list_directory
+agent_read_file
+agent_write_file
+agent_edit_file
+agent_grep_search
+agent_run_command
 ```
 
----
+Đây là nhóm quyền mạnh. Nếu connector public chỉ dùng để chạy harness/solver,
+hãy để `ENABLE_AGENT_TOOLS=false`.
 
-## Important Note
+## CTF Harness
 
-For normal testing, ChatGPT connector setup, and lightweight pwn/web solving, install **basic** only:
-
-```bash
-./scripts/install_basic.sh
-```
-
-Install **full/advanced** only on a VPS or cloud server if you need containerized solver execution, Sage, forensics, or heavier isolated tooling. The full install downloads and builds large Docker images and can take a long time on a laptop.
-
----
-
-## Quick Start: Basic
-
-```bash
-cd /home/light/Workspace/agy/botquanganh_mcp
-chmod +x scripts/*.sh
-./scripts/install_basic.sh
-```
-
-Edit `.env`:
-
-```env
-ENABLE_ADVANCED_TOOLS=false
-ALLOWED_TCP_TARGETS=target.host:port
-BLOCK_PRIVATE_IPS=true
-```
-
-Start MCP server with Cloudflare Tunnel:
-
-```bash
-./scripts/start_tunnel_server.sh
-```
-
-The script prints a public endpoint like:
+Harness là workflow local-first cho CTF:
 
 ```text
-https://xxxx.trycloudflare.com/mcp
+TRIAGE -> RECON -> HYPOTHESIS -> EXPLOIT -> VERIFY -> REPORT
 ```
 
-Use that URL in ChatGPT MCP Connector settings.
+CLI trực tiếp:
 
----
+```bash
+./scripts/ctfh init --name baby-web --category web --force
+./scripts/ctfh check
+./scripts/ctfh local --solve
+./scripts/ctfh verify --mode local
+./scripts/ctfh report
+```
 
-## ChatGPT Connector Setup
+Qua MCP, gọi `ctf_harness_instructions` trước để client đọc `GPT.md`.
 
-1. Run:
-
-   ```bash
-   ./scripts/start_tunnel_server.sh
-   ```
-
-2. Copy the printed URL ending in `/mcp`.
-
-3. In ChatGPT, create/add an MCP connector.
-
-4. Paste the URL, for example:
-
-   ```text
-   https://xxxx.trycloudflare.com/mcp
-   ```
-
-5. Test with:
-
-   ```text
-   health_check
-   ```
-
-In basic mode, ChatGPT should see exactly:
+Harness dùng:
 
 ```text
-health_check
-get_capabilities
-check_target_allowed
-probe_target_from_runner
-run_basic_python_solver
+ctf.yaml
+workspaces/<challenge>/
+logs/artifacts/
 ```
 
----
+Flag-like output chỉ là candidate cho tới khi verifier hoặc submit remote xác
+nhận.
 
-## Configure Allowed Targets
+## Logs And Runtime Files
 
-`ALLOWED_TCP_TARGETS` controls which host:port ChatGPT may probe through your machine.
-
-Specific allowlist:
-
-```env
-ALLOWED_TCP_TARGETS=socket.cryptohack.org:13418,example.com:443
+```text
+logs/launcher.log      launcher script output
+logs/server.log        FastMCP/uvicorn output
+logs/cloudflared.log   Cloudflare tunnel output and URL
+logs/gateway.log       audit/application events
+logs/*.pid             current launcher/server/tunnel PIDs
+logs/artifacts/        uploaded/generated small artifacts
+logs/workspaces/       workspace tool state
 ```
 
-Wildcard:
+Không xóa `logs/*.pid` khi server/tunnel đang chạy.
 
-```env
-ALLOWED_TCP_TARGETS=*
-```
+## Testing
 
-Avoid `*` unless you understand the risk. This server uses your machine/network.
-
-Recommended:
-
-```env
-BLOCK_PRIVATE_IPS=true
-```
-
-This helps block localhost/private-network targets unless explicitly allowed for testing.
-
----
-
-## Full Install For VPS / Cloud Server
-
-Use this only when you want ChatGPT to run solver scripts or shell commands inside isolated Docker containers.
+Chạy test chuẩn:
 
 ```bash
-cd /home/light/Workspace/agy/botquanganh_mcp
-chmod +x scripts/*.sh
-./scripts/install_advanced_tools.sh
+DISABLE_SECURITY_POLICIES=false ALLOWED_TCP_TARGETS=1.1.1.1:80 .venv/bin/python -m pytest tests -q
 ```
 
-After installation, restart the server:
+Không dùng `pytest -q` ở root nếu chưa cấu hình ignore, vì `scripts/test_*` là
+CLI smoke scripts và có thể bị pytest collect nhầm.
+
+Smoke public MCP bằng client thật:
 
 ```bash
-./scripts/start_tunnel_server.sh
+./scripts/verify_mcp.py https://<random>.trycloudflare.com/mcp
 ```
-
-`install_advanced_tools.sh` will:
-
-- run basic install,
-- build all runner Docker images,
-- set `ENABLE_ADVANCED_TOOLS=true` in `.env`.
-
----
-
-## Manual Server Start
-
-Without tunnel:
-
-```bash
-source .venv/bin/activate
-PYTHONPATH=. python3 -m app.main
-```
-
-HTTP mode:
-
-```bash
-source .venv/bin/activate
-PYTHONPATH=. fastmcp run app/main.py --transport streamable-http --port 8000 --host 127.0.0.1 --path /mcp
-```
-
-Dev UI:
-
-```bash
-./scripts/dev.sh
-```
-
----
-
-## Test
-
-For local testing and lightweight pwn/web solving, basic install is enough:
-
-```bash
-./scripts/install_basic.sh
-./scripts/test.sh
-```
-
-The test suite uses mocks for Docker paths, so it does not require full install just to validate code.
-
----
 
 ## Project Layout
 
 ```text
-app/
-  main.py              MCP entrypoint
-  config.py            environment config
-  security.py          allowlist and safety checks
-  tools/
-    health.py          basic health/capability tools
-    probe.py           basic target connectivity probe
-    basic_runner.py    basic Python pwn/web solver runner
-    fallback.py        advanced solver runner tools
-    workspace.py       advanced workspace tools
-    runs.py            advanced run log tools
-    shell.py           advanced container command tool
-runner_images/         Dockerfiles for full install
-scripts/
-  install_basic.sh
-  install_advanced_tools.sh
-  start_tunnel_server.sh
-  build_runner_images.sh
-  test.sh
-logs/                  runtime logs, ignored by git
+app/             FastMCP server and MCP tool implementations
+ctfharness/      CTF harness CLI and challenge helpers
+scripts/         install/start/restart/test/verify utilities
+runner_images/   Dockerfiles for advanced runners
+skills/          category playbooks loaded by agents
+templates/       challenge workspace templates
+tests/           regression tests
+docs/            operator docs and archived planning notes
+logs/            runtime logs/PIDs, ignored by git
 ```
 
----
+Full map: `docs/REPO_STRUCTURE.md`
 
-## Security Notes
+Research/source notes: `docs/REFERENCES.md`
 
-- Keep basic mode for laptop/local testing and lightweight pwn/web challenges.
-- Use full mode mainly on VPS/cloud servers with Docker.
-- Keep `ALLOWED_TCP_TARGETS` narrow when possible.
-- Keep `BLOCK_PRIVATE_IPS=true` unless you are intentionally testing local targets.
-- Full mode exposes more powerful tools, including container execution and file workspace operations.
+Harness roadmap: `docs/HARNESS_IMPROVEMENT_PLAN.md`
+
+## Safety Defaults
+
+For public use, prefer:
+
+```env
+DISABLE_SECURITY_POLICIES=false
+ALLOWED_TCP_TARGETS=<only-needed-host:port>
+BLOCK_PRIVATE_IPS=true
+REQUIRE_AUTH=true
+ENABLE_AGENT_TOOLS=false
+ENABLE_WORKSPACE_TOOLS=false
+```
+
+For local CTF debugging, you may temporarily loosen policy, but assume every
+enabled tool is callable by the connected MCP client.

@@ -1,11 +1,11 @@
 # app/sse_events.py
 import asyncio
+import hmac
 import json
 from starlette.requests import Request
 from starlette.responses import Response, StreamingResponse
 from starlette.routing import Route
 from app import event_bus
-from app.auth import verify_token
 from app.config import GATEWAY_TOKEN
 
 HEARTBEAT_INTERVAL = 15  # seconds
@@ -16,7 +16,7 @@ async def sse_events_endpoint(request: Request) -> Response:
     # Auth: SSE client không thể set Authorization header qua EventSource
     # → chấp nhận token qua query param CHỈ cho endpoint này
     token = request.query_params.get("token", "")
-    if GATEWAY_TOKEN and not verify_token(token):
+    if GATEWAY_TOKEN and not hmac.compare_digest(str(token), str(GATEWAY_TOKEN)):
         return Response("Unauthorized", status_code=401)
 
     async def event_stream():

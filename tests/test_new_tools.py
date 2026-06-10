@@ -385,6 +385,25 @@ class TestNewTools(unittest.TestCase):
         self.assertEqual(res["stdout"], "repo files\n")
         self.assertIn("warnings", res)
 
+    @patch("subprocess.run")
+    def test_run_command_dedupes_immediate_retries(self, mock_sub_run):
+        from app.tools.shell import run_command
+
+        class DummyProcess:
+            returncode = 0
+            stdout = b"dedupe shell\n"
+            stderr = b""
+
+        mock_sub_run.return_value = DummyProcess()
+
+        first = run_command(command="echo dedupe-shell", timeout_seconds=10)
+        second = run_command(command="echo dedupe-shell", timeout_seconds=10)
+
+        self.assertTrue(first["ok"])
+        self.assertTrue(second["ok"])
+        self.assertTrue(second["idempotency_cache_hit"])
+        self.assertEqual(mock_sub_run.call_count, 1)
+
     def test_run_workspace_command_blocked_when_workspace_mode_disabled(self):
         from app.tools.shell import run_workspace_command
         res = run_workspace_command(
@@ -438,6 +457,27 @@ class TestNewTools(unittest.TestCase):
         self.assertEqual(res["exit_code"], 0)
         self.assertIn("import-only smoke test", res["stdout"])
         self.assertTrue(res["warnings"])
+
+    def test_run_basic_python_solver_dedupes_immediate_retries(self):
+        from app.tools.basic_runner import run_basic_python_solver
+        from app.config import RUNS_DIR
+        import shutil
+
+        payload = {
+            "files": [{"name": "solve.py", "content": "print('dedupe ok')\n"}],
+            "entrypoint": "solve.py",
+            "timeout_seconds": 10,
+        }
+        first = run_basic_python_solver(**payload)
+        second = run_basic_python_solver(**payload)
+
+        try:
+            self.assertTrue(first["ok"])
+            self.assertTrue(second["ok"])
+            self.assertEqual(first["run_id"], second["run_id"])
+            self.assertTrue(second["idempotency_cache_hit"])
+        finally:
+            shutil.rmtree(RUNS_DIR / first["run_id"], ignore_errors=True)
 
     @patch("subprocess.run")
     def test_github_list_prs(self, mock_sub_run):

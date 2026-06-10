@@ -4,23 +4,9 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from app.mcp_server import mcp
 import app.config
+from app.agent_paths import resolve_agent_path
 from app.logging_audit import log_audit_event
 from app.security import format_error_response
-
-# Helper to validate and resolve paths
-def resolve_agent_path(user_path: str) -> Path:
-    p = Path(user_path).expanduser()
-    if not p.is_absolute():
-        p = app.config.AGENT_WORKSPACE_DIR / p
-    resolved = p.resolve()
-    
-    if app.config.AGENT_RESTRICT_TO_WORKSPACE:
-        try:
-            resolved.relative_to(app.config.AGENT_WORKSPACE_DIR)
-        except ValueError:
-            raise PermissionError(f"Access denied. Path '{user_path}' is outside the agent workspace directory '{app.config.AGENT_WORKSPACE_DIR}'.")
-            
-    return resolved
 
 @mcp.tool(
     name="agent_list_directory",
@@ -330,7 +316,7 @@ def agent_run_command(command: str, cwd: Optional[str] = None, timeout_seconds: 
             stderr = stderr[:app.config.MAX_OUTPUT_BYTES] + "\n... [TRUNCATED]"
             
         return {
-            "ok": True,
+            "ok": result.returncode == 0,
             "exit_code": result.returncode,
             "stdout": stdout,
             "stderr": stderr

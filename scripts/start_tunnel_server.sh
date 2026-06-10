@@ -10,7 +10,10 @@ MCP_PATH="${MCP_PATH:-/mcp}"
 
 # Clean up any existing instances of the server port or quick tunnel.
 echo "[*] Detecting and stopping existing server/tunnel instances..."
-PORT_PIDS=$(lsof -t -i :"$MCP_PORT" 2>/dev/null)
+PORT_PIDS=""
+if command -v lsof >/dev/null 2>&1; then
+    PORT_PIDS=$(lsof -t -i :"$MCP_PORT" 2>/dev/null | tr '\n' ' ')
+fi
 if [ ! -z "$PORT_PIDS" ]; then
     echo "[*] Stopping existing server process(es) on port $MCP_PORT (PID: $PORT_PIDS)..."
     kill -15 $PORT_PIDS 2>/dev/null
@@ -18,10 +21,11 @@ if [ ! -z "$PORT_PIDS" ]; then
     kill -9 $PORT_PIDS 2>/dev/null
 fi
 
-TUNNEL_PIDS=$(pgrep -f "cloudflared tunnel --url http://${MCP_HOST}:${MCP_PORT}" 2>/dev/null)
-if [ -z "$TUNNEL_PIDS" ] && [ "$MCP_HOST" = "127.0.0.1" ]; then
-    TUNNEL_PIDS=$(pgrep -f "cloudflared tunnel --url http://localhost:${MCP_PORT}" 2>/dev/null)
-fi
+TUNNEL_PIDS=$(ps -eo pid=,comm=,args= | awk \
+    -v target1="http://${MCP_HOST}:${MCP_PORT}" \
+    -v target2="http://localhost:${MCP_PORT}" \
+    '$2 == "cloudflared" && index($0, " tunnel ") && (index($0, target1) || index($0, target2)) { print $1 }' \
+    | tr '\n' ' ')
 if [ ! -z "$TUNNEL_PIDS" ]; then
     echo "[*] Stopping existing cloudflared tunnel process(es) for port $MCP_PORT (PID: $TUNNEL_PIDS)..."
     kill -15 $TUNNEL_PIDS 2>/dev/null
@@ -47,6 +51,8 @@ export PYTHONPATH=.
 
 # Ensure logs directory exists
 mkdir -p logs
+SERVER_PID_FILE="logs/server.pid"
+TUNNEL_PID_FILE="logs/tunnel.pid"
 
 # Clean up previous logs
 rm -f logs/cloudflared.log
@@ -56,14 +62,22 @@ export FASTMCP_MESSAGE_PATH="$MCP_PATH"
 export MCP_DISABLE_DNS_REBINDING=1
 .venv/bin/fastmcp run app/main.py --transport streamable-http --port "$MCP_PORT" --host "$MCP_HOST" --path "$MCP_PATH" > logs/server.log 2>&1 &
 SERVER_PID=$!
+echo "$SERVER_PID" > "$SERVER_PID_FILE"
 
 # Ensure server PID is cleaned up on exit
 cleanup() {
     echo -e "\n[*] Shutting down tunnel and MCP server..."
-    kill $TUNNEL_PID 2>/dev/null
-    kill $SERVER_PID 2>/dev/null
-    wait $SERVER_PID 2>/dev/null
-    wait $TUNNEL_PID 2>/dev/null
+    CURRENT_SERVER_PID=$(cat "$SERVER_PID_FILE" 2>/dev/null || echo "$SERVER_PID")
+    CURRENT_TUNNEL_PID=$(cat "$TUNNEL_PID_FILE" 2>/dev/null || echo "${TUNNEL_PID:-}")
+    if [ -n "$CURRENT_TUNNEL_PID" ]; then
+        kill "$CURRENT_TUNNEL_PID" 2>/dev/null || true
+        wait "$CURRENT_TUNNEL_PID" 2>/dev/null || true
+    fi
+    if [ -n "$CURRENT_SERVER_PID" ]; then
+        kill "$CURRENT_SERVER_PID" 2>/dev/null || true
+        wait "$CURRENT_SERVER_PID" 2>/dev/null || true
+    fi
+    rm -f "$SERVER_PID_FILE" "$TUNNEL_PID_FILE"
     echo "[+] Shutdown complete."
     exit 0
 }
@@ -101,6 +115,7 @@ echo "[*] Initiating Cloudflare Tunnel..."
 # Start cloudflared to forward the MCP server port.
 cloudflared tunnel --url "http://${MCP_HOST}:${MCP_PORT}" > logs/cloudflared.log 2>&1 &
 TUNNEL_PID=$!
+echo "$TUNNEL_PID" > "$TUNNEL_PID_FILE"
 echo "[+] Tunnel process launched (PID: $TUNNEL_PID)."
 
 # Extract TryCloudflare URL from log file
@@ -139,11 +154,13 @@ echo -e "=======================================================================
 # Keep script running to maintain processes
 while true; do
     # Check if either process died unexpectedly
-    if ! kill -0 $SERVER_PID 2>/dev/null; then
+    CURRENT_SERVER_PID=$(cat "$SERVER_PID_FILE" 2>/dev/null || echo "")
+    if [ -z "$CURRENT_SERVER_PID" ] || ! kill -0 "$CURRENT_SERVER_PID" 2>/dev/null; then
         echo "[-] MCP server process died unexpectedly."
         cleanup
     fi
-    if ! kill -0 $TUNNEL_PID 2>/dev/null; then
+    CURRENT_TUNNEL_PID=$(cat "$TUNNEL_PID_FILE" 2>/dev/null || echo "$TUNNEL_PID")
+    if [ -z "$CURRENT_TUNNEL_PID" ] || ! kill -0 "$CURRENT_TUNNEL_PID" 2>/dev/null; then
         echo "[-] Cloudflare Tunnel process died unexpectedly."
         cleanup
     fi

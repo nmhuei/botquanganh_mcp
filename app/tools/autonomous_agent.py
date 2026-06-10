@@ -9,11 +9,11 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from app.agent_paths import resolve_agent_path
 from app.config import BASE_DIR
 from app.logging_audit import log_audit_event
 from app.mcp_server import mcp
 from app.security import format_error_response
-from app.tools.agent import resolve_agent_path
 from app.tools.ctf_harness import ctf_harness_check, ctf_harness_instructions
 from app.tools.shell import policy_check_command
 
@@ -1344,4 +1344,3 @@ def agent_reject(goal_id: str) -> dict:
         return {**_summarize_goal(goal), "ok": True, "message": "Goal cancelled."}
     except Exception as e:
         return format_error_response(e)
-

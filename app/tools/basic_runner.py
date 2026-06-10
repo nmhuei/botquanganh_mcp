@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 
 from app.config import MAX_OUTPUT_BYTES, RUNS_DIR
 from app.file_package import check_total_size_and_validate, sha256_bytes, write_files
+from app.idempotency import run_once, stable_key
 from app.logging_audit import log_audit_event
 from app.mcp_server import mcp
 from app.schemas import FileEntry
@@ -61,6 +62,37 @@ def run_basic_python_solver(
             args = []
         if env is None:
             env = {}
+
+        dedupe_key = stable_key(
+            "run_basic_python_solver",
+            {
+                "files": [_normalize_file_payload(f) for f in files],
+                "target": target,
+                "entrypoint": entrypoint,
+                "args": args,
+                "env": env,
+                "timeout_seconds": timeout_seconds,
+            },
+        )
+        return run_once(
+            dedupe_key,
+            ttl_seconds=max(30, min(int(timeout_seconds) + 15, 180)),
+            fn=lambda: _run_basic_python_solver_once(files, target, entrypoint, args, env, timeout_seconds),
+        )
+    except Exception as e:
+        log_audit_event("BASIC_RUN_ERROR", {"error": str(e)})
+        return format_error_response(e)
+
+
+def _run_basic_python_solver_once(
+    files: List[Dict[str, Any]],
+    target: Optional[Dict[str, Any]],
+    entrypoint: str,
+    args: List[str],
+    env: Dict[str, str],
+    timeout_seconds: int,
+) -> Dict[str, Any]:
+    try:
 
         validate_timeout(timeout_seconds)
         validate_args(args)

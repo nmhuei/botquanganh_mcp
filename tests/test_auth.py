@@ -3,6 +3,7 @@ from unittest.mock import patch
 from app.auth import verify_token, require_token
 
 class TestAuth(unittest.TestCase):
+    @patch("app.auth.REQUIRE_AUTH", True)
     @patch("app.auth.GATEWAY_TOKEN", "test-secret-token")
     def test_verify_token(self):
         # Should return True for correct token
@@ -11,6 +12,7 @@ class TestAuth(unittest.TestCase):
         self.assertFalse(verify_token("wrong-token"))
         self.assertFalse(verify_token(""))
 
+    @patch("app.auth.REQUIRE_AUTH", True)
     @patch("app.auth.GATEWAY_TOKEN", "test-secret-token")
     def test_require_token(self):
         # Should not raise exception for correct token

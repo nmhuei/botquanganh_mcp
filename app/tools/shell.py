@@ -5,6 +5,7 @@ from typing import Dict, Any, Optional, Tuple
 from app.mcp_server import mcp
 import app.config
 from app.docker_runner import get_runner_image
+from app.idempotency import run_once, stable_key
 from app.tools.workspace import ensure_workspace_tools_enabled, validate_workspace_id_safe
 from app.security import validate_language, validate_timeout, format_error_response
 from app.logging_audit import log_audit_event
@@ -114,6 +115,9 @@ def _validate_command_safe_enough(command: str, approval: str = "auto_safe") -> 
                 f"matched_fragment={blocked['matched_fragment']}; "
                 f"suggested_alternative={blocked['suggested_alternative']}"
             )
+        from app.config import DISABLE_SECURITY_POLICIES
+        if DISABLE_SECURITY_POLICIES:
+            return
         if blocked.get("severity") == "needs_approval" and approval != "approved":
             raise PermissionError(
                 f"Command requires explicit approval: blocked_command_rule={blocked['blocked_command_rule']}; "
@@ -303,7 +307,17 @@ def run_host_command(command: str, timeout_seconds: int = 30, cwd: Optional[str]
     try:
         validate_timeout(timeout_seconds)
         _validate_command_safe_enough(command, approval)
-        return _run_host_command_impl(command, timeout_seconds, cwd)
+        key = stable_key("run_host_command", {
+            "command": command,
+            "timeout_seconds": timeout_seconds,
+            "cwd": str(_resolve_host_cwd(cwd)),
+            "approval": approval,
+        })
+        return run_once(
+            key,
+            ttl_seconds=max(8, min(int(timeout_seconds) + 5, 60)),
+            fn=lambda: _run_host_command_impl(command, timeout_seconds, cwd),
+        )
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": {"code": "TIMEOUT", "message": f"Command timed out after {timeout_seconds}s"}}
     except Exception as e:
@@ -327,7 +341,18 @@ def run_workspace_command(
     try:
         validate_timeout(timeout_seconds)
         _validate_command_safe_enough(command, approval)
-        return _run_workspace_command_impl(command, workspace_id, language, timeout_seconds)
+        key = stable_key("run_workspace_command", {
+            "workspace_id": workspace_id,
+            "command": command,
+            "language": language,
+            "timeout_seconds": timeout_seconds,
+            "approval": approval,
+        })
+        return run_once(
+            key,
+            ttl_seconds=max(8, min(int(timeout_seconds) + 5, 60)),
+            fn=lambda: _run_workspace_command_impl(command, workspace_id, language, timeout_seconds),
+        )
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": {"code": "TIMEOUT", "message": f"Command timed out after {timeout_seconds}s"}}
     except Exception as e:
@@ -356,9 +381,30 @@ def run_command(
         validate_timeout(timeout_seconds)
         _validate_command_safe_enough(command, approval)
         if workspace_id:
-            return _run_workspace_command_impl(command, workspace_id, language, timeout_seconds)
+            key = stable_key("run_command_workspace", {
+                "workspace_id": workspace_id,
+                "command": command,
+                "language": language,
+                "timeout_seconds": timeout_seconds,
+                "approval": approval,
+            })
+            return run_once(
+                key,
+                ttl_seconds=max(8, min(int(timeout_seconds) + 5, 60)),
+                fn=lambda: _run_workspace_command_impl(command, workspace_id, language, timeout_seconds),
+            )
 
-        response = _run_host_command_impl(command, timeout_seconds, cwd)
+        key = stable_key("run_command_host", {
+            "command": command,
+            "timeout_seconds": timeout_seconds,
+            "cwd": str(_resolve_host_cwd(cwd)),
+            "approval": approval,
+        })
+        response = run_once(
+            key,
+            ttl_seconds=max(8, min(int(timeout_seconds) + 5, 60)),
+            fn=lambda: _run_host_command_impl(command, timeout_seconds, cwd),
+        )
         response["warnings"] = [
             "run_command without workspace_id uses host mode for backward compatibility.",
             "Prefer run_host_command for explicit host execution."

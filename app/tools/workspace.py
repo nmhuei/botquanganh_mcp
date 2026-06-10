@@ -6,12 +6,12 @@ import shutil
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Dict, Any, List
+from app.agent_paths import resolve_agent_path
 from app.mcp_server import mcp
 from app.config import WORKSPACES_DIR, MAX_SINGLE_FILE_BYTES, ENABLE_WORKSPACE_TOOLS
 from app.logging_audit import log_audit_event
 from app.security import format_error_response, validate_relative_path
 from app.file_package import sha256_bytes
-from app.tools.agent import resolve_agent_path
 
 WORKSPACE_ID_PATTERN = re.compile(r"^ws_[0-9]{8}_[0-9]{6}_[a-f0-9]+$")
 

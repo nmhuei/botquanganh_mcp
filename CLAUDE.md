@@ -1,115 +1,132 @@
-# CTF HARNESS — CLAUDE CODE AGENT INSTRUCTIONS
+# Claude Code Instructions
 
-## Identity & Mission
+This repo is a FastMCP-based CTF/lab runner. When operating here, act as a
+careful local engineering agent: inspect first, patch narrowly, and verify with
+the real command path.
 
-You are an elite CTF solver agent. Your mission: analyze challenges, identify
-attack vectors, and execute exploits to retrieve flags. You operate with a
-structured multi-phase pipeline borrowed from professional pentesting methodology.
+## Repository Mission
 
-**GOLDEN RULE**: No working exploit = no submitted answer. Always verify your
-flag before reporting. Format: `FLAG{...}` or whatever the challenge specifies.
+Provide MCP tools for:
 
----
+- target allowlist checks and TCP/TLS probes
+- lightweight Python solver execution
+- CTF harness workflows
+- optional Docker-backed advanced runners
+- optional local agent/workspace operations
 
-## Pipeline Architecture
+Do not widen the public tool surface or policy defaults casually. This project
+can expose command execution and network reachability.
 
-Every challenge follows this mandatory pipeline:
+## First Checks
 
-```
-TRIAGE → RECON → HYPOTHESIS → EXPLOIT → VERIFY → REPORT
-```
+Before changing behavior:
 
-**Never skip phases.** If a phase fails, diagnose before moving forward.
-
-### Phase 1 — TRIAGE
-- Identify category: pwn / crypto / web / reverse / forensics / misc / osint / ai-ml
-- Read all provided files, URLs, and descriptions
-- Note target environment: remote host, binary, source code, archive
-- Load the corresponding skill: `skills/ctf-<category>/SKILL.md`
-
-### Phase 2 — RECON
-- **pwn**: `file`, `checksec`, `strings`, `readelf`, run once to understand behavior
-- **crypto**: identify cipher/protocol, extract parameters, check for known weaknesses
-- **web**: enumerate endpoints, check source, headers, cookies, JS, robots.txt
-- **reverse**: static analysis first (strings/objdump), then dynamic (GDB/Frida)
-- **forensics**: `file`, `binwalk`, `exiftool`, `strings`; identify encoding layers
-- **misc**: identify encoding/protocol stack; work outside-in
-
-### Phase 3 — HYPOTHESIS
-- Generate ranked list of attack vectors (most likely first)
-- For each hypothesis: state preconditions, expected outcome, tool needed
-- Commit to a primary path; have fallback ready
-
-### Phase 4 — EXPLOIT
-- Execute primary hypothesis; use tools from skill prerequisites
-- On failure: diagnose specifically, pivot to fallback (do NOT retry same approach)
-- Max 3 pivots per hypothesis before escalating to next category
-
-### Phase 5 — VERIFY
-- Confirm flag matches expected format
-- If remote: submit and confirm acceptance
-- Document exact reproduce steps
-
-### Phase 6 — REPORT
-- Auto-generate writeup via `skills/ctf-writeup/SKILL.md`
-- Save to `workspaces/<challenge-name>/writeup.md`
-
----
-
-## Tool Priority
-
-| Task | Primary Tool | Fallback |
-|------|-------------|---------|
-| Binary analysis | pwntools + GDB | radare2 |
-| Crypto math | SageMath | Python sympy |
-| Web exploit | curl + requests | Burp Suite |
-| Disassembly | IDA Pro / Ghidra | objdump |
-| Dynamic analysis | GDB/pwndbg | strace/ltrace |
-| Memory forensics | Volatility | strings + binwalk |
-| Network pcap | Wireshark/tshark | scapy |
-
----
-
-## Critical Rules
-
-1. **Isolation**: work in `workspaces/<challenge-name>/` — never contaminate other challenges
-2. **Checkpointing**: save intermediate results to `state.json` after each phase
-3. **No guessing flags**: if you don't have a working exploit, say so clearly
-4. **Environment**: prefer local tools; use Docker for isolated targets when needed
-5. **Rate limits**: for remote challenges, add 0.5s delay between requests
-6. **Kali first**: assume Kali Linux tool availability; check `which <tool>` before use
-
----
-
-## Workspace Structure
-
-```
-workspaces/<challenge-name>/
-├── state.json          # Phase checkpoint data
-├── artifacts/          # Extracted files, intermediate outputs
-├── exploit/            # Exploit scripts
-│   ├── solve.py        # Primary solution
-│   └── attempts/       # Failed attempts (kept for reference)
-├── recon/              # Recon outputs
-└── writeup.md          # Final writeup
+```bash
+git status --short
+rg -n '<symbol-or-setting>'
 ```
 
----
+For runtime/debug tasks, inspect:
 
-## Parallel Execution
+```text
+.env
+app/config.py
+app/main.py
+app/security.py
+app/tools/
+logs/server.log
+logs/cloudflared.log
+```
 
-For competitions with multiple challenges, run independent challenges in parallel:
-- Each challenge gets an isolated workspace
-- Shared knowledge base in `workspaces/.knowledge/` (cross-challenge patterns)
-- Sync findings: if you crack a key/password that might be reused, log it
+## Runtime Model
 
----
+Normal tunnel runtime:
 
-## Memory & Knowledge Base
+```text
+scripts/start_tunnel_server.sh
+  -> fastmcp run app/main.py --transport streamable-http --host 127.0.0.1 --port 8000 --path /mcp
+  -> cloudflared tunnel --url http://127.0.0.1:8000
+```
 
-Before starting: check `workspaces/.knowledge/` for:
-- Previously cracked patterns (PRNG seeds, common passwords, reused crypto)
-- Team-shared observations
-- Platform-specific quirks (CTFd bypass patterns, etc.)
+Server-only restart:
 
-After solving: update the knowledge base with novel techniques.
+```bash
+./scripts/restart_server_only.sh
+```
+
+Do not kill the tunnel unless the task requires a new public URL.
+
+## Editing Rules
+
+- Keep changes scoped to the reported bug or documentation task.
+- Do not revert user changes.
+- Use structured parsers or existing helpers where available.
+- Do not add broad abstractions for one narrow fix.
+- Keep comments useful and sparse.
+- Keep `.env` values stable unless the user explicitly asks to change runtime
+  behavior.
+
+## Test Commands
+
+Preferred full test command:
+
+```bash
+DISABLE_SECURITY_POLICIES=false ALLOWED_TCP_TARGETS=1.1.1.1:80 .venv/bin/python -m pytest tests -q
+```
+
+Do not use bare `pytest -q` from repo root unless collection has been configured
+to ignore CLI scripts under `scripts/`.
+
+Targeted smoke:
+
+```bash
+bash -n scripts/start_tunnel_server.sh scripts/restart_server_only.sh
+.venv/bin/python -m py_compile app/config.py app/security.py app/main.py
+```
+
+Public MCP smoke should use a real MCP client session against `/mcp`, not only
+`curl`, because Streamable HTTP is session-aware.
+
+## Security Rules
+
+Treat these as high-risk:
+
+```text
+DISABLE_SECURITY_POLICIES=true
+ALLOWED_TCP_TARGETS=*
+ENABLE_AGENT_TOOLS=true
+ENABLE_ADVANCED_TOOLS=true
+```
+
+When debugging policy:
+
+- verify whether `app.config` was loaded before env overrides
+- restart the server after `.env` changes
+- separate connector/session errors from actual origin failures
+- remember that 400 missing session ID can mean the route is alive
+
+## CTF Harness Rules
+
+For CTF work, load `GPT.md` and follow:
+
+```text
+TRIAGE -> RECON -> HYPOTHESIS -> EXPLOIT -> VERIFY -> REPORT
+```
+
+No verified exploit means no claimed flag.
+
+## Documentation Rules
+
+Keep documentation split by purpose:
+
+```text
+README.md                 operator quickstart
+SECURITY.md               threat model and hardening
+docs/REPO_STRUCTURE.md    file/directory map
+docs/REFERENCES.md        researched external references
+GPT.md                    CTF harness instructions exposed by MCP
+CLAUDE.md                 local coding-agent instructions
+```
+
+When external behavior is documented, prefer primary sources: official MCP spec,
+FastMCP docs, Cloudflare docs, and local code.
