@@ -94,7 +94,6 @@ case "${1:-}" in
         exit 0
         ;;
     --url|-u)
-        local u
         u=$(grep -o -E 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' logs/cloudflared.log 2>/dev/null | head -n 1)
         if [ -n "$u" ]; then
             echo "${u}/mcp"
@@ -122,7 +121,6 @@ if [ -f "$LAUNCHER_PID_FILE" ]; then
     existing=$(cat "$LAUNCHER_PID_FILE")
     if kill -0 "$existing" 2>/dev/null; then
         echo "[!] Daemon already running (PID $existing)."
-        local existing_url
         existing_url=$(grep -o -E 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' logs/cloudflared.log 2>/dev/null | head -n 1)
         if [ -n "$existing_url" ]; then
             echo ""
