@@ -1,6 +1,16 @@
+import atexit
 import os
 import sys
 from app.mcp_server import mcp
+
+# Graceful shutdown: flush audit log on exit
+@atexit.register
+def _shutdown_log():
+    try:
+        from app.logging_audit import log_audit_event
+        log_audit_event("SERVER_SHUTDOWN", {"pid": os.getpid()})
+    except Exception:
+        pass
 
 # Basic tools: lightweight server connectivity checks for ChatGPT.
 import app.tools.health

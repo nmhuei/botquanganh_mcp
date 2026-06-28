@@ -66,6 +66,11 @@ DELETE_RUN_FILES_AFTER_DAYS = int(os.getenv("DELETE_RUN_FILES_AFTER_DAYS", "7"))
 USE_DOCKER = os.getenv("USE_DOCKER", "true").lower() == "true"
 
 
+# Rate limiting configuration
+RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "false").lower() == "true"
+RATE_LIMIT_MAX_REQUESTS = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "200"))
+RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
+
 # Agent mode configuration
 ENABLE_AGENT_TOOLS = os.getenv("ENABLE_AGENT_TOOLS", "true").lower() == "true"
 AGENT_WORKSPACE_DIR_ENV = os.getenv("AGENT_WORKSPACE_DIR", "")
@@ -103,15 +108,20 @@ if _is_subdir(runs_dir_resolved, AGENT_WORKSPACE_DIR) or _is_subdir(AGENT_WORKSP
 else:
     RUNS_DIR = runs_dir_resolved
 
-# Docker parameters
-RUNNER_IMAGE_PYTHON = os.getenv("RUNNER_IMAGE_PYTHON", "ctf-python-runner:latest")
-RUNNER_IMAGE_PWN = os.getenv("RUNNER_IMAGE_PWN", "ctf-pwn-runner:latest")
-RUNNER_IMAGE_SAGE = os.getenv("RUNNER_IMAGE_SAGE", "ctf-sage-runner:latest")
-RUNNER_IMAGE_FORENSICS = os.getenv("RUNNER_IMAGE_FORENSICS", "ctf-forensics-runner:latest")
+# Runner image mapping (single runner image, multi-tag via runner_images/ctf-runner.Dockerfile)
+RUNNER_IMAGES = {
+    "python": os.getenv("RUNNER_IMAGE_PYTHON", "ctf-runner:latest"),
+    "pwn": os.getenv("RUNNER_IMAGE_PWN", "ctf-runner:latest"),
+    "web": os.getenv("RUNNER_IMAGE_WEB", "ctf-runner:web"),
+    "forensics": os.getenv("RUNNER_IMAGE_FORENSICS", "ctf-runner:forensics"),
+    "sage": os.getenv("RUNNER_IMAGE_SAGE", "ctf-sage-runner:latest"),
+}
+RUNNER_IMAGE_LIST = list(set(RUNNER_IMAGES.values()))
+USE_DOCKER = os.getenv("USE_DOCKER", "true").lower() == "true"
 
 DOCKER_MEMORY = os.getenv("DOCKER_MEMORY", "512m")
 DOCKER_CPUS = os.getenv("DOCKER_CPUS", "1")
 DOCKER_PIDS_LIMIT = int(os.getenv("DOCKER_PIDS_LIMIT", "128"))
 DOCKER_USER = os.getenv("DOCKER_USER", "1000:1000")
-MINIFORGE_PATH = os.getenv("MINIFORGE_PATH", "")
+ENABLE_EGRESS_FIREWALL = os.getenv("ENABLE_EGRESS_FIREWALL", "false").lower() == "true"
 VERSION = "0.3.0"

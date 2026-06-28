@@ -1,8 +1,13 @@
 import logging
+import time
 
 from fastmcp import FastMCP
 from mcp.server.sse import SseServerTransport
+from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.routing import Route, Mount
+
+from app.metrics import metrics
+from app.ratelimit import rate_limiter
 
 # Set up logging
 logger = logging.getLogger("fallback_runner_audit")
@@ -18,25 +23,53 @@ if getattr(fastmcp, "__version__", "") != FASTMCP_COMPAT_VERSION:
     )
 
 class TokenAuthMiddleware:
-    """ASGI Middleware to enforce GATEWAY_TOKEN authentication for HTTP and WebSocket requests in non-stdio transports."""
+    """ASGI Middleware to enforce GATEWAY_TOKEN authentication + rate limiting."""
+
     def __init__(self, app):
         self.app = app
 
+    @staticmethod
+    def _get_client_ip(scope: dict) -> str:
+        headers = {}
+        for k, v in scope.get("headers", []):
+            headers[k.decode("latin-1").lower()] = v.decode("latin-1")
+        xff = headers.get("x-forwarded-for", "")
+        if xff:
+            return xff.split(",")[0].strip()
+        client = scope.get("client")
+        if client:
+            return client[0]
+        return "unknown"
+
     async def __call__(self, scope, receive, send):
         path = scope.get("path", "")
-        if path.startswith("/events/"):
+
+        # Allow health checks and SSE events without auth / rate limits
+        if path in ("/healthz",) or path.startswith("/events/"):
             await self.app(scope, receive, send)
             return
 
         if scope.get("type") in ("http", "websocket"):
-            # Extract headers
+            client_ip = self._get_client_ip(scope)
+
+            # --- Rate limit check ---
+            allowed, retry_after = rate_limiter.is_allowed(client_ip)
+            if not allowed:
+                metrics.record_rate_limit()
+                logger.warning(f"Rate limit exceeded for {client_ip} on {path}")
+                response = JSONResponse(
+                    {"error": "rate_limit_exceeded", "retry_after": retry_after},
+                    status_code=429,
+                    headers={"Retry-After": str(retry_after)},
+                )
+                await response(scope, receive, send)
+                return
+
+            # --- Auth check ---
             headers = {}
             for k, v in scope.get("headers", []):
                 headers[k.decode("latin-1").lower()] = v.decode("latin-1")
-            
-            # Try getting token from different sources:
-            # 1. Authorization header: "Bearer <token>" or "<token>"
-            # 2. X-Gateway-Token header: "<token>"
+
             token = ""
             auth_header = headers.get("authorization", "")
             if auth_header:
@@ -44,18 +77,24 @@ class TokenAuthMiddleware:
                     token = auth_header[7:]
                 else:
                     token = auth_header
-            
+
             if not token:
                 token = headers.get("x-gateway-token", "")
-            
+
             from app.auth import verify_token
+
             if not verify_token(token):
-                logger.warning("Unauthorized access attempt rejected (invalid or missing token).")
+                logger.warning(
+                    "Unauthorized access attempt rejected (invalid or missing token)."
+                )
                 from starlette.responses import Response
-                response = Response("Unauthorized: Invalid or missing token.", status_code=401)
+
+                response = Response(
+                    "Unauthorized: Invalid or missing token.", status_code=401
+                )
                 await response(scope, receive, send)
                 return
-                
+
         await self.app(scope, receive, send)
 
 # --- Patch 0: Allow any Content-Type for POST requests (ChatGPT compatibility) ---
@@ -155,6 +194,41 @@ async def patched_handle_post_message(self, scope, receive, send) -> None:
 SseServerTransport.handle_post_message = patched_handle_post_message
 
 
+# --- Healthz endpoint for external uptime monitoring ---
+async def healthz_endpoint(_request):
+    return PlainTextResponse("OK", status_code=200)
+
+
+# --- Metrics instrumentation middleware ---
+class MetricsMiddleware:
+    """Records request count, latency, and status codes per path."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        start = time.time()
+        path = scope.get("path", "unknown")
+
+        async def wrapped_send(message):
+            if message.get("type") == "http.response.start":
+                latency_ms = (time.time() - start) * 1000
+                status_code = message.get("status", 0)
+                metrics.record_request(path, latency_ms, status_code)
+            await send(message)
+
+        try:
+            await self.app(scope, receive, wrapped_send)
+        except Exception:
+            latency_ms = (time.time() - start) * 1000
+            metrics.record_request(path, latency_ms, 500)
+            raise
+
+
 # --- Patch 2: Combine GET Route & POST Mount for SSE path to prevent 405 Method Not Allowed ---
 original_http_app = FastMCP.http_app
 
@@ -196,11 +270,18 @@ def patched_http_app(self, *args, **kwargs):
     app = original_http_app(self, *args, **kwargs)
     transport = kwargs.get("transport", "http")
 
+    # Inject healthz endpoint BEFORE auth middleware
+    healthz_route = Route("/healthz", endpoint=healthz_endpoint, methods=["GET"])
+    app.router.routes.insert(0, healthz_route)
+
     # Inject SSE events route
     from app.sse_events import sse_route
     app.router.routes.append(sse_route)
 
-    # Add Token Authentication Middleware to the ASGI app
+    # Add Metrics instrumentation first (outermost, catches everything)
+    app.add_middleware(MetricsMiddleware)
+
+    # Add Token Authentication Middleware
     app.add_middleware(TokenAuthMiddleware)
 
     # We only customize the routes if the transport is "sse"

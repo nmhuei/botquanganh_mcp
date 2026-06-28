@@ -30,8 +30,18 @@ def run_locally(
     target_port: int
 ) -> Tuple[int, str, str, bool]:
     """Runs the solver locally on the host machine using subprocess."""
-    exec_executable = "sage" if language.lower() == "sage" else "python3"
-    cmd = [exec_executable, entrypoint] + args
+    if language.lower() != "sage":
+        bootstrap_code = (
+            "import sys, os, runpy; "
+            "sys.argv = sys.argv[1:]; "
+            "curr = os.path.abspath(os.getcwd()); "
+            "sys.path = [p for p in sys.path if p and os.path.abspath(p) != curr]; "
+            "sys.path.append(curr); "
+            "runpy.run_path(sys.argv[0], run_name='__main__')"
+        )
+        cmd = ["python3", "-c", bootstrap_code, entrypoint] + args
+    else:
+        cmd = ["sage", entrypoint] + args
     
     local_env = os.environ.copy()
     local_env.update({

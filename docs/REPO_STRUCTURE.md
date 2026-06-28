@@ -13,10 +13,11 @@ app/
   security.py          Policy enforcement and target allowlist checks
   auth.py              Gateway token validation
   sse_events.py        SSE/event endpoint helpers
-  mcp_server.py        MCP server construction helpers
+  mcp_server.py        MCP server construction + ASGI middleware (auth/rate/metrics)
   runner.py            Local runner primitives
-  docker_runner.py     Docker runner primitives
-  egress_firewall.py   Optional egress firewall helpers
+  docker_runner.py     Docker runner primitives (simplified, no egress firewall)
+  ratelimit.py         Sliding window rate limiter
+  metrics.py           In-memory request metrics tracker
   file_package.py      File packaging helpers
   transcript.py        Transcript/artifact helpers
   logging_audit.py     Audit log helpers
@@ -62,7 +63,7 @@ scripts/
   verify_mcp.py                MCP verification helper
   mcp_manager.py               Local MCP management helper
 
-runner_images/                 Dockerfiles for advanced runner containers
+runner_images/                 Consolidated ctf-runner.Dockerfile (multi-stage) + sage-ctf.Dockerfile
 skills/                        CTF skill instruction packs exposed to agents
 templates/                     Challenge workspace templates by category
 examples/                      Small request/solver examples
@@ -174,12 +175,18 @@ tests/
 
 ## Runtime Shape
 
-Normal public-tunnel runtime:
+Normal public-tunnel runtime (daemon mode):
 
 ```text
-scripts/start_tunnel_server.sh
-  -> .venv/bin/fastmcp run app/main.py --transport streamable-http --path /mcp
-  -> cloudflared tunnel --url http://127.0.0.1:8000
+run_mcp_tunnel.sh                  # nohup daemon wrapper
+  -> scripts/start_tunnel_server.sh  # watchdog loop (auto-restart + health check)
+    -> .venv/bin/fastmcp run app/main.py --transport streamable-http --path /mcp
+    -> cloudflared tunnel --url http://127.0.0.1:8000
+```
+
+Quick restart (giữ tunnel):
+```text
+./scripts/restart_server_only.sh
 ```
 
 The launcher writes:
@@ -191,6 +198,11 @@ logs/tunnel.pid
 logs/launcher.log
 logs/server.log
 logs/cloudflared.log
+logs/gateway.log
 ```
 
-If `.env` changes, restart the server process so `app/config.py` is reloaded.
+If `.env` changes, restart the server so `app/config.py` is reloaded:
+
+```bash
+./run_mcp_tunnel.sh --restart
+```

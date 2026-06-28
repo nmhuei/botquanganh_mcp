@@ -1,20 +1,25 @@
 #!/bin/bash
-# Exit immediately if any command fails
-set -e
+# Build all CTF runner images from the consolidated Dockerfile.
+set -euo pipefail
 
-# Change directory to the root of the project (parent of scripts/)
 cd "$(dirname "$0")/.."
 
-echo "[*] Building python-ctf runner image (ctf-python-runner:latest)..."
-docker build --load -t ctf-python-runner:latest -f runner_images/python-ctf.Dockerfile .
+echo "[*] Building CTF runner images (consolidated Dockerfile)..."
+echo ""
 
-echo "[*] Building python-pwn runner image (ctf-pwn-runner:latest)..."
-docker build --load -t ctf-pwn-runner:latest -f runner_images/python-pwn.Dockerfile .
+echo "[1/2] Building base image (ctf-runner:latest)..."
+docker build --load -t ctf-runner:latest -f runner_images/ctf-runner.Dockerfile --target base .
 
-echo "[*] Building sage-ctf runner image (ctf-sage-runner:latest)..."
-docker build --load -t ctf-sage-runner:latest -f runner_images/sage-ctf.Dockerfile .
+echo "[2/2] Building web image (ctf-runner:web)..."
+docker build --load -t ctf-runner:web -f runner_images/ctf-runner.Dockerfile --target with-web .
 
-echo "[*] Building forensics runner image (ctf-forensics-runner:latest)..."
-docker build --load -t ctf-forensics-runner:latest -f runner_images/ctf-forensics.Dockerfile .
-
-echo "[+] All runner images successfully built!"
+echo ""
+echo "[+] Done! Available tags:"
+echo "    ctf-runner:latest   — Python + CTF libraries (for python/pwn)"
+echo "    ctf-runner:web      — + Playwright + CloakBrowser (for web CTFs)"
+echo ""
+echo "    To build forensics image:"
+echo "      docker build --load -t ctf-runner:forensics -f runner_images/ctf-runner.Dockerfile --target forensics ."
+echo ""
+echo "    SageMath image (separate, ~3GB) if needed:"
+echo "      docker build --load -t ctf-sage-runner:latest -f runner_images/sage-ctf.Dockerfile ."

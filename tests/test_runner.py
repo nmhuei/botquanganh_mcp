@@ -140,5 +140,41 @@ class TestRunner(unittest.TestCase):
         self.assertEqual(res.stdout, "output")
         mock_run_locally.assert_called_once()
 
+    def test_run_locally_avoid_shadowing(self):
+        import tempfile
+        import shutil
+        from app.runner import run_locally
+        
+        # Create a temp directory
+        temp_dir = Path(tempfile.mkdtemp())
+        try:
+            # Create inspect.py which would shadow standard inspect module
+            # if run directly as python3 inspect.py
+            inspect_file = temp_dir / "inspect.py"
+            inspect_file.write_text(
+                "import requests\n"
+                "s = requests.Session()\n"
+                "print('SUCCESS_SHADOW_TEST')\n"
+            )
+            
+            # Run it via run_locally
+            exit_code, stdout, stderr, timed_out = run_locally(
+                run_input_dir=temp_dir,
+                entrypoint="inspect.py",
+                args=[],
+                env={},
+                timeout=10,
+                language="python",
+                target_host="127.0.0.1",
+                target_port=80
+            )
+            
+            self.assertEqual(exit_code, 0)
+            self.assertIn("SUCCESS_SHADOW_TEST", stdout)
+            self.assertFalse(timed_out)
+        finally:
+            shutil.rmtree(temp_dir)
+
 if __name__ == "__main__":
     unittest.main()
+

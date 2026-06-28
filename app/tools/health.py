@@ -1,13 +1,11 @@
 from datetime import datetime, timezone
 from app.mcp_server import mcp
+from app.metrics import metrics
 from app.config import (
     ENABLE_ADVANCED_TOOLS,
     ENABLE_AGENT_TOOLS,
     ENABLE_WORKSPACE_TOOLS,
-    RUNNER_IMAGE_PYTHON,
-    RUNNER_IMAGE_PWN,
-    RUNNER_IMAGE_SAGE,
-    RUNNER_IMAGE_FORENSICS,
+    RUNNER_IMAGES,
     MAX_TIMEOUT_SECONDS,
     MAX_CODE_BYTES,
     MAX_SINGLE_FILE_BYTES,
@@ -23,6 +21,7 @@ from app.security import format_error_response
 def health_check() -> dict:
     """Verifies connection health and configured runner capabilities."""
     try:
+        stats = metrics.get_stats()
         log_audit_event("HEALTH_CHECK_PASS", {})
         return {
             "ok": True,
@@ -33,7 +32,14 @@ def health_check() -> dict:
             "advanced_tools_enabled": ENABLE_ADVANCED_TOOLS,
             "agent_tools_enabled": ENABLE_AGENT_TOOLS,
             "workspace_tools_enabled": ENABLE_WORKSPACE_TOOLS,
-            "runner_images": [RUNNER_IMAGE_PYTHON, RUNNER_IMAGE_PWN, RUNNER_IMAGE_SAGE, RUNNER_IMAGE_FORENSICS]
+            "runner_images": list(RUNNER_IMAGES.values()),
+            "metrics": {
+                "uptime_seconds": stats["uptime_seconds"],
+                "total_requests": stats["total_requests"],
+                "error_count": stats["error_count"],
+                "rate_limit_hits": stats["rate_limit_hits"],
+                "avg_latency_ms": stats["avg_latency_ms"],
+            },
         }
     except Exception as e:
         log_audit_event("HEALTH_CHECK_FAIL", {"tool": "health_check", "error": str(e)})
@@ -169,7 +175,7 @@ def get_runner_environments() -> dict:
             "supported_languages": ["python", "pwn", "sage"],
             "environments": {
                 "python": {
-                    "base_image": RUNNER_IMAGE_PYTHON,
+                    "base_image": RUNNER_IMAGES["python"],
                     "description": "Python 3.12-slim environment for general CTF tasks, web automation/exploitation, and scripting.",
                     "pre_installed_packages": {
                         "pwntools": "CTF/exploit development framework (import pwn)",
@@ -190,7 +196,7 @@ def get_runner_environments() -> dict:
                     ]
                 },
                 "pwn": {
-                    "base_image": RUNNER_IMAGE_PWN,
+                    "base_image": RUNNER_IMAGES["pwn"],
                     "description": "Identical Python 3.12-slim environment equipped with pwntools, z3, pycryptodome, and binary analysis utilities like patchelf, file, gdb, socat, netcat.",
                     "pre_installed_packages": {
                         "pwntools": "CTF/exploit development framework (import pwn)",
@@ -212,7 +218,7 @@ def get_runner_environments() -> dict:
                     ]
                 },
                 "sage": {
-                    "base_image": RUNNER_IMAGE_SAGE,
+                    "base_image": RUNNER_IMAGES["sage"],
                     "description": "SageMath environment for cryptanalysis, mathematics, and advanced algebra.",
                     "pre_installed_packages": {
                         "sagemath": "Native SageMath environment (active automatically, run with entrypoint extension .sage or script logic)",
@@ -231,7 +237,7 @@ def get_runner_environments() -> dict:
                     ]
                 },
                 "forensics": {
-                    "base_image": RUNNER_IMAGE_FORENSICS,
+                    "base_image": RUNNER_IMAGES["forensics"],
                     "description": "Ubuntu-based forensic and file-analysis environment for stego, pcap, disk, archive, and malware triage workflows.",
                     "pre_installed_packages": {
                         "binwalk": "Firmware and embedded file extraction",

@@ -132,7 +132,15 @@ def _run_basic_python_solver_once(
             child_env["TARGET_HOST"] = str(target_host)
             child_env["TARGET_PORT"] = str(target_port)
 
-        command = [sys.executable, entrypoint] + args
+        bootstrap_code = (
+            "import sys, os, runpy; "
+            "sys.argv = sys.argv[1:]; "
+            "curr = os.path.abspath(os.getcwd()); "
+            "sys.path = [p for p in sys.path if p and os.path.abspath(p) != curr]; "
+            "sys.path.append(curr); "
+            "runpy.run_path(sys.argv[0], run_name='__main__')"
+        )
+        command = [sys.executable, "-c", bootstrap_code, entrypoint] + args
         log_audit_event(
             "BASIC_RUN_REQUEST",
             {

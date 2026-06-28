@@ -1,28 +1,21 @@
+# syntax=docker/dockerfile:1
+# Multi-stage build: lấy docker CLI từ image chính thức, Python app riêng biệt
+FROM docker:28-cli AS docker-cli
+
 FROM python:3.12-slim
 
-# Install docker CLI, iptables, and sudo (required for managing docker containers and rules from inside this server)
-RUN apt-get update && apt-get install -y \
-    docker.io \
-    iptables \
-    sudo \
-    && rm -rf /var/lib/apt/lists/*
-
-# Grant passwordless sudo privilege specifically for iptables commands
-RUN echo "mcp ALL=(ALL) NOPASSWD: /usr/sbin/iptables" >> /etc/sudoers
-
-# Create runner user
-RUN useradd -m -u 1000 mcp && usermod -aG sudo mcp
+# Copy docker CLI binary — không cần docker.io full stack
+COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir uv && \
-    uv pip install --system --no-cache-dir -r requirements.txt
 
+# Install uv + dependencies
+RUN pip install --no-cache-dir uv \
+    && uv pip install --system --no-cache-dir -r requirements.txt
+
+# Copy ứng dụng
 COPY . .
-RUN chown -R mcp:mcp /app
-
-# Run as mcp user
-USER mcp
 
 EXPOSE 8000
 ENV PYTHONPATH=/app
