@@ -1,14 +1,9 @@
-#!/bin/bash
-cd "$(dirname "$0")/.."
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Activate virtual environment if it exists
-if [ -d ".venv" ]; then
-    echo "[*] Activating virtual environment..."
-    source .venv/bin/activate
-fi
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT_DIR"
 
-export PYTHONPATH=.
-
-# Start FastMCP in development mode (launches the local dashboard)
-echo "[*] Launching FastMCP development server for app/main.py..."
-fastmcp dev app/main.py
+[ -x .venv/bin/fastmcp ] || ./scripts/install_basic.sh
+export PYTHONPATH="$ROOT_DIR"
+exec .venv/bin/fastmcp dev app/main.py

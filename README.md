@@ -1,159 +1,107 @@
-# botquanganh MCP
+# BotQuangAnh Host MCP
 
-FastMCP server để ChatGPT hoặc MCP client khác dùng máy của bạn làm runner cho
-CTF/lab: kiểm tra target, chạy solver Python, quản lý harness, Docker-backed
-runner, autonomous agent, và auto-recovery khi server die hoặc bị rate limit.
+MCP server tối giản để ChatGPT thao tác trực tiếp trên máy của bạn trong phạm vi `HOST_WORKSPACE_DIR`.
+
+Repo này chỉ còn hai chức năng chính:
+
+1. Đọc, ghi, tìm kiếm file và chạy command trên host.
+2. Cung cấp hướng dẫn làm việc cùng danh mục tool thực tế có trong máy qua `host_knowledge`.
+
+## Cấu trúc
 
 ```text
-ChatGPT / MCP client
-  -> https://<trycloudflare>/mcp
-  -> cloudflared tunnel
-  -> 127.0.0.1:8000/mcp
-  -> FastMCP app/main.py
-  -> app/tools/*
+app/
+├── host/                 # Logic file, command, policy và tool inventory
+├── tools/                # MCP adapters: health, host, host_knowledge
+├── config.py
+├── mcp_server.py
+└── main.py
+
+knowledge/
+├── WORKING_GUIDE.md
+├── HOST_ENVIRONMENT.md
+└── TOOL_CATALOG.json
+
+scripts/
+├── install_basic.sh
+├── restart_server_only.sh
+├── start_tunnel_server.sh
+├── dev.sh
+└── test.sh
 ```
 
-## Quick Start
+## Cài đặt
 
 ```bash
 cd /home/light/GitHub/botquanganh_mcp
-./scripts/install_basic.sh               # venv + pip install
-./run_mcp_tunnel.sh                       # daemon (background, thoát terminal OK)
+./scripts/install_basic.sh
 ```
 
-Copy URL được in ra, dùng trong ChatGPT connector settings.
+Sau đó điền `GATEWAY_TOKEN` và kiểm tra `HOST_WORKSPACE_DIR` trong `.env`.
 
-Mọi thao tác qua `run_mcp_tunnel.sh`:
+## Chạy qua Cloudflare Tunnel
 
-| Lệnh | Mô tả |
-|------|-------|
-| `./run_mcp_tunnel.sh` | Chạy daemon (nohup, thoát terminal được) |
-| `./run_mcp_tunnel.sh --status` | Xem PID server/tunnel + endpoint URL |
-| `./run_mcp_tunnel.sh --stop` | Dừng daemon + server + tunnel |
-| `./run_mcp_tunnel.sh --restart` | Khởi động lại |
+```bash
+./run_mcp_tunnel.sh
+./run_mcp_tunnel.sh --status
+./run_mcp_tunnel.sh --url
+./run_mcp_tunnel.sh --stop
+```
 
-## Quick Smoke Test
+URL connector có dạng:
 
-Từ ChatGPT sau khi kết nối:
+```text
+https://<random>.trycloudflare.com/mcp
+```
+
+## Tool MCP
 
 ```text
 health_check
-run_safe_smoke_test
+get_capabilities
+host_list_directory
+host_read_file
+host_write_file
+host_replace_in_file
+host_append_file
+host_make_directory
+host_search_text
+host_check_command
+host_run_command
+host_knowledge
 ```
 
-## Daemon Architecture
+`host_run_command` không có tham số `approval="approved"`. Policy được quyết định hoàn toàn ở phía server.
 
-```
-run_mcp_tunnel.sh        ←─ daemon wrapper (nohup + background)
-  └─ start_tunnel_server.sh  ←─ watchdog loop (mỗi 3s)
-        ├─ Server die        → auto-restart server
-        ├─ Tunnel die        → auto-restart tunnel
-        ├─ Health fail (6×)  → auto-restart server
-        ├─ 429 rate-limited  → auto-restart server + tunnel
-        └─ Restart >5 lần   → dừng hẳn (tránh loop)
-```
-
-Chi tiết: `docs/WORKFLOW.md`
-
-## Developer Commands
-
-```bash
-# Restart server, giữ tunnel đang chạy
-./scripts/restart_server_only.sh
-
-# Build Docker runner images
-./scripts/build_runner_images.sh
-
-# Enable advanced tools (Docker runners + shell + runs + agent)
-./scripts/install_advanced_tools.sh
-
-# Run tests
-DISABLE_SECURITY_POLICIES=false ALLOWED_TCP_TARGETS=1.1.1.1:80 \
-  .venv/bin/python -m pytest tests -q
-
-# Debug
-tail -f logs/launcher.log      # daemon output
-tail -f logs/server.log        # FastMCP stdout
-tail -f logs/gateway.log       # audit events
-tail -f logs/cloudflared.log   # tunnel log
-curl http://127.0.0.1:8000/healthz  # local health check
-```
-
-## Config Overview
-
-File `.env` là config trung tâm (~40 biến). Hay chỉnh nhất:
-
-```env
-RATE_LIMIT_ENABLED=true           # 200 req/IP/60s sliding window
-RATE_LIMIT_MAX_REQUESTS=200
-RATE_LIMIT_WINDOW_SECONDS=60
-
-REQUIRE_AUTH=false                # Bật token auth khi public
-GATEWAY_TOKEN=...
-
-ENABLE_ADVANCED_TOOLS=true        # Docker runner + shell + runs
-ENABLE_AGENT_TOOLS=true           # agent_* file/command tools
-ENABLE_WORKSPACE_TOOLS=false      # workspace CRUD
-```
-
-Khuyến nghị khi public:
-
-```env
-RATE_LIMIT_ENABLED=true
-DISABLE_SECURITY_POLICIES=false
-ALLOWED_TCP_TARGETS=<chỉ-target-cần-thiết>
-BLOCK_PRIVATE_IPS=true
-REQUIRE_AUTH=true
-ENABLE_AGENT_TOOLS=false
-ENABLE_WORKSPACE_TOOLS=false
-```
-
-## Docker Runners
-
-Một consolidated image với 3 tags:
-
-| Tag | Công dụng |
-|-----|-----------|
-| `ctf-runner:latest` | Python + pwntools + crypto (python/pwn) |
-| `ctf-runner:web` | + Playwright + CloakBrowser |
-| `ctf-runner:forensics` | Ubuntu + volatility + binwalk... |
-
-Build: `./scripts/build_runner_images.sh`
-
-## Tool Profiles
-
-### Core (luôn bật)
-`health_check`, `get_capabilities`, `check_target_allowed`, `probe_target_from_runner`,
-`tcp_connect_ssl`, `run_basic_python_solver`, `run_safe_smoke_test`,
-`ctf_harness_capabilities`, `ctf_harness_instructions`, `ctf_harness_init/check/local/solve/verify/report/pack`
-
-### Advanced (ENABLE_ADVANCED_TOOLS=true)
-`run_solver_fallback`, `validate_run_request`, `upload_artifact`, `rerun_run`,
-`get_run_log`, `list_recent_runs`, `get_run_summary`, `get_run_stdout/stderr`,
-`tail_run_output`, `run_command`, `github_*`, `agent_goal_*`
-
-### Agent Tools (ENABLE_AGENT_TOOLS=true)
-`agent_list_directory`, `agent_read/write/edit_file`, `agent_grep_search`, `agent_run_command`
-
-## Logs
+## `host_knowledge`
 
 ```text
-logs/launcher.log       daemon output
-logs/server.log         FastMCP stdout
-logs/cloudflared.log    tunnel output + URL
-logs/gateway.log        audit events (JSON)
-logs/*.pid              PID files
-logs/artifacts/         uploaded artifacts
-logs/runs/              run histories
-logs/workspaces/        workspace state
+host_knowledge(section="overview")
+host_knowledge(section="guide")
+host_knowledge(section="tools", query="python", include_versions=true)
+host_knowledge(section="search", query="docker")
 ```
 
-## Docs
+Tool này đọc tài liệu trong `knowledge/` và đối chiếu `TOOL_CATALOG.json` với `PATH` thực tế của máy.
 
-| File | Mô tả |
-|------|-------|
-| `docs/WORKFLOW.md` | **Kiến trúc & vận hành chi tiết** |
-| `docs/REPO_STRUCTURE.md` | File map |
-| `docs/REFERENCES.md` | Research notes |
-| `SECURITY.md` | Threat model |
-| `CLAUDE.md` | Claude Code instructions |
+## Kiểm thử
+
+```bash
+./scripts/test.sh
+```
+
+## Cấu hình quan trọng
+
+```env
+HOST_WORKSPACE_DIR=/home/light
+HOST_RESTRICT_TO_WORKSPACE=true
+HOST_COMMAND_POLICY=guarded
+MAX_TIMEOUT_SECONDS=60
+MAX_OUTPUT_BYTES=500000
+REQUIRE_AUTH=true
+GATEWAY_TOKEN=<secret>
+```
+
+`guarded` chỉ là lớp bảo vệ khỏi các thao tác phá máy rõ ràng, không phải sandbox. MCP server chạy với quyền của user khởi động process.
+
+Xem thêm: `docs/ARCHITECTURE.md` và `SECURITY.md`.

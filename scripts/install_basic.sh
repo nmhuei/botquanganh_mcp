@@ -1,26 +1,23 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
-cd "$(dirname "$0")/.."
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT_DIR"
 
-if [ ! -d ".venv" ]; then
-    echo "[*] Creating Python virtual environment (.venv)..."
+if [ ! -d .venv ]; then
+    echo "[*] Creating .venv..."
     python3 -m venv .venv
 fi
 
-source .venv/bin/activate
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -r requirements.txt
 
-echo "[*] Checking basic MCP server dependencies with uv..."
-if [ ! -x ".venv/bin/uv" ]; then
-    python3 -m pip install --upgrade pip uv
-fi
-uv pip install -r requirements.txt
-
-if [ ! -f ".env" ]; then
-    echo "[*] Creating .env from .env.example..."
+if [ ! -f .env ]; then
     cp .env.example .env
+    echo "[*] Created .env from .env.example"
 fi
 
-echo "[+] Basic install complete."
-echo "[+] Server can run with core MCP tools. Advanced runner tools remain disabled until:"
-echo "    ./scripts/install_advanced_tools.sh"
+mkdir -p logs
+
+echo "[+] Host MCP dependencies installed."
+echo "[+] Configure GATEWAY_TOKEN and HOST_WORKSPACE_DIR in .env before public use."

@@ -1,16 +1,29 @@
+import json
 import os
 import subprocess
 import sys
 
+EXPECTED_TOOLS = {
+    "health_check",
+    "get_capabilities",
+    "host_list_directory",
+    "host_read_file",
+    "host_write_file",
+    "host_replace_in_file",
+    "host_append_file",
+    "host_make_directory",
+    "host_search_text",
+    "host_check_command",
+    "host_run_command",
+    "host_knowledge",
+}
 
-def test_basic_surface_does_not_load_agent_tools_by_side_effect():
+
+def _list_tools() -> set[str]:
     env = {
         **os.environ,
-        "ENABLE_ADVANCED_TOOLS": "false",
-        "ENABLE_AGENT_TOOLS": "false",
-        "ENABLE_WORKSPACE_TOOLS": "false",
-        "DISABLE_SECURITY_POLICIES": "false",
-        "ALLOWED_TCP_TARGETS": "",
+        "REQUIRE_AUTH": "false",
+        "HOST_WORKSPACE_DIR": os.getcwd(),
     }
     code = """
 import asyncio
@@ -29,11 +42,11 @@ asyncio.run(main())
         env=env,
         capture_output=True,
         text=True,
-        timeout=15,
+        timeout=20,
         check=True,
     )
-    tool_names = set(__import__("json").loads(proc.stdout))
+    return set(json.loads(proc.stdout))
 
-    assert "ctf_harness_check" in tool_names
-    assert "agent_run_command" not in tool_names
-    assert "agent_write_file" not in tool_names
+
+def test_tool_surface_is_exactly_host_core():
+    assert _list_tools() == EXPECTED_TOOLS

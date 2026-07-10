@@ -1,0 +1,448 @@
+[
+  {
+    "name": "git",
+    "category": "version-control",
+    "purpose": "Distributed version control and repository inspection.",
+    "usage_notes": [
+      "Use status/diff before edits; avoid destructive reset/clean without explicit instruction."
+    ],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "gh",
+    "category": "version-control",
+    "purpose": "GitHub CLI for pull requests, issues, Actions, and authenticated repository operations.",
+    "usage_notes": [
+      "Prefer structured GitHub MCP tools when available for remote mutations."
+    ],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "python3",
+    "category": "languages",
+    "purpose": "Primary Python interpreter for scripts, tests, and automation.",
+    "usage_notes": [
+      "Use the project virtual environment when present."
+    ],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "python",
+    "category": "languages",
+    "purpose": "Python interpreter alias.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "pip3",
+    "category": "packages",
+    "purpose": "Python package installer.",
+    "usage_notes": [
+      "Inspect project dependency files before installing packages."
+    ],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "uv",
+    "category": "packages",
+    "purpose": "Fast Python package and environment manager.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "pytest",
+    "category": "testing",
+    "purpose": "Python test runner.",
+    "usage_notes": [
+      "Run focused tests first, then the full relevant suite."
+    ],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "ruff",
+    "category": "quality",
+    "purpose": "Python linter and formatter.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "mypy",
+    "category": "quality",
+    "purpose": "Static type checker for Python.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "node",
+    "category": "languages",
+    "purpose": "Node.js JavaScript runtime.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "npm",
+    "category": "packages",
+    "purpose": "Node.js package manager.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "pnpm",
+    "category": "packages",
+    "purpose": "Disk-efficient Node.js package manager.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "npx",
+    "category": "packages",
+    "purpose": "Execute Node.js package binaries.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "go",
+    "category": "languages",
+    "purpose": "Go compiler and tooling.",
+    "usage_notes": [],
+    "version_args": [
+      "version"
+    ]
+  },
+  {
+    "name": "rustc",
+    "category": "languages",
+    "purpose": "Rust compiler.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "cargo",
+    "category": "packages",
+    "purpose": "Rust build and package manager.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "java",
+    "category": "languages",
+    "purpose": "Java runtime.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "javac",
+    "category": "languages",
+    "purpose": "Java compiler.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "mvn",
+    "category": "build",
+    "purpose": "Apache Maven build tool.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "gradle",
+    "category": "build",
+    "purpose": "Gradle build tool.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "make",
+    "category": "build",
+    "purpose": "Make-based build automation.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "cmake",
+    "category": "build",
+    "purpose": "Cross-platform build configuration generator.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "gcc",
+    "category": "compilers",
+    "purpose": "GNU C compiler.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "g++",
+    "category": "compilers",
+    "purpose": "GNU C++ compiler.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "docker",
+    "category": "containers",
+    "purpose": "Docker container engine and CLI.",
+    "usage_notes": [
+      "Verify daemon availability separately from CLI presence."
+    ],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "docker-compose",
+    "category": "containers",
+    "purpose": "Docker Compose standalone command.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "podman",
+    "category": "containers",
+    "purpose": "Daemonless OCI container engine.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "bash",
+    "category": "shell",
+    "purpose": "GNU Bourne Again Shell used by host_run_command.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "zsh",
+    "category": "shell",
+    "purpose": "Z shell.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "rg",
+    "category": "search",
+    "purpose": "ripgrep recursive text search.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "grep",
+    "category": "search",
+    "purpose": "POSIX/GNU text search.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "find",
+    "category": "search",
+    "purpose": "Filesystem traversal and filtering.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "jq",
+    "category": "data",
+    "purpose": "JSON query and transformation tool.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "curl",
+    "category": "network",
+    "purpose": "HTTP and general URL transfer client.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "wget",
+    "category": "network",
+    "purpose": "File and web resource downloader.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "openssl",
+    "category": "security",
+    "purpose": "TLS, certificate, hashing, and cryptographic CLI.",
+    "usage_notes": [],
+    "version_args": [
+      "version"
+    ]
+  },
+  {
+    "name": "nmap",
+    "category": "network",
+    "purpose": "Network service discovery and port scanning.",
+    "usage_notes": [
+      "Use only against systems the user is authorized to assess."
+    ],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "shellcheck",
+    "category": "quality",
+    "purpose": "Static analysis for shell scripts.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "file",
+    "category": "analysis",
+    "purpose": "Identify file formats using magic signatures.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "strings",
+    "category": "analysis",
+    "purpose": "Extract printable strings from binary files.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "readelf",
+    "category": "analysis",
+    "purpose": "Inspect ELF binaries.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "objdump",
+    "category": "analysis",
+    "purpose": "Display object and executable file information.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "gdb",
+    "category": "analysis",
+    "purpose": "GNU debugger.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "tshark",
+    "category": "analysis",
+    "purpose": "Command-line packet analysis.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  },
+  {
+    "name": "exiftool",
+    "category": "analysis",
+    "purpose": "Metadata extraction and editing.",
+    "usage_notes": [],
+    "version_args": [
+      "-ver"
+    ]
+  },
+  {
+    "name": "binwalk",
+    "category": "analysis",
+    "purpose": "Firmware and embedded file signature analysis.",
+    "usage_notes": [],
+    "version_args": [
+      "--help"
+    ]
+  },
+  {
+    "name": "ffmpeg",
+    "category": "media",
+    "purpose": "Audio and video conversion and inspection.",
+    "usage_notes": [],
+    "version_args": [
+      "-version"
+    ]
+  },
+  {
+    "name": "convert",
+    "category": "media",
+    "purpose": "ImageMagick image conversion command.",
+    "usage_notes": [],
+    "version_args": [
+      "--version"
+    ]
+  }
+]

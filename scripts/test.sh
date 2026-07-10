@@ -1,12 +1,9 @@
-#!/bin/bash
-cd "$(dirname "$0")/.."
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Activate virtual environment if present
-if [ -d ".venv" ]; then
-    source .venv/bin/activate
-fi
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT_DIR"
 
-export PYTHONPATH=.
-
-echo "[*] Running all unit tests..."
-python3 -m unittest discover -s tests -p "test_*.py"
+[ -x .venv/bin/python ] || ./scripts/install_basic.sh
+export PYTHONPATH="$ROOT_DIR"
+exec .venv/bin/python -m pytest -q
