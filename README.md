@@ -54,6 +54,13 @@ URL connector có dạng:
 https://<random>.trycloudflare.com/mcp
 ```
 
+Streamable HTTP được cấu hình ở chế độ stateless và trả JSON trực tiếp. Mỗi request của ChatGPT hoạt động độc lập, không cần `mcp-session-id` và không giữ SSE stream cho các tool call thông thường.
+
+```env
+MCP_JSON_RESPONSE=true
+MCP_STATELESS_HTTP=true
+```
+
 ## Tool MCP
 
 ```text

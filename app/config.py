@@ -11,6 +11,8 @@ VERSION = "1.0.0"
 
 MCP_BIND_HOST = os.getenv("MCP_BIND_HOST", "127.0.0.1")
 MCP_PORT = int(os.getenv("MCP_PORT", "8000"))
+MCP_JSON_RESPONSE = os.getenv("MCP_JSON_RESPONSE", "true").lower() == "true"
+MCP_STATELESS_HTTP = os.getenv("MCP_STATELESS_HTTP", "true").lower() == "true"
 GATEWAY_TOKEN = os.getenv("GATEWAY_TOKEN", "")
 REQUIRE_AUTH = os.getenv("REQUIRE_AUTH", "true").lower() == "true"
 TRUST_PROXY_HEADERS = os.getenv("TRUST_PROXY_HEADERS", "false").lower() == "true"
