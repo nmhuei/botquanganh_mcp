@@ -9,21 +9,22 @@ ChatGPT / MCP client
 Cloudflare Tunnel (optional)
         │
         ▼
-FastMCP Streamable HTTP
+FastMCP Streamable HTTP + Starlette
         │
         ├── authentication
         ├── rate limiting
         ├── request metrics
-        └── /healthz
-                │
-                ▼
-        MCP tool adapters
-        ├── app/tools/health.py
-        ├── app/tools/host.py
-        └── app/tools/host_knowledge.py
-                │
-                ▼
-        Host services
+        ├── /healthz
+        ├── /mcp
+        │     └── MCP tool adapters
+        │           ├── app/tools/health.py
+        │           ├── app/tools/host.py
+        │           └── app/tools/host_knowledge.py
+        └── /api/v1
+              └── app/rest_api.py
+                        │
+                        ▼
+        Shared host services
         ├── paths.py
         ├── files.py
         ├── policy.py
@@ -33,8 +34,9 @@ FastMCP Streamable HTTP
 
 ## Quy tắc phụ thuộc
 
-- `app/host/` không chứa MCP decorator.
+- `app/host/` không chứa MCP decorator hoặc HTTP route.
 - `app/tools/` chỉ chuyển đổi MCP request sang host service và chuẩn hóa lỗi.
+- `app/rest_api.py` chuyển đổi REST request sang cùng host service, không nhân đôi business logic.
 - `app/main.py` đăng ký tool rõ ràng; không tự động import plugin.
 - `knowledge/` là nguồn tài liệu và catalog, không chứa executable code.
 - Branch này chỉ chứa host core, knowledge catalog và lớp vận hành cần thiết.

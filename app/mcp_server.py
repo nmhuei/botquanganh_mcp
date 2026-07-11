@@ -156,6 +156,10 @@ def _chatgpt_http_app(self, *args, **kwargs):
             0,
             Route("/healthz", endpoint=healthz_endpoint, methods=["GET"]),
         )
+
+    from app.rest_api import install_rest_routes
+
+    install_rest_routes(app)
     app.add_middleware(MetricsMiddleware)
     app.add_middleware(TokenAuthMiddleware)
     return app

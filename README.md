@@ -61,6 +61,66 @@ MCP_JSON_RESPONSE=true
 MCP_STATELESS_HTTP=true
 ```
 
+## REST API
+
+REST API dùng chung host services với MCP và chạy trên cùng server/tunnel. Base path:
+
+```text
+/api/v1
+```
+
+OpenAPI document:
+
+```text
+/api/v1/openapi.json
+```
+
+Các endpoint chính:
+
+| Method | Endpoint | Chức năng |
+|---|---|---|
+| `GET` | `/api/v1/health` | Trạng thái server |
+| `GET` | `/api/v1/capabilities` | Tool, workspace và giới hạn |
+| `GET` | `/api/v1/files` | Liệt kê thư mục |
+| `GET` | `/api/v1/files/content` | Đọc file text |
+| `PUT` | `/api/v1/files/content` | Tạo hoặc ghi đè file |
+| `PATCH` | `/api/v1/files/content` | Thay thế text trong file |
+| `POST` | `/api/v1/files/append` | Nối nội dung vào file |
+| `POST` | `/api/v1/directories` | Tạo thư mục |
+| `GET` | `/api/v1/search` | Tìm text trong workspace |
+| `POST` | `/api/v1/commands/check` | Kiểm tra command |
+| `POST` | `/api/v1/commands/run` | Chạy command trên host |
+| `GET` | `/api/v1/knowledge` | Đọc guide và tool inventory |
+
+Khi `REQUIRE_AUTH=true`, dùng một trong hai header:
+
+```text
+Authorization: Bearer <GATEWAY_TOKEN>
+X-Gateway-Token: <GATEWAY_TOKEN>
+```
+
+Ví dụ:
+
+```bash
+BASE_URL="https://<tunnel>.trycloudflare.com"
+TOKEN="<GATEWAY_TOKEN>"
+
+curl -H "Authorization: Bearer $TOKEN" \
+  "$BASE_URL/api/v1/files?path=GitHub"
+
+curl -X PUT \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"path":"Workspace/demo.txt","content":"hello REST\n"}' \
+  "$BASE_URL/api/v1/files/content"
+
+curl -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"command":"git status --short","cwd":"GitHub/botquanganh_mcp"}' \
+  "$BASE_URL/api/v1/commands/run"
+```
+
 ## Tool MCP
 
 ```text
