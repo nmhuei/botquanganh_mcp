@@ -31,6 +31,7 @@ jobs:
         run: |
           cp .env.example .env
           sed -i 's/^REQUIRE_AUTH=true/REQUIRE_AUTH=false/' .env
+          sed -i "s|^HOST_WORKSPACE_DIR=.*|HOST_WORKSPACE_DIR=$GITHUB_WORKSPACE|" .env
           chmod 600 .env
 
       - name: Install
