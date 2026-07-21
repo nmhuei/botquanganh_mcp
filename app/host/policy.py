@@ -14,7 +14,7 @@ from app.host.paths import host_workspace_dir
 _FORBIDDEN_PATTERNS: tuple[tuple[str, re.Pattern[str], str], ...] = (
     (
         "remove_root",
-        re.compile(r"(^|[;&|\s])rm\s+[^\n;]*(?:-rf|-fr|--recursive)[^\n;]*\s/(?:\s|$|[;&|])", re.IGNORECASE),
+        re.compile(r"(^|[;&|(`\s])rm\s+[^\n;]*(?:-rf|-fr|--recursive)[^\n;]*\s/(?:\s|$|[;&|)`])", re.IGNORECASE),
         "Recursive deletion of the filesystem root is blocked.",
     ),
     (
@@ -24,7 +24,7 @@ _FORBIDDEN_PATTERNS: tuple[tuple[str, re.Pattern[str], str], ...] = (
     ),
     (
         "filesystem_format",
-        re.compile(r"(^|[;&|\s])mkfs(?:\.|\s)", re.IGNORECASE),
+        re.compile(r"(^|[;&|(`\s])mkfs(?:\.|\s)", re.IGNORECASE),
         "Filesystem formatting is blocked.",
     ),
     (
@@ -44,12 +44,12 @@ _FORBIDDEN_PATTERNS: tuple[tuple[str, re.Pattern[str], str], ...] = (
     ),
     (
         "shutdown_host",
-        re.compile(r"(^|[;&|\s])(?:shutdown|reboot|poweroff|halt)(?:\s|$)", re.IGNORECASE),
+        re.compile(r"(^|[;&|(`\s])(?:shutdown|reboot|poweroff|halt)(?:\s|$|[;&|)`])", re.IGNORECASE),
         "Power-management commands are blocked through MCP.",
     ),
     (
         "privilege_escalation",
-        re.compile(r"(^|[;&|\s])(?:sudo|su)(?:\s|$)", re.IGNORECASE),
+        re.compile(r"(^|[;&|(`\s])(?:sudo|su|doas|pkexec)(?:\s|$|[;&|)`])", re.IGNORECASE),
         "Privilege escalation is blocked through MCP host tools.",
     ),
 )
@@ -67,13 +67,69 @@ _DEFAULT_ALLOWLIST = {
     "xargs", "xxd", "zip",
 }
 
-_CHAIN_SPLIT_RE = re.compile(r"(?:&&|\|\||[;|\n])")
 _ENV_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=.*$")
+_DYNAMIC_SHELL_RE = re.compile(r"(?<!\\)(?:\$\(|`|[<>]\()")
+
+
+def _split_shell_chain(command: str) -> list[str]:
+    """Split shell command chains without breaking separators inside quotes."""
+    segments: list[str] = []
+    current: list[str] = []
+    quote: str | None = None
+    escaped = False
+    index = 0
+
+    while index < len(command):
+        char = command[index]
+        if escaped:
+            current.append(char)
+            escaped = False
+            index += 1
+            continue
+        if char == "\\" and quote != "'":
+            current.append(char)
+            escaped = True
+            index += 1
+            continue
+        if quote:
+            current.append(char)
+            if char == quote:
+                quote = None
+            index += 1
+            continue
+        if char in {"'", '"'}:
+            quote = char
+            current.append(char)
+            index += 1
+            continue
+        if char == "\n" or char == ";" or char == "|":
+            if char == "|" and index + 1 < len(command) and command[index + 1] == "|":
+                index += 1
+            segment = "".join(current).strip()
+            if segment:
+                segments.append(segment)
+            current = []
+            index += 1
+            continue
+        if char == "&":
+            segment = "".join(current).strip()
+            if segment:
+                segments.append(segment)
+            current = []
+            index += 2 if index + 1 < len(command) and command[index + 1] == "&" else 1
+            continue
+        current.append(char)
+        index += 1
+
+    segment = "".join(current).strip()
+    if segment:
+        segments.append(segment)
+    return segments
 
 
 def _command_names(command: str) -> list[str]:
     names: list[str] = []
-    for segment in _CHAIN_SPLIT_RE.split(command):
+    for segment in _split_shell_chain(command):
         segment = segment.strip()
         if not segment:
             continue
@@ -103,7 +159,7 @@ def _command_names(command: str) -> list[str]:
 def _inspect_recursive_rm(command: str) -> dict[str, Any] | None:
     """Reject recursive removal of absolute paths outside the host workspace."""
     workspace = host_workspace_dir()
-    for segment in _CHAIN_SPLIT_RE.split(command):
+    for segment in _split_shell_chain(command):
         try:
             words = shlex.split(segment, posix=True)
         except ValueError:
@@ -178,6 +234,19 @@ def inspect_host_command(command: str) -> dict[str, Any]:
     policy = app.config.HOST_COMMAND_POLICY
     names = _command_names(command)
     if policy == "allowlist":
+        dynamic = _DYNAMIC_SHELL_RE.search(command)
+        if dynamic:
+            return {
+                "allowed": False,
+                "severity": "policy",
+                "rule": "dynamic_shell_not_allowlisted",
+                "matched_fragment": dynamic.group(0),
+                "command_names": names,
+                "message": (
+                    "Command substitution and process substitution are not allowed "
+                    "when HOST_COMMAND_POLICY=allowlist."
+                ),
+            }
         allowed_commands = _DEFAULT_ALLOWLIST | set(app.config.HOST_ALLOWED_COMMANDS)
         denied = [name for name in names if name not in allowed_commands]
         if denied:

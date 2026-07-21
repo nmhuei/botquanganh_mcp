@@ -15,7 +15,7 @@ from app.host.files import (
 )
 from app.host.inventory import get_tool_inventory, read_guides
 from app.host.policy import inspect_host_command
-from app.tools.host import host_run_command
+from app.tools.host import host_run_command, host_write_file
 from app.tools.host_knowledge import host_knowledge
 
 
@@ -117,3 +117,41 @@ def test_host_knowledge_reads_guides_and_detects_tools(monkeypatch):
     assert response["ok"] is True
     assert response["section"] == "tools"
     assert response["inventory"]["summary"]["returned"] >= 1
+
+
+def test_command_parser_preserves_quoted_shell_separators(host_workspace):
+    quoted = inspect_host_command(
+        'python3 -c "from pathlib import Path; print(Path.cwd())"'
+    )
+    assert quoted["allowed"] is True
+    assert quoted["command_names"] == ["python3"]
+
+    chained = inspect_host_command("printf one && python3 -c 'print(\"a|b;c\")'")
+    assert chained["command_names"] == ["printf", "python3"]
+
+
+def test_host_write_existing_file_returns_file_exists_error(host_workspace):
+    write_text_file("existing.txt", "one")
+    result = host_write_file("existing.txt", "two", overwrite=False)
+    assert result["ok"] is False
+    assert result["error"]["code"] == "FILE_EXISTS"
+
+
+def test_policy_splits_background_chains(host_workspace):
+    result = inspect_host_command("printf one & python3 -c 'print(2)'")
+    assert result["command_names"] == ["printf", "python3"]
+
+
+def test_allowlist_rejects_dynamic_shell_substitution(host_workspace, monkeypatch):
+    monkeypatch.setattr(app.config, "HOST_COMMAND_POLICY", "allowlist")
+    monkeypatch.setattr(app.config, "HOST_ALLOWED_COMMANDS", [])
+    result = inspect_host_command("printf '%s' $(whoami)")
+    assert result["allowed"] is False
+    assert result["rule"] == "dynamic_shell_not_allowlisted"
+
+
+def test_guarded_policy_blocks_nested_and_alternative_privilege_tools(host_workspace):
+    for command in ("echo $(sudo id)", "doas id", "pkexec id"):
+        result = inspect_host_command(command)
+        assert result["allowed"] is False, command
+        assert result["rule"] == "privilege_escalation"

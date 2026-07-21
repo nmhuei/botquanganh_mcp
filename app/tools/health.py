@@ -5,15 +5,20 @@ from app.config import (
     HOST_KNOWLEDGE_DIR,
     HOST_RESTRICT_TO_WORKSPACE,
     HOST_WORKSPACE_DIR,
+    COMMAND_QUEUE_TIMEOUT_SECONDS,
+    MAX_CONCURRENT_COMMANDS,
     MAX_OUTPUT_BYTES,
     MAX_SINGLE_FILE_BYTES,
     MAX_TIMEOUT_SECONDS,
+    RATE_LIMIT_MAX_CLIENTS,
     SERVICE_NAME,
     VERSION,
 )
+from app.host.executor import command_capacity
 from app.logging_audit import log_audit_event
 from app.mcp_server import mcp
 from app.metrics import metrics
+from app.ratelimit import rate_limiter
 from app.security import format_error_response
 
 HOST_TOOLS = [
@@ -46,8 +51,20 @@ def health_check() -> dict:
                 "uptime_seconds": stats["uptime_seconds"],
                 "total_requests": stats["total_requests"],
                 "error_count": stats["error_count"],
+                "client_error_count": stats["client_error_count"],
+                "auth_failures": stats["auth_failures"],
                 "rate_limit_hits": stats["rate_limit_hits"],
+                "in_flight": stats["in_flight"],
+                "peak_in_flight": stats["peak_in_flight"],
                 "avg_latency_ms": stats["avg_latency_ms"],
+                "p50_latency_ms": stats["p50_latency_ms"],
+                "p95_latency_ms": stats["p95_latency_ms"],
+                "status_counts": stats["status_counts"],
+                "latency_sample_size": stats["latency_sample_size"],
+            },
+            "capacity": {
+                "commands": command_capacity.get_stats(),
+                "rate_limiter": rate_limiter.get_stats(),
             },
         }
     except Exception as exc:
@@ -78,6 +95,9 @@ def get_capabilities() -> dict:
                 "max_timeout_seconds": MAX_TIMEOUT_SECONDS,
                 "max_single_file_bytes": MAX_SINGLE_FILE_BYTES,
                 "max_output_bytes": MAX_OUTPUT_BYTES,
+                "max_concurrent_commands": MAX_CONCURRENT_COMMANDS,
+                "command_queue_timeout_seconds": COMMAND_QUEUE_TIMEOUT_SECONDS,
+                "rate_limit_max_clients": RATE_LIMIT_MAX_CLIENTS,
             },
             "features": {
                 "host_filesystem": True,

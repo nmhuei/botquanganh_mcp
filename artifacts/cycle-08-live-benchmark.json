@@ -1,0 +1,41 @@
+{
+  "generated_at_epoch": 1784560601.447986,
+  "command_capacity": {
+    "requests": 8,
+    "workers": 8,
+    "sleep_seconds": 3.0,
+    "total_ms": 3095.7,
+    "status_counts": {
+      "200": 4,
+      "503": 4
+    },
+    "latencies_ms": [
+      3092.8,
+      2022.3,
+      2019.6,
+      3091.8,
+      2019.2,
+      3089.3,
+      3037.7,
+      2017.2
+    ]
+  },
+  "local_health": {
+    "count": 40,
+    "workers": 10,
+    "total_ms": 32.3,
+    "requests_per_second": 1237.9,
+    "p50_ms": 6.1,
+    "p95_ms": 10.7,
+    "max_ms": 11.9
+  },
+  "public_health": {
+    "count": 40,
+    "workers": 10,
+    "total_ms": 1627.3,
+    "requests_per_second": 24.6,
+    "p50_ms": 240.3,
+    "p95_ms": 877.0,
+    "max_ms": 878.0
+  }
+}

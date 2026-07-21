@@ -4,7 +4,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
-./scripts/install_basic.sh >/dev/null
+[ -x .venv/bin/fastmcp ] || ./scripts/install_basic.sh >/dev/null
+# shellcheck source=scripts/process_helpers.sh
+source ./scripts/process_helpers.sh
 command -v cloudflared >/dev/null 2>&1 || {
     echo "[-] cloudflared is not installed or not in PATH."
     exit 1
@@ -15,80 +17,85 @@ mkdir -p logs
 read_env() {
     local key="$1" default_value="$2"
     .venv/bin/python - "$key" "$default_value" <<'PY'
+import os
 import sys
 from dotenv import dotenv_values
+
+key, default = sys.argv[1], sys.argv[2]
 values = dotenv_values('.env')
-print(values.get(sys.argv[1]) or sys.argv[2])
+print(os.environ.get(key) or values.get(key) or default)
 PY
 }
 
 MCP_BIND_HOST="${MCP_BIND_HOST:-$(read_env MCP_BIND_HOST 127.0.0.1)}"
 MCP_CONNECT_HOST="${MCP_CONNECT_HOST:-127.0.0.1}"
 MCP_PORT="${MCP_PORT:-$(read_env MCP_PORT 8000)}"
-MCP_PATH="${MCP_PATH:-/mcp}"
+MCP_PATH="${MCP_PATH:-$(read_env MCP_PATH /mcp)}"
 SERVER_PID_FILE="logs/server.pid"
 TUNNEL_PID_FILE="logs/tunnel.pid"
-WATCHDOG_PID_FILE="logs/watchdog.pid"
+SUPERVISOR_PID_FILE="logs/watchdog.pid"
+LAUNCHER_PID_FILE="logs/launcher.pid"
+TUNNEL_URL_FILE="logs/tunnel_url.txt"
+SERVER_LOG="logs/server.log"
+CLOUDFLARED_LOG="logs/cloudflared.log"
 
-SERVER_PID=""
-TUNNEL_PID=""
-URL=""
+SERVER_STARTED_AT=0
+PUBLISHED_TUNNEL_PID=""
+SHUTTING_DOWN=0
 
-wait_for_socket() {
-    for _ in $(seq 1 40); do
-        if .venv/bin/python - "$MCP_CONNECT_HOST" "$MCP_PORT" <<'PY' >/dev/null 2>&1
-import socket, sys
-with socket.create_connection((sys.argv[1], int(sys.argv[2])), timeout=0.3):
-    pass
-PY
-        then
-            return 0
-        fi
-        sleep 0.5
-    done
-    return 1
+read_pid() {
+    read_pid_file "$1"
 }
 
-wait_for_tunnel_url() {
-    for _ in $(seq 1 30); do
-        URL=$(grep -o -E 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' logs/cloudflared.log 2>/dev/null | head -n 1 || true)
-        [ -z "$URL" ] || return 0
-        sleep 1
-    done
-    return 1
+atomic_write() {
+    atomic_write_runtime_file "$1" "$2"
 }
 
 stop_pid_file() {
-    local file="$1" pid=""
-    pid=$(cat "$file" 2>/dev/null || true)
-    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-        kill "$pid" 2>/dev/null || true
-        for _ in $(seq 1 10); do
-            kill -0 "$pid" 2>/dev/null || break
-            sleep 0.1
-        done
-        kill -9 "$pid" 2>/dev/null || true
-    fi
-    rm -f "$file"
+    stop_managed_pid_file "$1" "$2" "$3"
 }
 
-stop_all() {
-    stop_pid_file "$WATCHDOG_PID_FILE"
-    stop_pid_file "$TUNNEL_PID_FILE"
-    stop_pid_file "$SERVER_PID_FILE"
-    
-    if command -v lsof >/dev/null 2>&1; then
-        local port_pids
-        port_pids=$(lsof -t -i :"$MCP_PORT" 2>/dev/null || true)
-        if [ -n "$port_pids" ]; then
-            kill $port_pids 2>/dev/null || true
-            sleep 0.5
-            kill -9 $port_pids 2>/dev/null || true
-        fi
-    fi
+remove_own_pid_file() {
+    local file="$1" pid=""
+    pid=$(read_pid "$file")
+    [ "$pid" != "$$" ] || rm -f "$file"
+}
+
+shutdown() {
+    [ "$SHUTTING_DOWN" -eq 0 ] || exit 0
+    SHUTTING_DOWN=1
+    trap - TERM INT
+
+    # Child processes must stop only after the supervisor is no longer able to recreate them.
+    stop_pid_file "$TUNNEL_PID_FILE" tunnel "Cloudflare Tunnel"
+    stop_pid_file "$SERVER_PID_FILE" server "MCP Server"
+    rm -f "$TUNNEL_URL_FILE"
+    remove_own_pid_file "$SUPERVISOR_PID_FILE"
+    remove_own_pid_file "$LAUNCHER_PID_FILE"
+    exit 0
+}
+
+trap shutdown TERM INT
+
+socket_ready() {
+    .venv/bin/python - "$MCP_CONNECT_HOST" "$MCP_PORT" <<'PY' >/dev/null 2>&1
+import socket
+import sys
+
+with socket.create_connection((sys.argv[1], int(sys.argv[2])), timeout=0.25):
+    pass
+PY
 }
 
 start_server() {
+    local existing=""
+    existing=$(read_pid "$SERVER_PID_FILE")
+    if pid_matches_kind "$existing" server; then
+        [ "$SERVER_STARTED_AT" -gt 0 ] || SERVER_STARTED_AT=$(date +%s)
+        return 0
+    fi
+
+    rm -f "$SERVER_PID_FILE"
     export PYTHONPATH="$ROOT_DIR"
     export FASTMCP_MESSAGE_PATH="$MCP_PATH"
     nohup .venv/bin/fastmcp run app/main.py \
@@ -96,99 +103,92 @@ start_server() {
         --host "$MCP_BIND_HOST" \
         --port "$MCP_PORT" \
         --path "$MCP_PATH" \
-        > logs/server.log 2>&1 &
-    SERVER_PID=$!
-    echo "$SERVER_PID" > "$SERVER_PID_FILE"
-    wait_for_socket || {
-        echo "[-] MCP server failed to start. Check logs/server.log."
-        return 1
-    }
+        > "$SERVER_LOG" 2>&1 &
+    local pid=$!
+    atomic_write "$SERVER_PID_FILE" "$pid"
+    SERVER_STARTED_AT=$(date +%s)
+    echo "[+] MCP server process started (PID $pid)."
 }
 
 start_tunnel() {
-    : > logs/cloudflared.log
+    local existing=""
+    existing=$(read_pid "$TUNNEL_PID_FILE")
+    if pid_matches_kind "$existing" tunnel; then
+        return 0
+    fi
+
+    rm -f "$TUNNEL_PID_FILE" "$TUNNEL_URL_FILE"
+    : > "$CLOUDFLARED_LOG"
     nohup cloudflared tunnel --url "http://${MCP_CONNECT_HOST}:${MCP_PORT}" \
-        > logs/cloudflared.log 2>&1 &
-    TUNNEL_PID=$!
-    echo "$TUNNEL_PID" > "$TUNNEL_PID_FILE"
-    wait_for_tunnel_url || {
-        echo "[-] Cloudflare Tunnel did not return a URL. Check logs/cloudflared.log."
-        return 1
-    }
+        > "$CLOUDFLARED_LOG" 2>&1 &
+    local pid=$!
+    atomic_write "$TUNNEL_PID_FILE" "$pid"
+    PUBLISHED_TUNNEL_PID=""
+    echo "[+] Cloudflare Tunnel process started (PID $pid)."
 }
 
-# If requested to run as the background watchdog loop
-if [ "${1:-}" = "--daemon-loop" ]; then
-    health_failures=0
-    while true; do
-        s_pid=$(cat "$SERVER_PID_FILE" 2>/dev/null || echo "")
-        if [ -z "$s_pid" ] || ! kill -0 "$s_pid" 2>/dev/null; then
-            start_server
-        fi
+publish_tunnel_url() {
+    local pid="" url=""
+    pid=$(read_pid "$TUNNEL_PID_FILE")
+    pid_matches_kind "$pid" tunnel || return 1
 
-        t_pid=$(cat "$TUNNEL_PID_FILE" 2>/dev/null || echo "")
-        if [ -z "$t_pid" ] || ! kill -0 "$t_pid" 2>/dev/null; then
-            start_tunnel
-        fi
+    if [ "$PUBLISHED_TUNNEL_PID" = "$pid" ] && [ -s "$TUNNEL_URL_FILE" ]; then
+        return 0
+    fi
 
-        if curl -fsS --max-time 3 "http://${MCP_CONNECT_HOST}:${MCP_PORT}/healthz" >/dev/null 2>&1; then
-            health_failures=0
-        else
-            health_failures=$((health_failures + 1))
-            if [ "$health_failures" -ge 3 ]; then
-                stop_pid_file "$SERVER_PID_FILE"
-                start_server
-                health_failures=0
-            fi
-        fi
+    url=$(grep -o -E 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' "$CLOUDFLARED_LOG" 2>/dev/null | head -n 1 || true)
+    [ -n "$url" ] || return 1
 
-        sleep 5
-    done
+    atomic_write "$TUNNEL_URL_FILE" "$url"
+    PUBLISHED_TUNNEL_PID="$pid"
+    echo "[+] Connector URL published: ${url}${MCP_PATH}"
+}
+
+existing_supervisor=$(read_pid "$SUPERVISOR_PID_FILE")
+if pid_matches_kind "$existing_supervisor" supervisor && [ "$existing_supervisor" != "$$" ]; then
+    echo "[i] Supervisor is already running (PID $existing_supervisor)."
     exit 0
 fi
+atomic_write "$SUPERVISOR_PID_FILE" "$$"
 
-# Otherwise, this is the main user invocation to start/restart
-stop_all
-
+# These functions only spawn processes; neither waits for bridge readiness.
+# Therefore the server and tunnel begin startup in parallel from the user's perspective.
 start_server
 start_tunnel
 
-echo "[+] Host MCP server: http://${MCP_CONNECT_HOST}:${MCP_PORT}${MCP_PATH}"
-echo "[+] ChatGPT connector: ${URL}${MCP_PATH}"
+health_failures=0
+last_health_check=0
 
-if [ "${1:-}" = "--foreground" ] || [ "${1:-}" = "-f" ]; then
-    echo "[+] Watchdog active in foreground. Press Ctrl+C to stop."
-    health_failures=0
-    while true; do
-        s_pid=$(cat "$SERVER_PID_FILE" 2>/dev/null || echo "")
-        if [ -z "$s_pid" ] || ! kill -0 "$s_pid" 2>/dev/null; then
-            start_server
-        fi
+while true; do
+    server_pid=$(read_pid "$SERVER_PID_FILE")
+    if ! pid_matches_kind "$server_pid" server; then
+        start_server
+        health_failures=0
+    fi
 
-        t_pid=$(cat "$TUNNEL_PID_FILE" 2>/dev/null || echo "")
-        if [ -z "$t_pid" ] || ! kill -0 "$t_pid" 2>/dev/null; then
-            start_tunnel
-        fi
+    tunnel_pid=$(read_pid "$TUNNEL_PID_FILE")
+    if ! pid_matches_kind "$tunnel_pid" tunnel; then
+        rm -f "$TUNNEL_URL_FILE"
+        start_tunnel
+    fi
 
-        if curl -fsS --max-time 3 "http://${MCP_CONNECT_HOST}:${MCP_PORT}/healthz" >/dev/null 2>&1; then
+    publish_tunnel_url || true
+
+    now=$(date +%s)
+    if [ "$now" -ne "$last_health_check" ]; then
+        last_health_check=$now
+        if socket_ready; then
             health_failures=0
-        else
+        elif [ $((now - SERVER_STARTED_AT)) -ge 20 ]; then
             health_failures=$((health_failures + 1))
             if [ "$health_failures" -ge 3 ]; then
-                stop_pid_file "$SERVER_PID_FILE"
+                echo "[!] MCP bridge stayed unhealthy; restarting only the server process."
+                stop_pid_file "$SERVER_PID_FILE" server "MCP Server"
                 start_server
                 health_failures=0
             fi
         fi
+    fi
 
-        sleep 5
-    done
-else
-    # Launch the watchdog daemon loop in the background
-    nohup "$0" --daemon-loop >/dev/null 2>&1 &
-    WATCHDOG_PID=$!
-    echo "$WATCHDOG_PID" > "$WATCHDOG_PID_FILE"
-
-    echo "[+] Watchdog active in background (PID $WATCHDOG_PID)."
-    echo "[+] To stop the server and tunnel, run: ./scripts/stop_tunnel_server.sh"
-fi
+    sleep 0.1
+done

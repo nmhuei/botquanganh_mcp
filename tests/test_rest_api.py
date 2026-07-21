@@ -192,3 +192,52 @@ print(json.dumps(result))
         "bearer": 200,
         "header": 200,
     }
+
+
+def test_nonzero_host_command_is_not_an_http_server_error():
+    from app.rest_api import _result_status
+
+    result = {"ok": False, "exit_code": 7, "stdout": "", "stderr": "failed"}
+    assert _result_status(result) == 200
+
+
+def test_rest_command_nonzero_exit_returns_http_200_with_exit_code():
+    env = {
+        **os.environ,
+        "REQUIRE_AUTH": "false",
+        "MCP_JSON_RESPONSE": "true",
+        "MCP_STATELESS_HTTP": "true",
+    }
+    code = r'''
+import json
+import os
+import tempfile
+
+os.environ["HOST_WORKSPACE_DIR"] = tempfile.mkdtemp(prefix="host-rest-nonzero-")
+os.environ["HOST_RESTRICT_TO_WORKSPACE"] = "true"
+os.environ["REQUIRE_AUTH"] = "false"
+
+from starlette.testclient import TestClient
+import app.main
+from app.mcp_server import mcp
+
+app = mcp.http_app(path="/mcp", transport="streamable-http")
+with TestClient(app) as client:
+    response = client.post(
+        "/api/v1/commands/run",
+        json={"command": "false", "cwd": ".", "timeout_seconds": 5},
+    )
+print(json.dumps({"status": response.status_code, "body": response.json()}))
+'''
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=True,
+    )
+    result = json.loads(proc.stdout)
+    assert result["status"] == 200
+    assert result["body"]["ok"] is False
+    assert result["body"]["exit_code"] == 1

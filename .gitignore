@@ -10,3 +10,9 @@ __pycache__/
 .idea/
 .vscode/
 scratch/
+*.egg-info/
+build/
+dist/
+manual_test_workspace_*/
+.cli_manual_test_*/
+artifacts/*-diagnostics/

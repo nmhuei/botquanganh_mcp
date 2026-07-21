@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import subprocess
+import subprocess  # nosec B404
 import threading
 import time
 from pathlib import Path
@@ -37,7 +37,7 @@ def load_tool_catalog() -> list[dict[str, Any]]:
 
 def _probe_version(path: str, args: Iterable[str]) -> str | None:
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603
             [path, *list(args)],
             capture_output=True,
             text=True,

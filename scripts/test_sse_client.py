@@ -86,7 +86,7 @@ async def main():
                 return response
 
             # 2. Send initialize
-            init_res = await send_request(
+            await send_request(
                 "initialize",
                 {
                     "protocolVersion": "2024-11-05",
@@ -112,7 +112,7 @@ async def main():
                 print(f"\n[INFO] Available tools list parsed from result: {tools}")
                 
             # 4. Call health_check tool
-            call_res = await send_request(
+            await send_request(
                 "tools/call",
                 {
                     "name": "health_check",

@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+if command -v readlink >/dev/null 2>&1; then
+    RESOLVED_PATH="$(readlink -f "$SCRIPT_PATH" 2>/dev/null || true)"
+    [ -z "$RESOLVED_PATH" ] || SCRIPT_PATH="$RESOLVED_PATH"
+fi
+
+ROOT_DIR="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
+PYTHON="$ROOT_DIR/.venv/bin/python"
+
+if [ ! -x "$PYTHON" ]; then
+    PYTHON="$(command -v python3 || true)"
+fi
+if [ -z "$PYTHON" ]; then
+    echo "[-] Python 3 was not found." >&2
+    exit 1
+fi
+
+export PYTHONPATH="$ROOT_DIR${PYTHONPATH:+:$PYTHONPATH}"
+exec "$PYTHON" -m app.cli.main "$@"

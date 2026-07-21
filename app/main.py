@@ -16,7 +16,7 @@ import app.tools.host_knowledge  # noqa: E402,F401
 def _shutdown_log() -> None:
     try:
         log_audit_event("SERVER_SHUTDOWN", {"pid": os.getpid()})
-    except Exception:
+    except Exception:  # nosec B110
         pass
 
 

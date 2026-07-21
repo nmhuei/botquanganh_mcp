@@ -1,0 +1,43 @@
+name: quality
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Prepare development configuration
+        run: |
+          cp .env.example .env
+          sed -i 's/^REQUIRE_AUTH=true/REQUIRE_AUTH=false/' .env
+          chmod 600 .env
+
+      - name: Install
+        run: ./scripts/install_basic.sh
+
+      - name: Quality gate
+        run: ./scripts/quality_gate.sh
+
+      - name: Installer manual regression
+        run: ./scripts/manual_test_installer.sh

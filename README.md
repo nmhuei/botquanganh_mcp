@@ -22,8 +22,11 @@ knowledge/
 ├── HOST_ENVIRONMENT.md
 └── TOOL_CATALOG.json
 
+install.sh
 scripts/
 ├── install_basic.sh
+├── install_cli.sh
+├── uninstall_cli.sh
 ├── restart_server_only.sh
 ├── start_tunnel_server.sh
 ├── dev.sh
@@ -32,12 +35,61 @@ scripts/
 
 ## Cài đặt
 
+### 1. One-line Install (khuyên dùng)
+
 ```bash
-cd /home/light/GitHub/botquanganh_mcp
-./scripts/install_basic.sh
+curl -fsSL https://raw.githubusercontent.com/nmhuei/botquanganh_mcp/main/install.sh | bash
 ```
 
-Sau đó điền `GATEWAY_TOKEN` và kiểm tra `HOST_WORKSPACE_DIR` trong `.env`.
+Script mặc định clone nhánh `main` vào `~/.botquanganh_mcp`, tạo `.venv`, cài dependencies, tạo `.env` với quyền `600`, rồi liên kết CLI tại `~/.local/bin/bqa`. Chạy lại cùng lệnh sẽ cập nhật installation bằng fast-forward; nếu working tree có file chưa commit, installer sẽ dừng để tránh ghi đè dữ liệu người dùng.
+
+Có thể tùy chỉnh bằng biến môi trường:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nmhuei/botquanganh_mcp/main/install.sh | \
+  BQA_INSTALL_DIR="$HOME/apps/botquanganh_mcp" \
+  BQA_BIN_DIR="$HOME/.local/bin" \
+  BQA_BRANCH=main \
+  bash
+```
+
+Các biến hỗ trợ: `BQA_REPO_URL`, `BQA_INSTALL_DIR`, `BQA_BIN_DIR`, `BQA_BRANCH`. `BQA_SKIP_PIP_UPGRADE=true` chỉ nên dùng trong môi trường kiểm thử hoặc offline đã chuẩn bị sẵn package cache.
+
+### 2. Cài đặt thủ công từ repository local
+
+```bash
+cd botquanganh_mcp
+./install.sh
+```
+
+`scripts/install_basic.sh` được giữ để tương thích và chuyển tiếp trực tiếp sang installer gốc.
+
+### 3. Cấu hình và kiểm tra sau khi cài đặt
+
+Đảm bảo `~/.local/bin` có trong `PATH`:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Thêm dòng này vào `~/.bashrc` hoặc `~/.zshrc` để duy trì qua các session.
+
+Cấu hình `.env` trước khi public service. Mặc định mẫu yêu cầu authentication:
+
+```env
+REQUIRE_AUTH=true
+GATEWAY_TOKEN=<secret-random-token>
+HOST_WORKSPACE_DIR=/home/user
+```
+
+Sau đó xác minh:
+
+```bash
+bqa version
+bqa config validate
+bqa doctor
+```
+
 
 ## Chạy qua Cloudflare Tunnel
 
@@ -155,7 +207,11 @@ Tool này đọc tài liệu trong `knowledge/` và đối chiếu `TOOL_CATALOG
 
 ```bash
 ./scripts/test.sh
+./scripts/quality_gate.sh
+./scripts/manual_test_installer.sh
 ```
+
+`manual_test_installer.sh` dùng repository và HOME tạm trong `/tmp`; nó không khởi động, dừng hoặc restart Cloudflare tunnel thật.
 
 ## Cấu hình quan trọng
 
@@ -172,3 +228,123 @@ GATEWAY_TOKEN=<secret>
 `guarded` chỉ là lớp bảo vệ khỏi các thao tác phá máy rõ ràng, không phải sandbox. MCP server chạy với quyền của user khởi động process.
 
 Xem thêm: `docs/ARCHITECTURE.md` và `SECURITY.md`.
+
+
+## CLI `bqa`
+
+Repo có CLI thống nhất để vận hành bridge/tunnel và gọi REST API mà không cần viết `curl` thủ công.
+
+Cài editable entry point:
+
+```bash
+.venv/bin/python -m pip install -e . --no-deps
+```
+
+Có thể chạy bằng một trong hai cách:
+
+```bash
+./bin/bqa --help
+.venv/bin/bqa --help
+```
+
+Nhóm vận hành local:
+
+```bash
+bqa start
+bqa status
+bqa url
+bqa server restart   # chỉ restart bridge, giữ nguyên tunnel URL
+bqa restart --yes    # restart cả tunnel, có thể đổi URL
+bqa stop
+```
+
+Nhóm REST API:
+
+```bash
+bqa health
+bqa --public health
+bqa capabilities --tools
+bqa fs ls GitHub
+bqa fs cat GitHub/project/README.md --lines 1:40
+bqa fs write GitHub/demo.txt --text "hello"
+printf 'next\n' | bqa fs append GitHub/demo.txt --stdin
+bqa fs search FastMCP --path GitHub/botquanganh_mcp
+bqa cmd check 'git status --short'
+bqa cmd run 'git status --short' --cwd GitHub/botquanganh_mcp
+bqa knowledge tools --query python --versions
+```
+
+Các nhóm hỗ trợ vận hành:
+
+```bash
+bqa logs server -n 100
+bqa logs follow server
+bqa config show
+bqa config validate
+bqa doctor
+bqa completion bash
+```
+
+Mọi lệnh đều hỗ trợ `--json`. Global options có thể đặt trước hoặc sau subcommand:
+
+```bash
+bqa --public health --json
+bqa health --public --json
+```
+
+CLI mặc định gọi local REST tại `http://127.0.0.1:<MCP_PORT>`. Dùng `--public` để lấy URL hiện tại từ `logs/tunnel_url.txt`, hoặc `--base-url` để chỉ định endpoint khác.
+
+Exit code chính:
+
+```text
+0  thành công
+1  operation thất bại
+2  sai tham số
+3  không kết nối được server
+4  authentication thất bại
+5  policy chặn
+6  resource không tồn tại
+7  timeout
+8  conflict
+```
+
+Riêng `bqa cmd run`, khi server đã thực thi command thành công về mặt request, exit code CLI sẽ phản ánh exit code thật của command.
+
+Thiết kế đầy đủ: `docs/CLI_DESIGN_PLAN.md`.
+
+Tài liệu CLI bổ sung: `docs/CLI_MANUAL_TEST_PLAN.md` và `docs/CLI_IMPLEMENTATION_REPORT.md`.
+
+## Vận hành và recovery
+
+Quality gate thống nhất:
+
+```bash
+./scripts/quality_gate.sh
+./scripts/quality_gate.sh --runtime
+./scripts/quality_gate.sh --full
+```
+
+Doctor và config nghiêm ngặt:
+
+```bash
+bqa doctor --local-only
+bqa doctor --strict
+bqa config validate --strict
+```
+
+Thu thập diagnostics đã che cấu hình nhạy cảm:
+
+```bash
+./scripts/collect_diagnostics.sh
+```
+
+Quy trình cài đặt, restart bridge không đổi tunnel, recovery, rollback và checklist production được mô tả tại `docs/OPERATIONS_RUNBOOK.md`.
+
+## Kiến trúc, bảo mật và release
+
+- Kiến trúc runtime và boundary: `docs/ARCHITECTURE.md`
+- Mô hình bảo mật và hardening: `SECURITY.md`
+- Vận hành, recovery và rollback: `docs/OPERATIONS_RUNBOOK.md`
+- Checklist release: `docs/RELEASE_CHECKLIST.md`
+
+GitHub Actions chạy quality gate trên push và pull request; Dependabot theo dõi Python và GitHub Actions dependencies.

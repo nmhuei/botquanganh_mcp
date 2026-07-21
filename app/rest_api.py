@@ -7,6 +7,11 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
+from app.error_contract import (
+    http_status_for_exception,
+    http_status_for_result,
+    openapi_error_schema,
+)
 from app.host.executor import execute_host_command
 from app.host.files import (
     append_text_file,
@@ -24,30 +29,11 @@ API_PREFIX = "/api/v1"
 
 
 def _error_status(exc: Exception) -> int:
-    if isinstance(exc, FileNotFoundError):
-        return 404
-    if isinstance(exc, FileExistsError):
-        return 409
-    if isinstance(exc, PermissionError):
-        return 403
-    if isinstance(exc, (ValueError, TypeError, NotADirectoryError)):
-        return 400
-    return 500
+    return http_status_for_exception(exc)
 
 
 def _result_status(result: Any) -> int:
-    if not isinstance(result, dict) or result.get("ok", True):
-        return 200
-    code = str(result.get("error", {}).get("code", ""))
-    if code in {"POLICY_BLOCKED", "TARGET_NOT_ALLOWLISTED"}:
-        return 403
-    if code in {"RUN_NOT_FOUND"}:
-        return 404
-    if code in {"TIMEOUT", "TIMEOUT_INVALID"}:
-        return 408
-    if code in {"SCHEMA_INVALID", "UNSUPPORTED_ENCODING", "UNSUPPORTED_LANGUAGE"}:
-        return 400
-    return 500
+    return http_status_for_result(result)
 
 
 async def _call(function: Callable[..., Any], *args: Any, **kwargs: Any) -> JSONResponse:
@@ -286,11 +272,27 @@ async def api_knowledge(request: Request) -> JSONResponse:
 
 def openapi_document() -> dict[str, Any]:
     json_object = {"type": "object", "additionalProperties": True}
+    error_descriptions = {
+        "400": "Invalid request",
+        "401": "Authentication required",
+        "403": "Operation blocked by policy",
+        "404": "Resource not found",
+        "408": "Operation timed out",
+        "409": "Resource conflict",
+        "429": "Rate limit exceeded",
+        "500": "Internal server error",
+        "503": "Service capacity unavailable",
+    }
     error_responses = {
-        "400": {"description": "Invalid request"},
-        "401": {"description": "Authentication required"},
-        "403": {"description": "Operation blocked"},
-        "500": {"description": "Internal error"},
+        status: {
+            "description": description,
+            "content": {
+                "application/json": {
+                    "schema": {"$ref": "#/components/schemas/ErrorResponse"}
+                }
+            },
+        }
+        for status, description in error_descriptions.items()
     }
     return {
         "openapi": "3.1.0",
@@ -305,7 +307,10 @@ def openapi_document() -> dict[str, Any]:
                 "bearerAuth": {"type": "http", "scheme": "bearer"},
                 "gatewayToken": {"type": "apiKey", "in": "header", "name": "X-Gateway-Token"},
             },
-            "schemas": {"GenericResponse": json_object},
+            "schemas": {
+                "GenericResponse": json_object,
+                "ErrorResponse": openapi_error_schema(),
+            },
         },
         "security": [{"bearerAuth": []}, {"gatewayToken": []}],
         "paths": {

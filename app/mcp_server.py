@@ -3,7 +3,7 @@ import time
 
 import fastmcp
 from fastmcp import FastMCP
-from starlette.responses import JSONResponse, PlainTextResponse, Response
+from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.routing import Route
 
 from app.config import (
@@ -12,6 +12,7 @@ from app.config import (
     TRUST_PROXY_HEADERS,
     VERSION,
 )
+from app.error_contract import format_error_code
 from app.metrics import metrics
 from app.ratelimit import rate_limiter
 
@@ -56,7 +57,11 @@ class TokenAuthMiddleware:
             allowed, retry_after = rate_limiter.is_allowed(client_ip)
             if not allowed:
                 response = JSONResponse(
-                    {"error": "rate_limit_exceeded", "retry_after": retry_after},
+                    format_error_code(
+                        "RATE_LIMITED",
+                        message="Rate limit exceeded.",
+                        extra={"retry_after": retry_after},
+                    ),
                     status_code=429,
                     headers={"Retry-After": str(retry_after)},
                 )
@@ -79,8 +84,11 @@ class TokenAuthMiddleware:
             from app.auth import verify_token
 
             if not verify_token(token):
-                response = Response(
-                    "Unauthorized: invalid or missing token.",
+                response = JSONResponse(
+                    format_error_code(
+                        "AUTH_REQUIRED",
+                        message="Authentication required.",
+                    ),
                     status_code=401,
                 )
                 await response(scope, receive, send)
@@ -94,7 +102,7 @@ async def healthz_endpoint(_request):
 
 
 class MetricsMiddleware:
-    """Record response status and latency without altering the response body."""
+    """Record complete HTTP requests, including auth and rate-limit responses."""
 
     def __init__(self, app):
         self.app = app
@@ -106,28 +114,38 @@ class MetricsMiddleware:
 
         started = time.monotonic()
         path = scope.get("path", "unknown")
-        response_started = False
+        status_code = 500
+        finished = False
+        metrics.begin_request()
+
+        def finish_once() -> None:
+            nonlocal finished
+            if finished:
+                return
+            finished = True
+            metrics.record_request(
+                path,
+                (time.monotonic() - started) * 1000,
+                status_code,
+            )
 
         async def wrapped_send(message):
-            nonlocal response_started
+            nonlocal status_code
             if message.get("type") == "http.response.start":
-                response_started = True
-                metrics.record_request(
-                    path,
-                    (time.monotonic() - started) * 1000,
-                    message.get("status", 0),
-                )
+                status_code = int(message.get("status", 0) or 500)
             await send(message)
+            if (
+                message.get("type") == "http.response.body"
+                and not message.get("more_body", False)
+            ):
+                finish_once()
 
         try:
             await self.app(scope, receive, wrapped_send)
+            finish_once()
         except Exception:
-            if not response_started:
-                metrics.record_request(
-                    path,
-                    (time.monotonic() - started) * 1000,
-                    500,
-                )
+            status_code = 500
+            finish_once()
             raise
 
 
@@ -160,8 +178,10 @@ def _chatgpt_http_app(self, *args, **kwargs):
     from app.rest_api import install_rest_routes
 
     install_rest_routes(app)
-    app.add_middleware(MetricsMiddleware)
+    # Add auth first, then metrics. Starlette wraps middleware in reverse order,
+    # making MetricsMiddleware outermost so 401 and 429 responses are observed.
     app.add_middleware(TokenAuthMiddleware)
+    app.add_middleware(MetricsMiddleware)
     return app
 
 
