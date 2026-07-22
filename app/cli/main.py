@@ -187,8 +187,9 @@ def _dispatch(ctx: CLIContext, args) -> int:
             renderer.blank()
             renderer.status("success", "Endpoint available")
             renderer.blank()
-            renderer.facts([("Endpoint", url)])
+            renderer.copyable_value("Endpoint · copy-safe", url)
             renderer.blank()
+            renderer.hint("bqa url --quiet", "Copy URL only")
             renderer.hint("bqa --public health", "Check it with")
         return 0
     if command == "server":

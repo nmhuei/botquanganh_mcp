@@ -115,3 +115,13 @@ def test_colored_renderer_still_respects_visible_width():
     renderer.checks([{"status": "pass", "name": "kết_nối", "message": "ổn định"}])
     for line in stream.getvalue().splitlines():
         assert visible_width(line) <= 60
+
+
+def test_copyable_value_never_inserts_hard_wraps():
+    url = "https://actions-beneath-created-syndication.trycloudflare.com/mcp"
+    stream = io.StringIO()
+    renderer = Renderer(color_mode="never", stream=stream, width=20)
+
+    renderer.copyable_value("Endpoint", url)
+
+    assert stream.getvalue().splitlines() == ["  Endpoint", url]

@@ -293,6 +293,7 @@ bqa health --quiet                 # quiet: chỉ in giá trị chính, không A
 bqa health --json                  # JSON ổn định cho automation
 bqa health --color never           # tắt màu rõ ràng
 NO_COLOR=1 bqa health              # tắt màu theo convention của terminal
+bqa url --quiet                    # URL thuần, một logical line để copy/pipe
 ```
 
 Global options có thể đặt trước hoặc sau subcommand:

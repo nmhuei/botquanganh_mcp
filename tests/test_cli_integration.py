@@ -242,3 +242,27 @@ def test_health_quiet_is_single_primary_value(cli_server, capsys):
     assert captured.out == "healthy\n"
     assert captured.err == ""
     assert "\x1b" not in captured.out
+
+
+def test_url_human_keeps_copyable_url_on_one_logical_line(monkeypatch, capsys):
+    url = "https://actions-beneath-created-syndication.trycloudflare.com/mcp"
+    monkeypatch.setattr("app.cli.main.connector_url", lambda *_args: url)
+    monkeypatch.setattr("app.cli.output.terminal_width", lambda *_args, **_kwargs: 40)
+
+    assert main(["url", "--color", "never"]) == 0
+    output = capsys.readouterr().out
+
+    assert f"\n{url}\n" in output
+    assert output.count(url) == 1
+    assert "Endpoint · copy-safe" in output
+    assert "bqa url --quiet" in output
+
+
+def test_url_quiet_is_exact_copyable_value(monkeypatch, capsys):
+    url = "https://actions-beneath-created-syndication.trycloudflare.com/mcp"
+    monkeypatch.setattr("app.cli.main.connector_url", lambda *_args: url)
+
+    assert main(["url", "--quiet"]) == 0
+    captured = capsys.readouterr()
+    assert captured.out == f"{url}\n"
+    assert captured.err == ""

@@ -299,6 +299,19 @@ class Renderer:
             for line in lines[1:]:
                 self._write(continuation + line)
 
+    def copyable_value(self, label: str, value: Any) -> None:
+        """Render a value without inserting hard line breaks.
+
+        Long values may soft-wrap visually in a narrow terminal, but terminal
+        selection and redirected output retain one logical line. This is suited
+        to URLs, tokens created once, and other values users commonly copy.
+        """
+        self._write(
+            " " * INDENT
+            + style(label, "dim", color_mode=self.color_mode, stream=self.stream)
+        )
+        self._write(strip_ansi("" if value is None else str(value)))
+
     def table(
         self,
         headers: Sequence[str],

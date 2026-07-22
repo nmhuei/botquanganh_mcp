@@ -54,6 +54,7 @@ Default mode for direct terminal use.
 - Color follows `--color auto|always|never`.
 - `NO_COLOR`, `TERM=dumb`, non-TTY output, and CI disable automatic color.
 - Long values wrap or truncate according to terminal width.
+- Copy-critical values such as the connector URL use `Renderer.copyable_value`: the terminal may soft-wrap visually, but the CLI never inserts a hard newline inside the value.
 - Tables are borderless.
 
 ### Quiet
@@ -136,6 +137,7 @@ Renderer.header
 Renderer.status
 Renderer.section
 Renderer.facts
+Renderer.copyable_value
 Renderer.table
 Renderer.checks
 Renderer.summary
