@@ -10,7 +10,7 @@ from app.cli.client import RESTClient
 from app.cli.config_view import bool_value, resolve_config_path, validate_config
 from app.cli.context import CLIContext, normalize_base_url
 from app.cli.lifecycle import canonical_tunnel_base, status_data
-from app.cli.output import emit_json, render_checks
+from app.cli.output import emit_json, emit_quiet, renderer_for
 from app.dependency_check import check_project_dependencies
 
 
@@ -207,7 +207,9 @@ def handle_doctor(ctx: CLIContext, args) -> int:
         )
     )
 
-    connect_host = ctx.values.get("MCP_CONNECT_HOST", "127.0.0.1").strip() or "127.0.0.1"
+    connect_host = (
+        ctx.values.get("MCP_CONNECT_HOST", "127.0.0.1").strip() or "127.0.0.1"
+    )
     if connect_host in {"0.0.0.0", "::"}:  # nosec B104
         connect_host = "127.0.0.1"
     local_base = normalize_base_url(
@@ -254,8 +256,10 @@ def handle_doctor(ctx: CLIContext, args) -> int:
     failure_count = sum(item["status"] == "fail" for item in checks)
     warning_count = sum(item["status"] == "warn" for item in checks)
     ok = failure_count == 0 and not (strict and warning_count > 0)
+    state = "healthy" if ok and warning_count == 0 else "degraded" if ok else "failed"
     payload = {
         "ok": ok,
+        "status": state,
         "strict": strict,
         "local_only": local_only,
         "warning_count": warning_count,
@@ -266,6 +270,28 @@ def handle_doctor(ctx: CLIContext, args) -> int:
     }
     if ctx.json_output:
         emit_json(payload)
+    elif ctx.quiet:
+        emit_quiet(state)
     else:
-        render_checks(checks)
+        renderer = renderer_for(ctx)
+        renderer.header(
+            "System doctor",
+            "Local diagnostics" if local_only else "Local and public diagnostics",
+        )
+        renderer.blank()
+        renderer.status(state)
+        renderer.blank()
+        renderer.checks(checks)
+        renderer.blank()
+        renderer.summary(
+            f"{len(checks) - warning_count - failure_count} passed   {warning_count} warnings   {failure_count} failed",
+            "success"
+            if state == "healthy"
+            else "warn"
+            if state == "degraded"
+            else "error",
+        )
+        if warning_count or failure_count:
+            renderer.blank()
+            renderer.hint("bqa config validate", "Review configuration with")
     return 0 if ok else 1

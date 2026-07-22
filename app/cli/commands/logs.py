@@ -10,7 +10,7 @@ from typing import Iterable
 
 from app.cli.context import CLIContext
 from app.cli.errors import CLIError, EXIT_USAGE, NotFoundCLIError
-from app.cli.output import emit_json
+from app.cli.output import emit_json, external_text, renderer_for
 
 
 LOG_FILES = {
@@ -20,13 +20,17 @@ LOG_FILES = {
     "audit": "gateway.log",
 }
 _DURATION_RE = re.compile(r"^(\d+)([smhd])$")
-_TIMESTAMP_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:[.,](\d+))?(Z|[+-]\d{2}:?\d{2})?")
+_TIMESTAMP_RE = re.compile(
+    r"^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:[.,](\d+))?(Z|[+-]\d{2}:?\d{2})?"
+)
 
 
 def _duration(value: str) -> timedelta:
     match = _DURATION_RE.fullmatch(value.strip().lower())
     if not match:
-        raise CLIError("--since must use a value such as 30s, 10m, 2h, or 1d.", EXIT_USAGE)
+        raise CLIError(
+            "--since must use a value such as 30s, 10m, 2h, or 1d.", EXIT_USAGE
+        )
     amount = int(match.group(1))
     unit = match.group(2)
     return {
@@ -60,7 +64,13 @@ def _timestamp(line: str) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
-def _filtered_lines(path: Path, *, lines: int, since: str | None, grep_text: str | None) -> list[str]:
+def _filtered_lines(
+    path: Path,
+    *,
+    lines: int,
+    since: str | None,
+    grep_text: str | None,
+) -> list[str]:
     if not path.is_file():
         raise NotFoundCLIError(f"Log file not found: {path}")
     content = path.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -89,7 +99,9 @@ def _paths(ctx: CLIContext, args) -> list[tuple[str, Path]]:
         elif args.follow_target:
             names = [args.follow_target]
         else:
-            raise CLIError("Use 'bqa logs follow <target>' or 'bqa logs follow --all'.", EXIT_USAGE)
+            raise CLIError(
+                "Use 'bqa logs follow <target>' or 'bqa logs follow --all'.", EXIT_USAGE
+            )
     elif args.all_logs:
         names = list(LOG_FILES)
     else:
@@ -97,7 +109,12 @@ def _paths(ctx: CLIContext, args) -> list[tuple[str, Path]]:
     return [(name, ctx.repo_root / "logs" / LOG_FILES[name]) for name in names]
 
 
-def _follow(paths: Iterable[tuple[str, Path]], lines: int, grep_text: str | None) -> int:
+def _follow(
+    paths: Iterable[tuple[str, Path]],
+    lines: int,
+    grep_text: str | None,
+    color_mode: str,
+) -> int:
     selected = list(paths)
     for _, path in selected:
         if not path.exists():
@@ -119,7 +136,7 @@ def _follow(paths: Iterable[tuple[str, Path]], lines: int, grep_text: str | None
         for line in process.stdout:
             if grep_text and grep_text not in line:
                 continue
-            sys.stdout.write(line)
+            sys.stdout.write(external_text(line, color_mode=color_mode))
             sys.stdout.flush()
     except KeyboardInterrupt:
         process.terminate()
@@ -136,21 +153,30 @@ def handle_logs(ctx: CLIContext, args) -> int:
     follow = args.follow or args.log_action == "follow"
     if follow:
         if ctx.json_output:
-            raise CLIError("--json cannot be combined with log follow mode.", EXIT_USAGE)
-        return _follow(paths, args.lines, args.grep_text)
+            raise CLIError(
+                "--json cannot be combined with log follow mode.", EXIT_USAGE
+            )
+        return _follow(paths, args.lines, args.grep_text, ctx.color)
 
     payload = []
     for name, path in paths:
-        lines = _filtered_lines(path, lines=args.lines, since=args.since, grep_text=args.grep_text)
+        lines = _filtered_lines(
+            path,
+            lines=args.lines,
+            since=args.since,
+            grep_text=args.grep_text,
+        )
         payload.append({"name": name, "path": str(path), "lines": lines})
     if ctx.json_output:
-        emit_json({"ok": True, "logs": payload})
+        emit_json({"ok": True, "status": "success", "logs": payload})
         return 0
+
+    renderer = renderer_for(ctx)
     for index, item in enumerate(payload):
-        if len(payload) > 1:
+        if len(payload) > 1 and not ctx.quiet:
             if index:
-                print()
-            print(f"===== {item['name']} ({item['path']}) =====")
+                renderer.blank()
+            renderer.section(f"{item['name']} · {item['path']}")
         for line in item["lines"]:
-            print(line)
+            print(external_text(str(line), color_mode=ctx.color))
     return 0

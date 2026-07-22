@@ -14,19 +14,33 @@ from app.cli.commands.knowledge import handle_knowledge
 from app.cli.commands.logs import handle_logs
 from app.cli.context import CLIContext, extract_global_options
 from app.cli.errors import CLIError, EXIT_OPERATION_FAILED, EXIT_USAGE
-from app.cli.lifecycle import connector_url, restart, server_restart, start, status_data, stop
-from app.cli.output import emit_json, key_values, message
+from app.cli.lifecycle import (
+    connector_url,
+    restart,
+    server_restart,
+    start,
+    status_data,
+    stop,
+)
+from app.cli.output import Renderer, emit_json, emit_quiet, renderer_for
 from app.cli.parser import build_parser
 
 
-def _print_script_result(ctx: CLIContext, result: dict) -> None:
-    if ctx.json_output:
-        emit_json(result)
-        return
-    if result.get("stdout"):
-        sys.stdout.write(str(result["stdout"]))
-    if result.get("stderr"):
-        sys.stderr.write(str(result["stderr"]))
+def _process_label(process: dict) -> str:
+    state = "running" if process.get("running") else "stopped"
+    return f"{state} · pid {process['pid']}" if process.get("pid") else state
+
+
+def _runtime_state(data: dict, *, server_only: bool = False) -> str:
+    if server_only:
+        if data["server"]["running"] and data["bridge"] == "ready":
+            return "ready"
+        return "starting" if data["server"]["running"] else "stopped"
+    if data.get("ok"):
+        return "running"
+    if data["server"]["running"] or data["tunnel"]["running"]:
+        return "degraded"
+    return "stopped"
 
 
 def _render_status(ctx: CLIContext, data: dict, *, server_only: bool = False) -> None:
@@ -35,6 +49,7 @@ def _render_status(ctx: CLIContext, data: dict, *, server_only: bool = False) ->
             emit_json(
                 {
                     "ok": data["server"]["running"] and data["bridge"] == "ready",
+                    "status": _runtime_state(data, server_only=True),
                     "server": data["server"],
                     "bridge": data["bridge"],
                     "tunnel": data["tunnel"],
@@ -42,38 +57,95 @@ def _render_status(ctx: CLIContext, data: dict, *, server_only: bool = False) ->
                 }
             )
         else:
-            emit_json(data)
+            emit_json({**data, "status": _runtime_state(data)})
         return
-    rows = []
+
+    state = _runtime_state(data, server_only=server_only)
+    if ctx.quiet:
+        emit_quiet(state)
+        return
+
+    renderer = renderer_for(ctx)
+    renderer.header(
+        "Server status" if server_only else "Runtime status",
+        "Local MCP bridge" if server_only else "Host MCP and tunnel supervisor",
+    )
+    renderer.blank()
+    renderer.status(state)
+    renderer.blank()
+
+    rows: list[tuple[str, str]] = []
     if not server_only:
-        supervisor = data["supervisor"]
-        rows.append(("Supervisor", f"{'running' if supervisor['running'] else 'stopped'}" + (f"  pid={supervisor['pid']}" if supervisor.get("pid") else "")))
-    server = data["server"]
-    tunnel = data["tunnel"]
+        rows.append(("Supervisor", _process_label(data["supervisor"])))
     rows.extend(
         [
-            ("Server", f"{'running' if server['running'] else 'stopped'}" + (f"  pid={server['pid']}" if server.get("pid") else "")),
-            ("Tunnel", f"{'running' if tunnel['running'] else 'stopped'}" + (f"  pid={tunnel['pid']}" if tunnel.get("pid") else "")),
+            ("Server", _process_label(data["server"])),
             ("Bridge", data["bridge"]),
-            ("URL", data.get("url") or "unavailable"),
+            ("Tunnel", _process_label(data["tunnel"])),
+            ("Endpoint", data.get("url") or "unavailable"),
         ]
     )
     if not server_only:
         rows.extend(
             [
-                ("Auth", "enabled" if data["auth_required"] else "disabled"),
+                ("Authentication", "enabled" if data["auth_required"] else "disabled"),
                 ("Workspace", data["workspace"]),
             ]
         )
-    key_values(rows)
+    renderer.facts(rows)
+    renderer.blank()
+    if state in {"running", "ready"}:
+        renderer.summary("Runtime checks passed.", "success")
+    elif state == "degraded" or state == "starting":
+        renderer.summary("One or more runtime components need attention.", "warn")
+    else:
+        renderer.summary("Runtime is not active.", "offline")
+    renderer.blank()
+    renderer.hint("bqa logs server", "Inspect activity with")
+
+
+def _render_lifecycle_result(
+    ctx: CLIContext, result: dict, *, operation: str, state: str
+) -> None:
+    payload = {**result, "operation": operation, "status": state}
+    if ctx.json_output:
+        emit_json(payload)
+        return
+    if ctx.quiet:
+        emit_quiet(state)
+        return
+
+    renderer = renderer_for(ctx)
+    renderer.header("Lifecycle", operation.capitalize())
+    renderer.blank()
+    renderer.status("success", f"Runtime {state}")
+    if ctx.verbose:
+        details = []
+        if result.get("script"):
+            details.append(("Script", result["script"]))
+        details.append(("Exit code", result.get("exit_code", 0)))
+        if details:
+            renderer.blank()
+            renderer.facts(details)
+        stdout = str(result.get("stdout", "")).strip()
+        stderr = str(result.get("stderr", "")).strip()
+        if stdout or stderr:
+            renderer.blank()
+            renderer.section("Process output")
+            for line in [*stdout.splitlines(), *stderr.splitlines()]:
+                renderer.summary(line)
+    renderer.blank()
+    renderer.hint("bqa status", "Verify with")
 
 
 def _confirm_restart(args) -> None:
     if args.yes:
         return
-    prompt = "This may replace the current Cloudflare URL. Continue? [y/N] "
+    prompt = "Restart the full runtime and replace the current tunnel URL? [y/N] "
     if not sys.stdin.isatty():
-        raise CLIError("Full tunnel restart requires --yes in non-interactive mode.", EXIT_USAGE)
+        raise CLIError(
+            "Full tunnel restart requires --yes in non-interactive mode.", EXIT_USAGE
+        )
     answer = input(prompt).strip().lower()
     if answer not in {"y", "yes"}:
         raise CLIError("Restart cancelled.", EXIT_OPERATION_FAILED)
@@ -82,14 +154,20 @@ def _confirm_restart(args) -> None:
 def _dispatch(ctx: CLIContext, args) -> int:
     command = args.command
     if command == "start":
-        _print_script_result(ctx, start(ctx.repo_root))
+        _render_lifecycle_result(
+            ctx, start(ctx.repo_root), operation="start", state="started"
+        )
         return 0
     if command == "stop":
-        _print_script_result(ctx, stop(ctx.repo_root))
+        _render_lifecycle_result(
+            ctx, stop(ctx.repo_root), operation="stop", state="stopped"
+        )
         return 0
     if command == "restart":
         _confirm_restart(args)
-        _print_script_result(ctx, restart(ctx.repo_root))
+        _render_lifecycle_result(
+            ctx, restart(ctx.repo_root), operation="restart", state="restarted"
+        )
         return 0
     if command == "status":
         data = status_data(ctx.repo_root, ctx.values)
@@ -100,9 +178,18 @@ def _dispatch(ctx: CLIContext, args) -> int:
         if not url:
             raise CLIError("Connector URL is unavailable.")
         if ctx.json_output:
-            emit_json({"ok": True, "url": url})
+            emit_json({"ok": True, "status": "available", "url": url})
+        elif ctx.quiet:
+            emit_quiet(url)
         else:
-            print(url)
+            renderer = renderer_for(ctx)
+            renderer.header("Connector URL", "Current public MCP endpoint")
+            renderer.blank()
+            renderer.status("success", "Endpoint available")
+            renderer.blank()
+            renderer.facts([("Endpoint", url)])
+            renderer.blank()
+            renderer.hint("bqa --public health", "Check it with")
         return 0
     if command == "server":
         if args.server_command == "status":
@@ -112,15 +199,37 @@ def _dispatch(ctx: CLIContext, args) -> int:
         result = server_restart(ctx.repo_root, ctx.values)
         if ctx.json_output:
             emit_json(result)
+        elif ctx.quiet:
+            emit_quiet("ready" if result["ok"] else "failed")
         else:
-            if result.get("stdout"):
-                sys.stdout.write(str(result["stdout"]))
-            if result.get("stderr"):
-                sys.stderr.write(str(result["stderr"]))
-            if result["tunnel_preserved"]:
-                message("Tunnel PID and URL were preserved.", kind="success", no_color=ctx.no_color)
+            renderer = renderer_for(ctx)
+            renderer.header("Server restart", "Tunnel-safe bridge operation")
+            renderer.blank()
+            renderer.status(
+                "success" if result["ok"] else "error",
+                "Bridge restarted" if result["ok"] else "Bridge restart failed",
+            )
+            renderer.blank()
+            renderer.facts(
+                [
+                    ("Bridge", result.get("after", {}).get("bridge", "unknown")),
+                    (
+                        "Server",
+                        _process_label(result.get("after", {}).get("server", {})),
+                    ),
+                    (
+                        "Tunnel preserved",
+                        "yes" if result.get("tunnel_preserved") else "no",
+                    ),
+                ]
+            )
+            renderer.blank()
+            if result.get("tunnel_preserved"):
+                renderer.summary("Tunnel PID and URL were preserved.", "success")
             else:
-                message("Tunnel PID or URL changed unexpectedly.", kind="error", no_color=ctx.no_color)
+                renderer.summary("Tunnel PID or URL changed unexpectedly.", "error")
+            renderer.blank()
+            renderer.hint("bqa server status", "Verify with")
         return 0 if result["ok"] else 1
     if command == "health":
         return handle_health(ctx, args)
@@ -141,53 +250,114 @@ def _dispatch(ctx: CLIContext, args) -> int:
     if command == "completion":
         return handle_completion(ctx, args)
     if command == "version":
-        payload = {"ok": True, "cli": "bqa", "version": VERSION, "service_version": VERSION}
+        payload = {
+            "ok": True,
+            "status": "available",
+            "cli": "bqa",
+            "version": VERSION,
+            "service_version": VERSION,
+        }
         if ctx.json_output:
             emit_json(payload)
+        elif ctx.quiet:
+            emit_quiet(VERSION)
         else:
             print(f"bqa {VERSION}")
         return 0
     raise CLIError(f"Unsupported command: {command}", EXIT_USAGE)
 
 
+def _operation_name(raw_argv: Sequence[str]) -> str:
+    for token in raw_argv:
+        if token == "--":
+            break
+        if not token.startswith("-"):
+            return token
+    return "command"
+
+
+def _error_hint(exit_code: int, operation: str) -> str:
+    if exit_code == EXIT_USAGE:
+        return f"bqa {operation} --help" if operation != "command" else "bqa --help"
+    if operation in {"status", "health", "server", "doctor"}:
+        return "bqa doctor --local-only"
+    return "bqa doctor"
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     parser = build_parser()
     ctx: CLIContext | None = None
+    operation = _operation_name(raw_argv)
     try:
         args = parser.parse_args(extract_global_options(raw_argv))
         ctx = CLIContext.from_args(args)
         return _dispatch(ctx, args)
     except CLIError as exc:
         json_mode = bool(ctx.json_output) if ctx else "--json" in raw_argv
-        no_color = bool(ctx.no_color) if ctx else "--no-color" in raw_argv
+        quiet_mode = bool(ctx.quiet) if ctx else "--quiet" in raw_argv
         if json_mode:
             emit_json(
                 {
                     "ok": False,
-                    "error": {
-                        "message": exc.message,
-                        "exit_code": exc.exit_code,
-                        "details": exc.details,
-                    },
-                },
-                stream=sys.stderr,
+                    "status": "error",
+                    "operation": operation,
+                    "message": exc.message,
+                    "exit_code": exc.exit_code,
+                    "details": exc.details,
+                }
             )
+        elif quiet_mode:
+            print(exc.message, file=sys.stderr)
         else:
-            message(exc.message, kind="error", no_color=no_color, stream=sys.stderr)
+            color = (
+                ctx.color if ctx else "never" if "--no-color" in raw_argv else "auto"
+            )
+            Renderer(color_mode=color, stream=sys.stderr).error(
+                f"Could not complete `{operation}`",
+                exc.message,
+                _error_hint(exc.exit_code, operation),
+            )
         return exc.exit_code
     except KeyboardInterrupt:
-        message("Interrupted.", kind="error", no_color=bool(ctx.no_color) if ctx else False, stream=sys.stderr)
-        return 130
-    except Exception as exc:
-        json_mode = bool(ctx.json_output) if ctx else "--json" in raw_argv
-        if json_mode:
+        if ctx and ctx.json_output:
             emit_json(
-                {"ok": False, "error": {"message": str(exc), "exit_code": 1}},
-                stream=sys.stderr,
+                {
+                    "ok": False,
+                    "status": "error",
+                    "operation": operation,
+                    "message": "Interrupted by user.",
+                    "exit_code": 130,
+                }
             )
         else:
-            message(str(exc), kind="error", no_color=bool(ctx.no_color) if ctx else False, stream=sys.stderr)
+            Renderer(
+                color_mode=ctx.color if ctx else "auto",
+                stream=sys.stderr,
+            ).error("Operation interrupted", "Interrupted by user.")
+        return 130
+    except Exception as exc:
+        if ctx and ctx.json_output:
+            emit_json(
+                {
+                    "ok": False,
+                    "status": "error",
+                    "operation": operation,
+                    "message": str(exc),
+                    "exit_code": 1,
+                }
+            )
+        elif ctx and ctx.quiet:
+            print(str(exc), file=sys.stderr)
+        else:
+            Renderer(
+                color_mode=ctx.color if ctx else "auto",
+                stream=sys.stderr,
+            ).error(
+                f"Could not complete `{operation}`",
+                str(exc),
+                "bqa doctor",
+            )
         return 1
 
 

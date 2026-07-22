@@ -4,7 +4,7 @@ from typing import Any
 
 from app.cli.client import RESTClient
 from app.cli.context import CLIContext
-from app.cli.output import emit_json, key_values, table
+from app.cli.output import emit_json, emit_quiet, renderer_for
 
 
 def _query(args, section: str) -> dict[str, Any]:
@@ -19,21 +19,24 @@ def _query(args, section: str) -> dict[str, Any]:
     }
 
 
-def _render_guides(guide: dict[str, Any]) -> None:
+def _render_guides(ctx: CLIContext, guide: dict[str, Any]) -> None:
+    renderer = renderer_for(ctx)
     documents = guide.get("documents", [])
     for index, document in enumerate(documents):
         if index:
-            print()
-        print(f"===== {document.get('name', 'guide')} =====")
+            renderer.blank()
+        renderer.section(str(document.get("name", "Guide")))
         content = str(document.get("content", ""))
-        print(content, end="" if content.endswith("\n") else "\n")
+        for line in content.rstrip("\n").splitlines():
+            renderer.summary(line)
         if document.get("truncated"):
-            print("[truncated]")
+            renderer.warning("Guide content was truncated.")
 
 
-def _render_inventory(inventory: dict[str, Any]) -> None:
+def _render_inventory(ctx: CLIContext, inventory: dict[str, Any]) -> None:
+    renderer = renderer_for(ctx)
     summary = inventory.get("summary", {})
-    key_values(
+    renderer.facts(
         [
             ("Catalogued", summary.get("catalogued", 0)),
             ("Available", summary.get("available", 0)),
@@ -43,13 +46,13 @@ def _render_inventory(inventory: dict[str, Any]) -> None:
     )
     tools = inventory.get("tools", [])
     if tools:
-        print()
-        table(
-            ["Name", "Available", "Category", "Version", "Purpose"],
+        renderer.blank()
+        renderer.table(
+            ["NAME", "STATE", "CATEGORY", "VERSION", "PURPOSE"],
             [
                 [
                     tool.get("name", ""),
-                    "yes" if tool.get("available") else "no",
+                    "available" if tool.get("available") else "offline",
                     tool.get("category", ""),
                     tool.get("version", "") or "",
                     tool.get("purpose", ""),
@@ -59,8 +62,24 @@ def _render_inventory(inventory: dict[str, Any]) -> None:
         )
     uncatalogued = inventory.get("uncatalogued_commands", [])
     if uncatalogued:
-        print("\nUncatalogued PATH commands:")
-        table(["Name", "Path"], [[item.get("name", ""), item.get("path", "")] for item in uncatalogued])
+        renderer.blank()
+        renderer.section("Uncatalogued PATH commands")
+        renderer.table(
+            ["NAME", "PATH"],
+            [[item.get("name", ""), item.get("path", "")] for item in uncatalogued],
+        )
+
+
+def _quiet_guides(guide: dict[str, Any]) -> list[str]:
+    lines: list[str] = []
+    for document in guide.get("documents", []):
+        content = str(document.get("content", ""))
+        lines.extend(content.rstrip("\n").splitlines())
+    return lines
+
+
+def _quiet_inventory(inventory: dict[str, Any]) -> list[str]:
+    return [str(tool.get("name", "")) for tool in inventory.get("tools", [])]
 
 
 def handle_knowledge(ctx: CLIContext, args) -> int:
@@ -71,42 +90,74 @@ def handle_knowledge(ctx: CLIContext, args) -> int:
         emit_json(result)
         return 0
 
+    if ctx.quiet:
+        if section == "overview":
+            overview = result.get("overview", {})
+            emit_quiet(
+                [
+                    f"profile={overview.get('profile', '')}",
+                    f"workspace={overview.get('workspace', '')}",
+                    f"policy={overview.get('command_policy', '')}",
+                    f"knowledge_dir={overview.get('knowledge_dir', '')}",
+                ]
+            )
+        elif section == "guide":
+            emit_quiet(_quiet_guides(result.get("guide", {})))
+        elif section == "tools":
+            emit_quiet(_quiet_inventory(result.get("inventory", {})))
+        else:
+            emit_quiet(
+                [
+                    *_quiet_guides(result.get("guide", {})),
+                    *_quiet_inventory(result.get("inventory", {})),
+                ]
+            )
+        return 0
+
+    renderer = renderer_for(ctx)
+    renderer.header("Host knowledge", section.capitalize())
+    renderer.blank()
+
     if section == "overview":
         overview = result.get("overview", {})
-        key_values(
+        renderer.status("success", "Knowledge source loaded")
+        renderer.blank()
+        renderer.facts(
             [
                 ("Profile", overview.get("profile", "")),
                 ("Workspace", overview.get("workspace", "")),
                 ("Restricted", overview.get("restrict_to_workspace", "")),
                 ("Policy", overview.get("command_policy", "")),
-                ("Knowledge dir", overview.get("knowledge_dir", "")),
+                ("Knowledge directory", overview.get("knowledge_dir", "")),
                 ("Guide files", ", ".join(overview.get("guide_files", []))),
             ]
         )
+        renderer.blank()
+        renderer.hint("bqa knowledge tools", "Inspect tools with")
         return 0
     if section == "guide":
-        _render_guides(result.get("guide", {}))
+        _render_guides(ctx, result.get("guide", {}))
         return 0
     if section == "tools":
-        _render_inventory(result.get("inventory", {}))
+        _render_inventory(ctx, result.get("inventory", {}))
         return 0
     if section == "search":
-        _render_guides(result.get("guide", {}))
+        _render_guides(ctx, result.get("guide", {}))
         if result.get("guide", {}).get("documents"):
-            print()
-        _render_inventory(result.get("inventory", {}))
+            renderer.blank()
+        _render_inventory(ctx, result.get("inventory", {}))
         return 0
     if section == "all":
         overview = result.get("overview", {})
-        key_values(
+        renderer.facts(
             [
                 ("Profile", overview.get("profile", "")),
                 ("Workspace", overview.get("workspace", "")),
                 ("Policy", overview.get("command_policy", "")),
             ]
         )
-        print()
-        _render_guides(result.get("guide", {}))
-        print()
-        _render_inventory(result.get("inventory", {}))
+        renderer.blank()
+        _render_guides(ctx, result.get("guide", {}))
+        renderer.blank()
+        _render_inventory(ctx, result.get("inventory", {}))
     return 0

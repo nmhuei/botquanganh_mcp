@@ -294,3 +294,40 @@ CLI vẫn hỗ trợ token khi auth được bật sau này và luôn che secret
 - `docs/CLI_DESIGN_PLAN.md` có thiết kế và trạng thái triển khai.
 - `docs/CLI_MANUAL_TEST_PLAN.md` có ma trận regression.
 - File này ghi nhận kết quả triển khai và nghiệm thu.
+
+
+## 2026-07-22 — Universal CLI visual redesign
+
+The CLI presentation layer was redesigned around `docs/CLI_VISUAL_CONTRACT.md`.
+
+Implemented:
+
+- shared `Renderer` primitives for headers, status, facts, tables, checks, summaries, hints, and errors;
+- human, quiet, and JSON output contracts;
+- structured JSON errors on stdout with authoritative exit codes;
+- `--color auto|always|never`, `--no-color`, `NO_COLOR`, non-TTY, CI, and `TERM=dumb` behavior;
+- Unicode-aware width, wrapping, truncation, and ANSI/OSC stripping;
+- borderless responsive tables with compact layouts below 70 columns;
+- semantic symbols `●`, `▲`, `×`, and `○` with text labels;
+- secret-safe config rendering and recursive JSON redaction;
+- external log ANSI stripping when color is disabled;
+- task-oriented help examples;
+- compatibility for existing direct `CLIContext(json_output=True)` callers.
+
+Verification:
+
+```text
+pytest: 117 passed
+compileall: PASS
+bash syntax: PASS
+git diff check: PASS
+project dependency closure: PASS
+configuration validation: PASS with one accepted authentication warning
+manual human output at 50 columns: PASS
+quiet output: PASS
+JSON parsing: PASS
+tunnel PID unchanged: PASS
+tunnel URL unchanged: PASS
+```
+
+No Cloudflare tunnel lifecycle command was executed during this redesign.

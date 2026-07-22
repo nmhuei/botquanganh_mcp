@@ -30,19 +30,45 @@ class CLIHandler(BaseHTTPRequestHandler):
                     "profile": "host",
                     "workspace": "/tmp",
                     "command_policy": "guarded",
-                    "metrics": {"uptime_seconds": 61, "total_requests": 2, "error_count": 0, "rate_limit_hits": 0, "avg_latency_ms": 1.2},
+                    "metrics": {
+                        "uptime_seconds": 61,
+                        "total_requests": 2,
+                        "error_count": 0,
+                        "rate_limit_hits": 0,
+                        "avg_latency_ms": 1.2,
+                    },
                 },
             )
         elif self.path.startswith("/api/v1/files/content"):
-            self._json(200, {"ok": True, "path": "note.txt", "content": "hello\n", "truncated": False})
+            self._json(
+                200,
+                {
+                    "ok": True,
+                    "path": "note.txt",
+                    "content": "hello\n",
+                    "truncated": False,
+                },
+            )
         else:
             self._json(404, {"error": {"message": "missing"}})
 
     def do_POST(self):
         if self.path == "/api/v1/commands/run":
-            self._json(500, {"ok": False, "exit_code": 7, "stdout": "", "stderr": "bad\n"})
+            self._json(
+                500, {"ok": False, "exit_code": 7, "stdout": "", "stderr": "bad\n"}
+            )
         elif self.path == "/api/v1/commands/check":
-            self._json(200, {"ok": True, "allowed": True, "policy": "guarded", "command_names": ["printf"], "severity": "none", "rule": None})
+            self._json(
+                200,
+                {
+                    "ok": True,
+                    "allowed": True,
+                    "policy": "guarded",
+                    "command_names": ["printf"],
+                    "severity": "none",
+                    "rule": None,
+                },
+            )
         else:
             self._json(404, {"error": {"message": "missing"}})
 
@@ -118,11 +144,13 @@ def test_bin_wrapper_resolves_global_symlink(tmp_path):
 def test_usage_error_respects_json_contract(capsys):
     assert main(["--json", "fs"]) == 2
     captured = capsys.readouterr()
-    assert captured.out == ""
-    payload = json.loads(captured.err)
+    payload = json.loads(captured.out)
+    assert captured.err == ""
     assert payload["ok"] is False
-    assert payload["error"]["exit_code"] == 2
-    assert "required" in payload["error"]["message"]
+    assert payload["status"] == "error"
+    assert payload["operation"] == "fs"
+    assert payload["exit_code"] == 2
+    assert "required" in payload["message"]
 
 
 def test_cli_install_and_uninstall_scripts(tmp_path):
@@ -197,3 +225,20 @@ def test_cli_uninstall_refuses_unrelated_target(tmp_path):
     assert proc.returncode == 1
     assert target.is_symlink()
     assert "Refusing to remove unrelated executable" in proc.stderr
+
+
+def test_health_human_uses_visual_contract(cli_server, capsys):
+    assert main(["health", "--base-url", cli_server, "--color", "never"]) == 0
+    output = capsys.readouterr().out
+    assert output.startswith("◆ BotQuangAnh\n")
+    assert "Service health · REST and host runtime" in output
+    assert "● healthy" in output
+    assert "┌" not in output
+
+
+def test_health_quiet_is_single_primary_value(cli_server, capsys):
+    assert main(["health", "--base-url", cli_server, "--quiet"]) == 0
+    captured = capsys.readouterr()
+    assert captured.out == "healthy\n"
+    assert captured.err == ""
+    assert "\x1b" not in captured.out

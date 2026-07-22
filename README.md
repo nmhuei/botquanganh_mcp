@@ -285,12 +285,24 @@ bqa doctor
 bqa completion bash
 ```
 
-Mọi lệnh đều hỗ trợ `--json`. Global options có thể đặt trước hoặc sau subcommand:
+CLI có ba output mode dùng chung một nguồn dữ liệu:
+
+```bash
+bqa health                         # human: header, trạng thái, facts và hint
+bqa health --quiet                 # quiet: chỉ in giá trị chính, không ANSI
+bqa health --json                  # JSON ổn định cho automation
+bqa health --color never           # tắt màu rõ ràng
+NO_COLOR=1 bqa health              # tắt màu theo convention của terminal
+```
+
+Global options có thể đặt trước hoặc sau subcommand:
 
 ```bash
 bqa --public health --json
 bqa health --public --json
 ```
+
+Human output dùng layout tuyến tính, bảng không viền và tự chuyển sang compact mode trên terminal hẹp. JSON success và structured error đều được in ra `stdout` để caller luôn parse được; exit code vẫn phản ánh thành công hoặc thất bại. Quiet mode không có header, hint, spinner hay ANSI.
 
 CLI mặc định gọi local REST tại `http://127.0.0.1:<MCP_PORT>`. Dùng `--public` để lấy URL hiện tại từ `logs/tunnel_url.txt`, hoặc `--base-url` để chỉ định endpoint khác.
 
@@ -312,7 +324,7 @@ Riêng `bqa cmd run`, khi server đã thực thi command thành công về mặt
 
 Thiết kế đầy đủ: `docs/CLI_DESIGN_PLAN.md`.
 
-Tài liệu CLI bổ sung: `docs/CLI_MANUAL_TEST_PLAN.md` và `docs/CLI_IMPLEMENTATION_REPORT.md`.
+Tài liệu CLI bổ sung: `docs/CLI_VISUAL_CONTRACT.md`, `docs/CLI_MANUAL_TEST_PLAN.md` và `docs/CLI_IMPLEMENTATION_REPORT.md`.
 
 ## Vận hành và recovery
 

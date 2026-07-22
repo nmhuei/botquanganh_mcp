@@ -6,7 +6,7 @@ from pathlib import Path
 from app.cli.client import RESTClient
 from app.cli.context import CLIContext
 from app.cli.errors import CLIError, EXIT_USAGE, NotFoundCLIError
-from app.cli.output import emit_json, key_values, message, table
+from app.cli.output import emit_json, emit_quiet, renderer_for
 
 
 def _content(args) -> str:
@@ -34,6 +34,44 @@ def _file_text(value: str | None, file_value: str | None, label: str) -> str:
     raise CLIError(f"Missing {label} text.", EXIT_USAGE)
 
 
+def _item_type(item: dict) -> str:
+    if item.get("is_directory"):
+        return "directory"
+    if item.get("is_symlink"):
+        return "symlink"
+    return "file"
+
+
+def _render_mutation(ctx: CLIContext, result: dict, command: str) -> int:
+    ok = bool(result.get("ok", True))
+    state = "success" if ok else "failed"
+    payload = {**result, "status": state, "operation": f"fs_{command}"}
+    if ctx.json_output:
+        emit_json(payload)
+    elif ctx.quiet:
+        primary = result.get("path") or state
+        emit_quiet(primary)
+    else:
+        renderer = renderer_for(ctx)
+        renderer.header("Filesystem", command.capitalize())
+        renderer.blank()
+        renderer.status(
+            state,
+            f"{command.capitalize()} completed"
+            if ok
+            else f"{command.capitalize()} failed",
+        )
+        details = [
+            (key.replace("_", " ").title(), value)
+            for key, value in result.items()
+            if key != "ok"
+        ]
+        if details:
+            renderer.blank()
+            renderer.facts(details)
+    return 0 if ok else 1
+
+
 def handle_filesystem(ctx: CLIContext, args) -> int:
     client = RESTClient(ctx.base_url, ctx.token, ctx.request_timeout)
     command = args.fs_command
@@ -43,16 +81,33 @@ def handle_filesystem(ctx: CLIContext, args) -> int:
             "/api/v1/files",
             query={"path": args.path, "max_entries": args.max_entries},
         )
+        items = result.get("items", [])
         if ctx.json_output:
-            emit_json(result)
+            emit_json({**result, "status": "success"})
+        elif ctx.quiet:
+            emit_quiet([item.get("path", item.get("name", "")) for item in items])
         else:
-            rows = []
-            for item in result.get("items", []):
-                item_type = "dir" if item.get("is_directory") else "link" if item.get("is_symlink") else "file"
-                rows.append([item_type, item.get("size_bytes", ""), item.get("path", item.get("name", ""))])
-            table(["Type", "Bytes", "Path"], rows)
+            renderer = renderer_for(ctx)
+            renderer.header("Filesystem listing", str(result.get("path", args.path)))
+            renderer.blank()
+            renderer.status("success", f"{len(items)} entries")
+            if items:
+                renderer.blank()
+                renderer.table(
+                    ["TYPE", "BYTES", "PATH"],
+                    [
+                        [
+                            _item_type(item),
+                            item.get("size_bytes", ""),
+                            item.get("path", item.get("name", "")),
+                        ]
+                        for item in items
+                    ],
+                    numeric_columns=[1],
+                )
             if result.get("truncated"):
-                message("Directory listing was truncated.", kind="warn", no_color=ctx.no_color)
+                renderer.blank()
+                renderer.warning("Directory listing was truncated.")
         return 0
 
     if command == "cat":
@@ -69,14 +124,16 @@ def handle_filesystem(ctx: CLIContext, args) -> int:
             },
         )
         if ctx.json_output:
-            emit_json(result)
+            emit_json({**result, "status": "success"})
         else:
-            content = result.get("content", "")
+            content = str(result.get("content", ""))
             sys.stdout.write(content)
             if content and not content.endswith("\n"):
                 sys.stdout.write("\n")
-            if result.get("truncated"):
-                message("File output was truncated.", kind="warn", no_color=ctx.no_color)
+            if result.get("truncated") and not ctx.quiet:
+                renderer_for(ctx, stream=sys.stderr).warning(
+                    "File output was truncated."
+                )
         return 0
 
     if command == "write":
@@ -89,12 +146,14 @@ def handle_filesystem(ctx: CLIContext, args) -> int:
                 "create_parents": not args.no_create_parents,
             },
         )
-    elif command == "append":
+        return _render_mutation(ctx, result, command)
+    if command == "append":
         result = client.post(
             "/api/v1/files/append",
             json_body={"path": args.path, "content": _content(args)},
         )
-    elif command == "replace":
+        return _render_mutation(ctx, result, command)
+    if command == "replace":
         result = client.patch(
             "/api/v1/files/content",
             json_body={
@@ -104,12 +163,14 @@ def handle_filesystem(ctx: CLIContext, args) -> int:
                 "expected_count": args.expected_count,
             },
         )
-    elif command == "mkdir":
+        return _render_mutation(ctx, result, command)
+    if command == "mkdir":
         result = client.post(
             "/api/v1/directories",
             json_body={"path": args.path, "parents": not args.no_parents},
         )
-    elif command == "search":
+        return _render_mutation(ctx, result, command)
+    if command == "search":
         result = client.get(
             "/api/v1/search",
             query={
@@ -119,22 +180,38 @@ def handle_filesystem(ctx: CLIContext, args) -> int:
                 "max_results": args.max_results,
             },
         )
+        matches = result.get("results", [])
         if ctx.json_output:
-            emit_json(result)
+            emit_json({**result, "status": "success"})
+        elif ctx.quiet:
+            emit_quiet(
+                [
+                    f"{item.get('path', '')}:{item.get('line_number', '')}:{item.get('line', '')}"
+                    for item in matches
+                ]
+            )
         else:
-            rows = [
-                [item.get("path", ""), item.get("line_number", ""), item.get("line", "")]
-                for item in result.get("results", [])
-            ]
-            table(["Path", "Line", "Text"], rows)
+            renderer = renderer_for(ctx)
+            renderer.header("Filesystem search", args.query)
+            renderer.blank()
+            renderer.status("success", f"{len(matches)} matches")
+            if matches:
+                renderer.blank()
+                renderer.table(
+                    ["PATH", "LINE", "TEXT"],
+                    [
+                        [
+                            item.get("path", ""),
+                            item.get("line_number", ""),
+                            item.get("line", ""),
+                        ]
+                        for item in matches
+                    ],
+                    numeric_columns=[1],
+                )
             if result.get("truncated"):
-                message("Search results were truncated.", kind="warn", no_color=ctx.no_color)
+                renderer.blank()
+                renderer.warning("Search results were truncated.")
         return 0
-    else:
-        raise CLIError(f"Unsupported fs command: {command}", EXIT_USAGE)
 
-    if ctx.json_output:
-        emit_json(result)
-    elif not ctx.quiet:
-        key_values([(key, value) for key, value in result.items() if key != "ok"])
-    return 0 if result.get("ok", True) else 1
+    raise CLIError(f"Unsupported fs command: {command}", EXIT_USAGE)

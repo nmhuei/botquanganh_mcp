@@ -3,11 +3,14 @@ import argparse
 import pytest
 
 from app.cli.context import extract_global_options, normalize_base_url
+from app.cli.errors import CLIError
 from app.cli.parser import build_parser, parse_line_range
 
 
 def test_global_options_work_after_subcommand():
-    args = build_parser().parse_args(extract_global_options(["status", "--json", "--public"]))
+    args = build_parser().parse_args(
+        extract_global_options(["status", "--json", "--public"])
+    )
     assert args.command == "status"
     assert args.json is True
     assert args.public is True
@@ -43,3 +46,17 @@ def test_parser_covers_primary_command_tree():
     ]
     for argv in cases:
         assert parser.parse_args(argv).command
+
+
+def test_color_option_and_output_modes_are_global():
+    args = build_parser().parse_args(
+        extract_global_options(["health", "--color", "never", "--quiet"])
+    )
+    assert args.command == "health"
+    assert args.color == "never"
+    assert args.quiet is True
+
+
+def test_json_and_quiet_are_mutually_exclusive():
+    with pytest.raises(CLIError):
+        build_parser().parse_args(["--json", "--quiet", "health"])

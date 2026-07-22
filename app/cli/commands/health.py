@@ -2,21 +2,31 @@ from __future__ import annotations
 
 from app.cli.client import RESTClient
 from app.cli.context import CLIContext
-from app.cli.output import emit_json, human_duration, key_values, table
+from app.cli.output import emit_json, emit_quiet, human_duration, renderer_for
 
 
 def handle_health(ctx: CLIContext, _args) -> int:
     client = RESTClient(ctx.base_url, ctx.token, ctx.request_timeout)
     result = client.get("/api/v1/health")
+    state = "healthy" if result.get("ok") else "unhealthy"
+    payload = {**result, "status": state}
     if ctx.json_output:
-        emit_json(result)
-        return 0
+        emit_json(payload)
+        return 0 if result.get("ok") else 1
+    if ctx.quiet:
+        emit_quiet(state)
+        return 0 if result.get("ok") else 1
+
     metrics = result.get("metrics", {}) if isinstance(result, dict) else {}
-    key_values(
+    renderer = renderer_for(ctx)
+    renderer.header("Service health", "REST and host runtime")
+    renderer.blank()
+    renderer.status(state)
+    renderer.blank()
+    renderer.facts(
         [
             ("Service", result.get("service", "")),
             ("Version", result.get("version", "")),
-            ("Status", "healthy" if result.get("ok") else "unhealthy"),
             ("Profile", result.get("profile", "")),
             ("Workspace", result.get("workspace", "")),
             ("Policy", result.get("command_policy", "")),
@@ -24,34 +34,70 @@ def handle_health(ctx: CLIContext, _args) -> int:
             ("Requests", metrics.get("total_requests", 0)),
             ("Errors", metrics.get("error_count", 0)),
             ("Rate-limit hits", metrics.get("rate_limit_hits", 0)),
-            ("Avg latency", f"{metrics.get('avg_latency_ms', 0)} ms"),
+            ("Average latency", f"{metrics.get('avg_latency_ms', 0)} ms"),
         ]
     )
+    renderer.blank()
+    error_count = int(metrics.get("error_count", 0) or 0)
+    if result.get("ok") and error_count == 0:
+        renderer.summary("Service is healthy with no recorded errors.", "success")
+    elif result.get("ok"):
+        renderer.summary(
+            f"Service is healthy with {error_count} recorded errors.", "warn"
+        )
+    else:
+        renderer.summary("Service health check failed.", "error")
+    renderer.blank()
+    renderer.hint("bqa doctor --local-only", "Inspect diagnostics with")
     return 0 if result.get("ok") else 1
 
 
 def handle_capabilities(ctx: CLIContext, args) -> int:
     client = RESTClient(ctx.base_url, ctx.token, ctx.request_timeout)
     result = client.get("/api/v1/capabilities")
-    selected = [name for name in ("tools", "limits", "host") if getattr(args, name, False)]
-    if selected:
-        payload = {name: result.get(name) for name in selected}
-    else:
-        payload = result
+    selected = [
+        name for name in ("tools", "limits", "host") if getattr(args, name, False)
+    ]
+    payload = {name: result.get(name) for name in selected} if selected else result
     if ctx.json_output:
         emit_json(payload)
         return 0
+    if ctx.quiet:
+        if selected == ["tools"]:
+            emit_quiet(result.get("tools", []))
+        elif selected == ["limits"]:
+            emit_quiet(
+                [f"{key}={value}" for key, value in result.get("limits", {}).items()]
+            )
+        elif selected == ["host"]:
+            emit_quiet(
+                [f"{key}={value}" for key, value in result.get("host", {}).items()]
+            )
+        else:
+            emit_quiet(len(result.get("tools", [])))
+        return 0
+
+    renderer = renderer_for(ctx)
+    renderer.header("Capabilities", "Host MCP surface and limits")
+    renderer.blank()
     if selected == ["tools"]:
-        for tool in result.get("tools", []):
-            print(tool)
+        tools = result.get("tools", [])
+        renderer.status("success", f"{len(tools)} tools available")
+        renderer.blank()
+        renderer.table(["TOOL"], [[tool] for tool in tools])
         return 0
     if selected == ["limits"]:
-        key_values([(key, value) for key, value in result.get("limits", {}).items()])
+        renderer.facts(
+            [(key, value) for key, value in result.get("limits", {}).items()]
+        )
         return 0
     if selected == ["host"]:
-        key_values([(key, value) for key, value in result.get("host", {}).items()])
+        renderer.facts([(key, value) for key, value in result.get("host", {}).items()])
         return 0
-    key_values(
+
+    renderer.status("success", "Capabilities loaded")
+    renderer.blank()
+    renderer.facts(
         [
             ("Service", result.get("service", "")),
             ("Version", result.get("version", "")),
@@ -63,6 +109,7 @@ def handle_capabilities(ctx: CLIContext, args) -> int:
     )
     tools = result.get("tools", [])
     if tools:
-        print()
-        table(["Tools"], [[tool] for tool in tools])
+        renderer.blank()
+        renderer.section("Tools")
+        renderer.table(["NAME"], [[tool] for tool in tools])
     return 0

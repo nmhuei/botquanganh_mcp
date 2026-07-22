@@ -22,7 +22,9 @@ def parse_line_range(value: str) -> tuple[Optional[int], Optional[int]]:
         try:
             line = int(raw)
         except ValueError as exc:
-            raise argparse.ArgumentTypeError("line range must be N, N:M, N:, or :M") from exc
+            raise argparse.ArgumentTypeError(
+                "line range must be N, N:M, N:, or :M"
+            ) from exc
         if line < 1:
             raise argparse.ArgumentTypeError("line numbers are 1-indexed")
         return line, line
@@ -31,7 +33,9 @@ def parse_line_range(value: str) -> tuple[Optional[int], Optional[int]]:
         start = int(left) if left else None
         end = int(right) if right else None
     except ValueError as exc:
-        raise argparse.ArgumentTypeError("line range must be N, N:M, N:, or :M") from exc
+        raise argparse.ArgumentTypeError(
+            "line range must be N, N:M, N:, or :M"
+        ) from exc
     if start is not None and start < 1:
         raise argparse.ArgumentTypeError("line numbers are 1-indexed")
     if end is not None and end < 1:
@@ -42,16 +46,39 @@ def parse_line_range(value: str) -> tuple[Optional[int], Optional[int]]:
 
 
 def _add_global_options(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--base-url", help="REST base URL; /mcp and /api/v1 suffixes are accepted")
-    parser.add_argument("--public", action="store_true", help="Use the current tunnel URL")
-    parser.add_argument("--local", action="store_true", help="Use the local bridge URL (default)")
+    parser.add_argument(
+        "--base-url", help="REST base URL; /mcp and /api/v1 suffixes are accepted"
+    )
+    parser.add_argument(
+        "--public", action="store_true", help="Use the current tunnel URL"
+    )
+    parser.add_argument(
+        "--local", action="store_true", help="Use the local bridge URL (default)"
+    )
     parser.add_argument("--token", help="Gateway token")
     parser.add_argument("--token-file", help="Read gateway token from a file")
-    parser.add_argument("--request-timeout", type=float, default=15.0, help="HTTP timeout in seconds")
-    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
-    parser.add_argument("--no-color", action="store_true", help="Disable ANSI colors")
-    parser.add_argument("--verbose", action="store_true", help="Show operation metadata")
-    parser.add_argument("--quiet", action="store_true", help="Suppress non-essential output")
+    parser.add_argument(
+        "--request-timeout", type=float, default=15.0, help="HTTP timeout in seconds"
+    )
+    output = parser.add_mutually_exclusive_group()
+    output.add_argument(
+        "--json", action="store_true", help="Print stable machine-readable JSON"
+    )
+    output.add_argument(
+        "--quiet", action="store_true", help="Print only the primary value without ANSI"
+    )
+    parser.add_argument(
+        "--color",
+        choices=["auto", "always", "never"],
+        default="auto",
+        help="Color policy for human output (default: auto)",
+    )
+    parser.add_argument(
+        "--no-color", action="store_true", help="Alias for --color never"
+    )
+    parser.add_argument(
+        "--verbose", action="store_true", help="Show operation metadata"
+    )
     parser.add_argument("--version", action="version", version=f"bqa {VERSION}")
 
 
@@ -65,21 +92,42 @@ def _content_source(parser: argparse.ArgumentParser) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = CLIArgumentParser(
         prog="bqa",
-        description="Operate BotQuangAnh Host MCP and call its REST API.",
+        description="Operate BotQuangAnh Host MCP from a terminal or automation.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  bqa status
+  bqa health --json
+  bqa fs cat README.md --quiet
+  bqa server restart
+  bqa doctor --local-only
+
+Output modes:
+  human   Styled terminal output (default)
+  quiet   Primary value only, without ANSI
+  JSON    Stable structured output for automation
+""",
     )
     _add_global_options(parser)
     commands = parser.add_subparsers(dest="command", required=True)
 
-    commands.add_parser("start", help="Start/adopt the MCP server and tunnel supervisor")
+    commands.add_parser(
+        "start", help="Start/adopt the MCP server and tunnel supervisor"
+    )
     commands.add_parser("stop", help="Stop supervisor, tunnel, and server")
-    restart = commands.add_parser("restart", help="Restart supervisor, tunnel, and server")
-    restart.add_argument("--yes", action="store_true", help="Skip the tunnel URL warning")
+    restart = commands.add_parser(
+        "restart", help="Restart supervisor, tunnel, and server"
+    )
+    restart.add_argument(
+        "--yes", action="store_true", help="Skip the tunnel URL warning"
+    )
     commands.add_parser("status", help="Show runtime status")
     commands.add_parser("url", help="Print the current connector URL")
 
     server = commands.add_parser("server", help="Manage only the local MCP bridge")
     server_commands = server.add_subparsers(dest="server_command", required=True)
-    server_commands.add_parser("restart", help="Restart the bridge without restarting the tunnel")
+    server_commands.add_parser(
+        "restart", help="Restart the bridge without restarting the tunnel"
+    )
     server_commands.add_parser("status", help="Show bridge status")
 
     commands.add_parser("health", help="Read REST health")
@@ -109,7 +157,9 @@ def build_parser() -> argparse.ArgumentParser:
     fs_append.add_argument("path")
     _content_source(fs_append)
 
-    fs_replace = fs_commands.add_parser("replace", help="Replace exact text in a host file")
+    fs_replace = fs_commands.add_parser(
+        "replace", help="Replace exact text in a host file"
+    )
     fs_replace.add_argument("path")
     old_group = fs_replace.add_mutually_exclusive_group(required=True)
     old_group.add_argument("--old")
@@ -140,7 +190,9 @@ def build_parser() -> argparse.ArgumentParser:
     cmd_run.add_argument("--check-first", action="store_true")
 
     knowledge = commands.add_parser("knowledge", help="Read guides and tool inventory")
-    knowledge_commands = knowledge.add_subparsers(dest="knowledge_command", required=True)
+    knowledge_commands = knowledge.add_subparsers(
+        dest="knowledge_command", required=True
+    )
     overview = knowledge_commands.add_parser("overview")
     overview.add_argument("--query", default="")
     guide = knowledge_commands.add_parser("guide")
@@ -167,8 +219,12 @@ def build_parser() -> argparse.ArgumentParser:
     all_parser.add_argument("--refresh", action="store_true")
 
     logs = commands.add_parser("logs", help="Read local runtime logs")
-    logs.add_argument("log_action", choices=["server", "tunnel", "launcher", "audit", "follow"])
-    logs.add_argument("follow_target", nargs="?", choices=["server", "tunnel", "launcher", "audit"])
+    logs.add_argument(
+        "log_action", choices=["server", "tunnel", "launcher", "audit", "follow"]
+    )
+    logs.add_argument(
+        "follow_target", nargs="?", choices=["server", "tunnel", "launcher", "audit"]
+    )
     logs.add_argument("-n", "--lines", type=int, default=100)
     logs.add_argument("-f", "--follow", action="store_true")
     logs.add_argument("--all", action="store_true", dest="all_logs")

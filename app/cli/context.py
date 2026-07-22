@@ -7,10 +7,24 @@ from typing import Sequence
 
 from app.cli.config_view import load_env
 from app.cli.errors import CLIError, EXIT_USAGE, NotFoundCLIError
+from app.cli.output import OutputMode
 
 
-GLOBAL_FLAG_OPTIONS = {"--json", "--no-color", "--verbose", "--quiet", "--public", "--local"}
-GLOBAL_VALUE_OPTIONS = {"--base-url", "--token", "--token-file", "--request-timeout"}
+GLOBAL_FLAG_OPTIONS = {
+    "--json",
+    "--no-color",
+    "--verbose",
+    "--quiet",
+    "--public",
+    "--local",
+}
+GLOBAL_VALUE_OPTIONS = {
+    "--base-url",
+    "--token",
+    "--token-file",
+    "--request-timeout",
+    "--color",
+}
 
 
 def repo_root() -> Path:
@@ -53,7 +67,11 @@ def extract_global_options(argv: Sequence[str]) -> list[str]:
             index += 1
             continue
         matched_value_option = next(
-            (name for name in GLOBAL_VALUE_OPTIONS if token == name or token.startswith(name + "=")),
+            (
+                name
+                for name in GLOBAL_VALUE_OPTIONS
+                if token == name or token.startswith(name + "=")
+            ),
             None,
         )
         if matched_value_option:
@@ -78,11 +96,28 @@ class CLIContext:
     base_url: str
     token: str
     request_timeout: float
-    json_output: bool = False
-    no_color: bool = False
+    output_mode: OutputMode = OutputMode.HUMAN
+    color: str = "auto"
     verbose: bool = False
-    quiet: bool = False
     public: bool = False
+    # Compatibility fields retained for callers that construct CLIContext directly.
+    json_output: bool = False
+    quiet: bool = False
+    no_color: bool = False
+
+    def __post_init__(self) -> None:
+        if self.json_output and self.quiet:
+            raise CLIError("Use only one of JSON or quiet output.", EXIT_USAGE)
+        if self.json_output:
+            self.output_mode = OutputMode.JSON
+        elif self.quiet:
+            self.output_mode = OutputMode.QUIET
+        else:
+            self.json_output = self.output_mode is OutputMode.JSON
+            self.quiet = self.output_mode is OutputMode.QUIET
+        if self.no_color or self.output_mode is not OutputMode.HUMAN:
+            self.color = "never"
+        self.no_color = self.color == "never"
 
     @classmethod
     def from_args(cls, args) -> "CLIContext":
@@ -98,7 +133,9 @@ class CLIContext:
             )
         )
         if selected > 1:
-            raise CLIError("Use only one of --public, --local, or --base-url.", EXIT_USAGE)
+            raise CLIError(
+                "Use only one of --public, --local, or --base-url.", EXIT_USAGE
+            )
 
         public = bool(getattr(args, "public", False))
         explicit_base = getattr(args, "base_url", None) or os.getenv("BQA_BASE_URL", "")
@@ -108,9 +145,13 @@ class CLIContext:
             url_file = root / "logs" / "tunnel_url.txt"
             if not url_file.is_file():
                 raise NotFoundCLIError(f"Tunnel URL file not found: {url_file}")
-            base_url = normalize_base_url(url_file.read_text(encoding="utf-8").splitlines()[0])
+            base_url = normalize_base_url(
+                url_file.read_text(encoding="utf-8").splitlines()[0]
+            )
         else:
-            connect_host = values.get("MCP_CONNECT_HOST", "127.0.0.1").strip() or "127.0.0.1"
+            connect_host = (
+                values.get("MCP_CONNECT_HOST", "127.0.0.1").strip() or "127.0.0.1"
+            )
             if connect_host in {"0.0.0.0", "::"}:  # nosec B104
                 connect_host = "127.0.0.1"
             port = values.get("MCP_PORT", "8000").strip() or "8000"
@@ -126,7 +167,11 @@ class CLIContext:
                 raise NotFoundCLIError(f"Token file not found: {path}")
             token = path.read_text(encoding="utf-8").strip()
         if not token:
-            token = os.getenv("BQA_TOKEN") or os.getenv("GATEWAY_TOKEN") or values.get("GATEWAY_TOKEN", "")
+            token = (
+                os.getenv("BQA_TOKEN")
+                or os.getenv("GATEWAY_TOKEN")
+                or values.get("GATEWAY_TOKEN", "")
+            )
 
         try:
             request_timeout = float(getattr(args, "request_timeout", 15.0))
@@ -135,15 +180,32 @@ class CLIContext:
         if request_timeout <= 0:
             raise CLIError("--request-timeout must be greater than zero.", EXIT_USAGE)
 
+        json_output = bool(getattr(args, "json", False))
+        quiet = bool(getattr(args, "quiet", False))
+        if json_output and quiet:
+            raise CLIError("Use only one of --json or --quiet.", EXIT_USAGE)
+        output_mode = (
+            OutputMode.JSON
+            if json_output
+            else OutputMode.QUIET
+            if quiet
+            else OutputMode.HUMAN
+        )
+
+        color = str(getattr(args, "color", "auto") or "auto")
+        if getattr(args, "no_color", False):
+            color = "never"
+        if output_mode is not OutputMode.HUMAN:
+            color = "never"
+
         return cls(
             repo_root=root,
             values=values,
             base_url=base_url,
             token=token,
             request_timeout=request_timeout,
-            json_output=bool(getattr(args, "json", False)),
-            no_color=bool(getattr(args, "no_color", False)),
+            output_mode=output_mode,
+            color=color,
             verbose=bool(getattr(args, "verbose", False)),
-            quiet=bool(getattr(args, "quiet", False)),
             public=public,
         )
