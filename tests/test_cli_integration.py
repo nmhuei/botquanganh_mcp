@@ -266,3 +266,52 @@ def test_url_quiet_is_exact_copyable_value(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert captured.out == f"{url}\n"
     assert captured.err == ""
+
+
+def test_start_human_renders_copyable_url(monkeypatch, capsys):
+    url = "https://my-test-tunnel.trycloudflare.com/mcp"
+    monkeypatch.setattr("app.cli.main.start", lambda *_args: {"ok": True, "exit_code": 0})
+    monkeypatch.setattr("app.cli.main.connector_url", lambda *_args: url)
+
+    assert main(["start", "--color", "never"]) == 0
+    output = capsys.readouterr().out
+    assert "Endpoint · copy-safe" in output
+    assert url in output
+
+
+def test_start_quiet_renders_exact_copyable_url(monkeypatch, capsys):
+    url = "https://my-test-tunnel.trycloudflare.com/mcp"
+    monkeypatch.setattr("app.cli.main.start", lambda *_args: {"ok": True, "exit_code": 0})
+    monkeypatch.setattr("app.cli.main.connector_url", lambda *_args: url)
+
+    assert main(["start", "--quiet"]) == 0
+    captured = capsys.readouterr()
+    assert captured.out == f"{url}\n"
+    assert captured.err == ""
+
+
+def test_start_json_renders_url_in_payload(monkeypatch, capsys):
+    url = "https://my-test-tunnel.trycloudflare.com/mcp"
+    monkeypatch.setattr("app.cli.main.start", lambda *_args: {"ok": True, "exit_code": 0, "script": "run.sh"})
+    monkeypatch.setattr("app.cli.main.connector_url", lambda *_args: url)
+
+    assert main(["start", "--json"]) == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["url"] == url
+    assert payload["status"] == "started"
+
+
+def test_empty_args_defaults_to_start(monkeypatch, capsys):
+    url = "https://my-test-tunnel.trycloudflare.com/mcp"
+    called = []
+    monkeypatch.setattr("app.cli.main.start", lambda *_args: called.append("start") or {"ok": True, "exit_code": 0})
+    monkeypatch.setattr("app.cli.main.connector_url", lambda *_args: url)
+
+    assert main([]) == 0
+    assert called == ["start"]
+    output = capsys.readouterr().out
+    assert "Lifecycle" in output
+    assert url in output
+
+

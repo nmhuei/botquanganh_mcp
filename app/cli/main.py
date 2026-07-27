@@ -108,17 +108,30 @@ def _render_lifecycle_result(
     ctx: CLIContext, result: dict, *, operation: str, state: str
 ) -> None:
     payload = {**result, "operation": operation, "status": state}
+
+    url = None
+    if operation in {"start", "restart"}:
+        url = connector_url(ctx.repo_root, ctx.values)
+        if url:
+            payload["url"] = url
+
     if ctx.json_output:
         emit_json(payload)
         return
     if ctx.quiet:
-        emit_quiet(state)
+        if url:
+            emit_quiet(url)
+        else:
+            emit_quiet(state)
         return
 
     renderer = renderer_for(ctx)
     renderer.header("Lifecycle", operation.capitalize())
     renderer.blank()
     renderer.status("success", f"Runtime {state}")
+    if url:
+        renderer.blank()
+        renderer.copyable_value("Endpoint · copy-safe", url)
     if ctx.verbose:
         details = []
         if result.get("script"):
@@ -191,6 +204,17 @@ def _dispatch(ctx: CLIContext, args) -> int:
             renderer.blank()
             renderer.hint("bqa url --quiet", "Copy URL only")
             renderer.hint("bqa --public health", "Check it with")
+        return 0
+    if command == "help":
+        topic = getattr(args, "topic", None)
+        p = build_parser()
+        if topic:
+            try:
+                p.parse_args([topic, "--help"])
+            except CLIError:
+                pass
+        else:
+            p.print_help()
         return 0
     if command == "server":
         if args.server_command == "status":
@@ -287,6 +311,11 @@ def _error_hint(exit_code: int, operation: str) -> str:
 
 def main(argv: Sequence[str] | None = None) -> int:
     raw_argv = list(sys.argv[1:] if argv is None else argv)
+    if not raw_argv or (
+        _operation_name(raw_argv) == "command"
+        and not any(arg in ("-h", "--help", "--version", "help") for arg in raw_argv)
+    ):
+        raw_argv = ["start", *raw_argv]
     parser = build_parser()
     ctx: CLIContext | None = None
     operation = _operation_name(raw_argv)

@@ -97,7 +97,7 @@ json_assert "$TMP_DIR/status.json" "data['server']['running'] and data['tunnel']
 json_assert "$TMP_DIR/status-prefix.json" "data['ok'] is True"
 "$BQA" server status --json > "$TMP_DIR/server-status.json"
 json_assert "$TMP_DIR/server-status.json" "data['server']['running'] and data['bridge'] == 'ready'"
-URL="$($BQA url)"
+URL="$($BQA url --quiet)"
 [[ "$URL" == https://*.trycloudflare.com/mcp ]]
 pass "status human/json, global option placement, url, server status"
 
@@ -217,8 +217,8 @@ PY
     log "Config output exposed the gateway token."
     exit 1
 fi
-[ "$("$BQA" config get GATEWAY_TOKEN)" = "********" ]
-[ "$("$BQA" config path)" = "$ROOT_DIR/.env" ]
+[ "$("$BQA" config get GATEWAY_TOKEN --quiet)" = "configured" ]
+[ "$("$BQA" config path --quiet)" = "$ROOT_DIR/.env" ]
 "$BQA" config validate --json > "$TMP_DIR/config-validate.json"
 json_assert "$TMP_DIR/config-validate.json" "data['ok'] is True"
 pass "config show/get/path/validate and token redaction"

@@ -122,6 +122,8 @@ Output modes:
     )
     commands.add_parser("status", help="Show runtime status")
     commands.add_parser("url", help="Print the current connector URL")
+    help_parser = commands.add_parser("help", help="Show help information")
+    help_parser.add_argument("topic", nargs="?", help="Subcommand to get help for")
 
     server = commands.add_parser("server", help="Manage only the local MCP bridge")
     server_commands = server.add_subparsers(dest="server_command", required=True)
