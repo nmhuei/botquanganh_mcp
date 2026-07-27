@@ -12,10 +12,23 @@ def host_workspace_dir() -> Path:
     return app.config.HOST_WORKSPACE_DIR.resolve()
 
 
-def _lexical_absolute_path(user_path: Optional[str]) -> Path:
+def host_default_dir() -> Path:
+    """Return the default working directory as an absolute path."""
     base_dir = host_workspace_dir()
+    default_dir = app.config.HOST_DEFAULT_DIR.resolve()
+    if app.config.HOST_RESTRICT_TO_WORKSPACE:
+        try:
+            default_dir.relative_to(base_dir)
+            return default_dir
+        except ValueError:
+            return base_dir
+    return default_dir
+
+
+def _lexical_absolute_path(user_path: Optional[str]) -> Path:
+    default_dir = host_default_dir()
     raw = Path(user_path or ".").expanduser()
-    candidate = raw if raw.is_absolute() else base_dir / raw
+    candidate = raw if raw.is_absolute() else default_dir / raw
     # abspath removes `.` and `..` without following symlinks.
     return Path(os.path.abspath(candidate))
 

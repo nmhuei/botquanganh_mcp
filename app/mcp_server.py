@@ -11,6 +11,8 @@ from app.config import (
     MCP_STATELESS_HTTP,
     TRUST_PROXY_HEADERS,
     VERSION,
+    HOST_WORKSPACE_DIR,
+    HOST_DEFAULT_DIR,
 )
 from app.error_contract import format_error_code
 from app.metrics import metrics
@@ -192,6 +194,9 @@ mcp = FastMCP(
     version=VERSION,
     instructions=(
         "Host-only MCP server. Use host_knowledge before unfamiliar host work, "
-        "then use the host filesystem and command tools."
+        "then use the host filesystem and command tools. "
+        f"By default, all operations (files, directories, command executions) "
+        f"MUST be relative to or run within the default directory: '{HOST_DEFAULT_DIR}'. "
+        f"Operations are allowed and restricted to the workspace boundary: '{HOST_WORKSPACE_DIR}'."
     ),
 )

@@ -80,6 +80,7 @@ Cấu hình `.env` trước khi public service. Mặc định mẫu yêu cầu a
 REQUIRE_AUTH=true
 GATEWAY_TOKEN=<secret-random-token>
 HOST_WORKSPACE_DIR=/home/user
+HOST_DEFAULT_DIR=/home/user/Workspace/project
 ```
 
 Sau đó xác minh:
@@ -218,6 +219,7 @@ Tool này đọc tài liệu trong `knowledge/` và đối chiếu `TOOL_CATALOG
 ```env
 HOST_WORKSPACE_DIR=/home/light
 HOST_RESTRICT_TO_WORKSPACE=true
+HOST_DEFAULT_DIR=~/Workspace/botquanganh_mcp_workspace
 HOST_COMMAND_POLICY=guarded
 MAX_TIMEOUT_SECONDS=60
 MAX_OUTPUT_BYTES=500000

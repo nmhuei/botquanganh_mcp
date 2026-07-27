@@ -25,6 +25,17 @@ HOST_RESTRICT_TO_WORKSPACE = (
     os.getenv("HOST_RESTRICT_TO_WORKSPACE", "true").lower() == "true"
 )
 
+HOST_DEFAULT_DIR = Path(os.getenv("HOST_DEFAULT_DIR", str(HOST_WORKSPACE_DIR))).expanduser()
+if not HOST_DEFAULT_DIR.is_absolute():
+    HOST_DEFAULT_DIR = BASE_DIR / HOST_DEFAULT_DIR
+HOST_DEFAULT_DIR = HOST_DEFAULT_DIR.resolve()
+
+if HOST_RESTRICT_TO_WORKSPACE:
+    try:
+        HOST_DEFAULT_DIR.relative_to(HOST_WORKSPACE_DIR)
+    except ValueError:
+        HOST_DEFAULT_DIR = HOST_WORKSPACE_DIR
+
 HOST_COMMAND_POLICY = os.getenv("HOST_COMMAND_POLICY", "guarded").strip().lower()
 if HOST_COMMAND_POLICY not in {"guarded", "allowlist"}:
     raise ValueError("HOST_COMMAND_POLICY must be 'guarded' or 'allowlist'")
@@ -51,7 +62,7 @@ HOST_TOOL_CACHE_SECONDS = max(0, int(os.getenv("HOST_TOOL_CACHE_SECONDS", "300")
 MAX_SINGLE_FILE_BYTES = int(os.getenv("MAX_SINGLE_FILE_BYTES", "3000000"))
 MAX_OUTPUT_BYTES = int(os.getenv("MAX_OUTPUT_BYTES", "500000"))
 MAX_TIMEOUT_SECONDS = int(os.getenv("MAX_TIMEOUT_SECONDS", "60"))
-MAX_CONCURRENT_COMMANDS = max(1, int(os.getenv("MAX_CONCURRENT_COMMANDS", "4")))
+MAX_CONCURRENT_COMMANDS = max(1, int(os.getenv("MAX_CONCURRENT_COMMANDS", "10")))
 COMMAND_QUEUE_TIMEOUT_SECONDS = max(
     0.0, float(os.getenv("COMMAND_QUEUE_TIMEOUT_SECONDS", "2"))
 )
