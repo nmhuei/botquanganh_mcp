@@ -111,7 +111,7 @@ def status_data(repo_root: Path, values: dict[str, str]) -> dict[str, Any]:
         "tunnel": {"running": tunnel_running, "pid": tunnel_pid},
         "bridge": bridge,
         "url": url,
-        "auth_required": bool_value(values, "REQUIRE_AUTH", True),
+        "auth_required": bool_value(values, "REQUIRE_AUTH", False),
         "workspace": str(workspace),
     }
 

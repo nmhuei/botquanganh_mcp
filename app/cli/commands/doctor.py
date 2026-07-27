@@ -234,7 +234,7 @@ def handle_doctor(ctx: CLIContext, args) -> int:
                 _request_check(public_client, "/api/v1/health", "public_rest")
             )
             checks.append(_mcp_check(public_client, mcp_path, "public_mcp"))
-            if not bool_value(ctx.values, "REQUIRE_AUTH", True):
+            if not bool_value(ctx.values, "REQUIRE_AUTH", False):
                 checks.append(
                     _check(
                         "public_auth",

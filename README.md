@@ -82,11 +82,11 @@ export PATH="$HOME/.local/bin:$PATH"
 
 Thêm dòng này vào `~/.bashrc` hoặc `~/.zshrc` để duy trì qua các session.
 
-Cấu hình `.env` trước khi public service. Mặc định mẫu yêu cầu authentication:
+Cấu hình `.env` trước khi public service. Mặc định auth sẽ tắt (`REQUIRE_AUTH=false`):
 
 ```env
-REQUIRE_AUTH=true
-GATEWAY_TOKEN=<secret-random-token>
+REQUIRE_AUTH=false
+GATEWAY_TOKEN=
 HOST_WORKSPACE_DIR=/home/user
 HOST_DEFAULT_DIR=/home/user/Workspace/project
 ```
@@ -231,7 +231,7 @@ HOST_DEFAULT_DIR=~/Workspace/botquanganh_mcp_workspace
 HOST_COMMAND_POLICY=guarded
 MAX_TIMEOUT_SECONDS=60
 MAX_OUTPUT_BYTES=500000
-REQUIRE_AUTH=true
+REQUIRE_AUTH=false
 GATEWAY_TOKEN=<secret>
 ```
 

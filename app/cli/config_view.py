@@ -17,7 +17,7 @@ DEFAULTS: dict[str, str] = {
     "MCP_PATH": "/mcp",
     "MCP_JSON_RESPONSE": "true",
     "MCP_STATELESS_HTTP": "true",
-    "REQUIRE_AUTH": "true",
+    "REQUIRE_AUTH": "false",
     "GATEWAY_TOKEN": str(),
     "TRUST_PROXY_HEADERS": "false",
     "HOST_WORKSPACE_DIR": str(Path.home()),
@@ -202,7 +202,7 @@ def validate_config(
         policy,
     )
 
-    auth_required = bool_value(values, "REQUIRE_AUTH", True)
+    auth_required = bool_value(values, "REQUIRE_AUTH", False)
     token_set = bool(values.get("GATEWAY_TOKEN", "").strip())
     if auth_required and not token_set:
         add("authentication", "fail", "REQUIRE_AUTH=true but GATEWAY_TOKEN is empty")

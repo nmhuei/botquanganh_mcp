@@ -14,7 +14,7 @@ MCP_PORT = int(os.getenv("MCP_PORT", "8000"))
 MCP_JSON_RESPONSE = os.getenv("MCP_JSON_RESPONSE", "true").lower() == "true"
 MCP_STATELESS_HTTP = os.getenv("MCP_STATELESS_HTTP", "true").lower() == "true"
 GATEWAY_TOKEN = os.getenv("GATEWAY_TOKEN", "")
-REQUIRE_AUTH = os.getenv("REQUIRE_AUTH", "true").lower() == "true"
+REQUIRE_AUTH = os.getenv("REQUIRE_AUTH", "false").lower() == "true"
 TRUST_PROXY_HEADERS = os.getenv("TRUST_PROXY_HEADERS", "false").lower() == "true"
 
 HOST_WORKSPACE_DIR = Path(os.getenv("HOST_WORKSPACE_DIR", str(Path.home()))).expanduser()
