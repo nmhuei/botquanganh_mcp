@@ -310,8 +310,8 @@ def test_empty_args_defaults_to_start(monkeypatch, capsys):
 
     assert main([]) == 0
     assert called == ["start"]
-    output = capsys.readouterr().out
-    assert "Lifecycle" in output
-    assert url in output
+    captured = capsys.readouterr()
+    assert captured.out == f"{url}\n"
+    assert captured.err == ""
 
 

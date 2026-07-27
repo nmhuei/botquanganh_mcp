@@ -12,7 +12,8 @@ from app.cli.commands.filesystem import handle_filesystem
 from app.cli.commands.health import handle_capabilities, handle_health
 from app.cli.commands.knowledge import handle_knowledge
 from app.cli.commands.logs import handle_logs
-from app.cli.context import CLIContext, extract_global_options
+from app.cli.config_view import load_env
+from app.cli.context import CLIContext, extract_global_options, repo_root
 from app.cli.errors import CLIError, EXIT_OPERATION_FAILED, EXIT_USAGE
 from app.cli.lifecycle import (
     connector_url,
@@ -315,6 +316,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         _operation_name(raw_argv) == "command"
         and not any(arg in ("-h", "--help", "--version", "help") for arg in raw_argv)
     ):
+        if not any(not arg.startswith("-") for arg in raw_argv if arg != "--"):
+            root = repo_root()
+            values = load_env(root)
+            start(root)
+            url = connector_url(root, values)
+            if not url:
+                raise CLIError("Connector URL is unavailable.")
+            emit_quiet(url)
+            return 0
         raw_argv = ["start", *raw_argv]
     parser = build_parser()
     ctx: CLIContext | None = None
