@@ -37,13 +37,21 @@ scripts/
 
 ### 1. One-line Install (khuyên dùng)
 
+Chạy lệnh duy nhất sau trên terminal để cài đặt tự động:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/nmhuei/botquanganh_mcp/main/install.sh | bash
 ```
 
-Script mặc định clone nhánh `main` vào `~/.botquanganh_mcp`, tạo `.venv`, cài dependencies, tạo `.env` với quyền `600`, rồi liên kết CLI tại `~/.local/bin/bqa`. Chạy lại cùng lệnh sẽ cập nhật installation bằng fast-forward; nếu working tree có file chưa commit, installer sẽ dừng để tránh ghi đè dữ liệu người dùng.
+Sau khi cài đặt thành công, bạn chỉ cần gõ `bqa` để khởi động dịch vụ và lấy URL lập tức:
 
-Có thể tùy chỉnh bằng biến môi trường:
+```bash
+bqa
+```
+
+Script mặc định clone nhánh `main` vào `~/.botquanganh_mcp`, tạo `.venv`, cài dependencies, tự động tạo `.env` với quyền `600`, rồi liên kết CLI tại `~/.local/bin/bqa`. Chạy lại cùng lệnh trên sẽ tự động cập nhật phiên bản mới nhất bằng fast-forward (nếu working tree có thay đổi chưa commit, installer sẽ tạm dừng để bảo vệ dữ liệu).
+
+Có thể tùy chỉnh khi cài đặt bằng biến môi trường:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/nmhuei/botquanganh_mcp/main/install.sh | \
@@ -252,12 +260,14 @@ Có thể chạy bằng một trong hai cách:
 Nhóm vận hành local:
 
 ```bash
-bqa start
-bqa status
-bqa url
+bqa                  # mặc định tự chạy bqa start & in Cloudflare URL ngay lập tức
+bqa start            # khởi động/adopt supervisor & in Cloudflare URL lập tức
+bqa status           # xem trạng thái các tiến trình (supervisor, server, tunnel)
+bqa url              # in lại connector URL hiện tại
+bqa url --quiet      # chỉ in connector URL thuần để copy/pipe
 bqa server restart   # chỉ restart bridge, giữ nguyên tunnel URL
 bqa restart --yes    # restart cả tunnel, có thể đổi URL
-bqa stop
+bqa stop             # dừng toàn bộ runtime
 ```
 
 Nhóm REST API:
