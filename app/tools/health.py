@@ -13,6 +13,7 @@ from app.config import (
     RATE_LIMIT_MAX_CLIENTS,
     SERVICE_NAME,
     VERSION,
+    AGENT_RUNTIME_URL,
 )
 from app.host.executor import command_capacity
 from app.logging_audit import log_audit_event
@@ -20,6 +21,7 @@ from app.mcp_server import mcp
 from app.metrics import metrics
 from app.ratelimit import rate_limiter
 from app.security import format_error_response
+from app.tools.agent_runtime import AGENT_RUNTIME_TOOLS
 
 HOST_TOOLS = [
     "host_list_directory",
@@ -83,7 +85,12 @@ def get_capabilities() -> dict:
             "service": SERVICE_NAME,
             "version": VERSION,
             "profile": "host",
-            "tools": ["health_check", "get_capabilities", *HOST_TOOLS],
+            "tools": [
+                "health_check",
+                "get_capabilities",
+                *HOST_TOOLS,
+                *AGENT_RUNTIME_TOOLS,
+            ],
             "host": {
                 "workspace": str(HOST_WORKSPACE_DIR),
                 "restrict_to_workspace": HOST_RESTRICT_TO_WORKSPACE,
@@ -104,6 +111,13 @@ def get_capabilities() -> dict:
                 "host_command_execution": True,
                 "host_knowledge": True,
                 "installed_tool_inventory": True,
+                "agent_runtime_control_plane": True,
+            },
+            "agent_runtime": {
+                "configured": bool(AGENT_RUNTIME_URL),
+                "optional_dependency": True,
+                "tools": AGENT_RUNTIME_TOOLS,
+                "availability": "use agent_runtime_health",
             },
         }
     except Exception as exc:

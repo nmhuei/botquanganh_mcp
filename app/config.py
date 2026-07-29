@@ -79,3 +79,14 @@ RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "false").lower() == "true"
 RATE_LIMIT_MAX_REQUESTS = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "200"))
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
 RATE_LIMIT_MAX_CLIENTS = max(1, int(os.getenv("RATE_LIMIT_MAX_CLIENTS", "10000")))
+
+AGENT_RUNTIME_URL = os.getenv("AGENT_RUNTIME_URL", "http://127.0.0.1:9420").strip()
+AGENT_RUNTIME_TOKEN = os.getenv("AGENT_RUNTIME_TOKEN", "").strip()
+# Keep optional-runtime values as strings so invalid runtime-only configuration
+# degrades agent tools instead of preventing the host MCP server from starting.
+AGENT_RUNTIME_TIMEOUT_SECONDS = os.getenv(
+    "AGENT_RUNTIME_TIMEOUT_SECONDS", "30"
+).strip()
+AGENT_RUNTIME_RESULT_TIMEOUT_SECONDS = os.getenv(
+    "AGENT_RUNTIME_RESULT_TIMEOUT_SECONDS", "60"
+).strip()
