@@ -9,7 +9,7 @@ description = "Host MCP server and bqa operations CLI"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "fastmcp==3.4.0",
+  "fastmcp==3.4.6",
   "python-dotenv==1.2.2",
 ]
 
