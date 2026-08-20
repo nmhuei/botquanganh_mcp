@@ -68,27 +68,25 @@ echo "[*] Repository location: $ROOT_DIR"
 PYTHON_BIN="$(command -v python3 || true)"
 [ -n "$PYTHON_BIN" ] || fail "python3 is required but was not found in PATH."
 
+UV_BIN="$(command -v uv || true)"
+[ -n "$UV_BIN" ] || fail "uv is required but was not found in PATH. Install: curl -LsSf https://astral.sh/uv/install.sh | sh"
+
 if [ ! -d .venv ]; then
     echo "[*] Creating Python virtual environment in .venv..."
-    "$PYTHON_BIN" -m venv .venv
+    "$UV_BIN" venv .venv --python "$PYTHON_BIN"
 fi
 
 VENV_PYTHON="$ROOT_DIR/.venv/bin/python"
 [ -x "$VENV_PYTHON" ] \
     || fail "virtual environment Python at $VENV_PYTHON is missing or not executable."
 
-if [ "${BQA_SKIP_PIP_UPGRADE:-false}" != "true" ]; then
-    echo "[*] Updating pip..."
-    "$VENV_PYTHON" -m pip install --upgrade pip --quiet
-fi
-
 if [ -f requirements.txt ]; then
     echo "[*] Installing runtime dependencies..."
-    "$VENV_PYTHON" -m pip install -r requirements.txt --quiet
+    "$UV_BIN" pip install -r requirements.txt --python "$VENV_PYTHON" --quiet
 fi
 
 echo "[*] Installing bqa CLI package..."
-"$VENV_PYTHON" -m pip install -e . --no-deps --quiet
+"$UV_BIN" pip install -e . --no-deps --python "$VENV_PYTHON" --quiet
 
 if [ ! -f .env ] && [ -f .env.example ]; then
     cp .env.example .env
