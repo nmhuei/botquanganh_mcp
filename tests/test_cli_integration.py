@@ -108,10 +108,11 @@ def test_command_policy_check(cli_server, capsys):
     assert payload["allowed"] is True
 
 
-def test_full_restart_requires_yes_when_noninteractive(monkeypatch, capsys):
-    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
-    assert main(["restart"]) == 2
-    assert "requires --yes" in capsys.readouterr().err
+def test_restart_is_server_only_without_confirmation(monkeypatch):
+    result = {"ok": True, "operation": "server_restart"}
+    monkeypatch.setattr("app.cli.main.restart", lambda *_args: result)
+    monkeypatch.setattr("app.cli.main._render_lifecycle_result", lambda *_args, **_kwargs: None)
+    assert main(["restart"]) == 0
 
 
 def test_completion_generation(capsys):
@@ -246,7 +247,7 @@ def test_health_quiet_is_single_primary_value(cli_server, capsys):
 
 def test_url_human_keeps_copyable_url_on_one_logical_line(monkeypatch, capsys):
     url = "https://actions-beneath-created-syndication.trycloudflare.com/mcp"
-    monkeypatch.setattr("app.cli.main.connector_url", lambda *_args: url)
+    monkeypatch.setattr("app.cli.main.status_data", lambda *_args: {"connector_ready": True, "url": url})
     monkeypatch.setattr("app.cli.output.terminal_width", lambda *_args, **_kwargs: 40)
 
     assert main(["url", "--color", "never"]) == 0
@@ -260,7 +261,7 @@ def test_url_human_keeps_copyable_url_on_one_logical_line(monkeypatch, capsys):
 
 def test_url_quiet_is_exact_copyable_value(monkeypatch, capsys):
     url = "https://actions-beneath-created-syndication.trycloudflare.com/mcp"
-    monkeypatch.setattr("app.cli.main.connector_url", lambda *_args: url)
+    monkeypatch.setattr("app.cli.main.status_data", lambda *_args: {"connector_ready": True, "url": url})
 
     assert main(["url", "--quiet"]) == 0
     captured = capsys.readouterr()
@@ -306,12 +307,10 @@ def test_empty_args_defaults_to_start(monkeypatch, capsys):
     url = "https://my-test-tunnel.trycloudflare.com/mcp"
     called = []
     monkeypatch.setattr("app.cli.main.start", lambda *_args: called.append("start") or {"ok": True, "exit_code": 0})
-    monkeypatch.setattr("app.cli.main.connector_url", lambda *_args: url)
+    monkeypatch.setattr("app.cli.main.status_data", lambda *_args: {"connector_ready": True, "url": url})
 
     assert main([]) == 0
     assert called == ["start"]
     captured = capsys.readouterr()
     assert captured.out == f"{url}\n"
     assert captured.err == ""
-
-

@@ -213,7 +213,7 @@ def handle_doctor(ctx: CLIContext, args) -> int:
     if connect_host in {"0.0.0.0", "::"}:  # nosec B104
         connect_host = "127.0.0.1"
     local_base = normalize_base_url(
-        f"http://{connect_host}:{ctx.values.get('MCP_PORT', '8000')}"
+        f"http://{connect_host}:{ctx.values.get('MCP_PORT', '18427')}"
     )
     local_client = RESTClient(local_base, ctx.token, ctx.request_timeout)
     checks.append(

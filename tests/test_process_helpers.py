@@ -115,3 +115,36 @@ def test_listening_pid_filter_excludes_connected_client():
         if server.poll() is None:
             server.terminate()
             server.wait(timeout=5)
+
+
+def test_quick_tunnel_parser_only_reads_current_launch_bytes(tmp_path):
+    repo_root = Path(__file__).resolve().parents[1]
+    log = tmp_path / "cloudflared.log"
+    old = "INF https://old.trycloudflare.com\n"
+    log.write_text(old, encoding="utf-8")
+    offset = log.stat().st_size
+    with log.open("a", encoding="utf-8") as handle:
+        handle.write("INF https://new.trycloudflare.com\n")
+        handle.write("INF Registered tunnel connection connIndex=0\n")
+    command = f"""
+source {repo_root / 'scripts/process_helpers.sh'}
+quick_tunnel_url_from_log_since {log} {offset}
+cloudflared_registered_since {log} {offset}
+"""
+    result = subprocess.run(["bash", "-c", command], capture_output=True, text=True)
+    assert result.returncode == 0
+    assert result.stdout.strip() == "https://new.trycloudflare.com"
+
+
+def test_supervisor_has_process_identity_startup_grace():
+    repo_root = Path(__file__).resolve().parents[1]
+    source = (repo_root / "scripts/start_tunnel_server.sh").read_text(encoding="utf-8")
+    assert 'pid_is_alive "$server_pid"' in source
+    assert 'now - SERVER_STARTED_AT' in source
+
+
+def test_server_restart_requires_the_replacement_to_own_the_listener():
+    repo_root = Path(__file__).resolve().parents[1]
+    source = (repo_root / "scripts/restart_server_only.sh").read_text(encoding="utf-8")
+    assert 'listening_pids_on_port "$MCP_PORT"' in source
+    assert 'atomic_write_runtime_file "$PID_FILE" "$listener_pid"' in source

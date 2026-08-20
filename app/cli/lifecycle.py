@@ -77,7 +77,7 @@ def bridge_ready(values: dict[str, str], timeout: float = 0.25) -> bool:
     if host in {"0.0.0.0", "::"}:  # nosec B104
         host = "127.0.0.1"
     try:
-        port = int(values.get("MCP_PORT", "8000"))
+        port = int(values.get("MCP_PORT", "18427"))
         with socket.create_connection((host, port), timeout=timeout):
             return True
     except (OSError, ValueError):
@@ -99,18 +99,22 @@ def status_data(repo_root: Path, values: dict[str, str]) -> dict[str, Any]:
     tunnel_pid = read_pid(logs / "tunnel.pid")
     server_running = process_matches(server_pid, "server")
     tunnel_running = process_matches(tunnel_pid, "tunnel")
-    url = connector_url(repo_root, values) if tunnel_running else None
+    last_known_url = connector_url(repo_root, values)
+    url = last_known_url if tunnel_running else None
     bridge = "ready" if server_running and bridge_ready(values) else "starting" if server_running else "stopped"
     workspace = resolve_config_path(
         repo_root, values.get("HOST_WORKSPACE_DIR", str(Path.home()))
     )
     return {
-        "ok": bool(server_running and tunnel_running and bridge == "ready"),
+        "ok": bool(server_running and tunnel_running and bridge == "ready" and url),
         "supervisor": {"running": bool(supervisor_pid), "pid": supervisor_pid},
         "server": {"running": server_running, "pid": server_pid},
         "tunnel": {"running": tunnel_running, "pid": tunnel_pid},
         "bridge": bridge,
         "url": url,
+        "last_known_url": last_known_url,
+        "url_state": "active" if url else "stale" if last_known_url else "unavailable",
+        "connector_ready": bool(server_running and tunnel_running and bridge == "ready" and url),
         "auth_required": bool_value(values, "REQUIRE_AUTH", False),
         "workspace": str(workspace),
     }
@@ -162,8 +166,8 @@ def stop(repo_root: Path) -> dict[str, Any]:
     return run_script(repo_root, "run_mcp_tunnel.sh", ["stop"])
 
 
-def restart(repo_root: Path) -> dict[str, Any]:
-    return run_script(repo_root, "run_mcp_tunnel.sh", ["restart"], timeout=180.0)
+def restart(repo_root: Path, values: dict[str, str]) -> dict[str, Any]:
+    return server_restart(repo_root, values)
 
 
 def server_restart(repo_root: Path, values: dict[str, str]) -> dict[str, Any]:

@@ -56,10 +56,17 @@ connector_url() {
     printf '%s%s\n' "$base_url" "$mcp_path"
 }
 
+active_connector_url() {
+    local tunnel=""
+    tunnel=$(read_pid "$TUNNEL_PID_FILE")
+    pid_matches_kind "$tunnel" tunnel || return 1
+    connector_url
+}
+
 bridge_ready() {
     local host port
     host=$(runtime_value MCP_CONNECT_HOST 127.0.0.1)
-    port=$(runtime_value MCP_PORT 8000)
+    port=$(runtime_value MCP_PORT 18427)
     [ -x .venv/bin/python ] || return 1
     .venv/bin/python - "$host" "$port" <<'PY' >/dev/null 2>&1
 import socket
@@ -68,29 +75,6 @@ import sys
 with socket.create_connection((sys.argv[1], int(sys.argv[2])), timeout=0.25):
     pass
 PY
-}
-
-stop_pid_file() {
-    stop_managed_pid_file "$1" "$2" "$3"
-}
-
-stop_all() {
-    local launcher supervisor
-    launcher=$(read_pid "$LAUNCHER_PID_FILE")
-    supervisor=$(read_pid "$SUPERVISOR_PID_FILE")
-
-    # Stop the supervisor first so it cannot recreate child processes.
-    stop_pid_file "$SUPERVISOR_PID_FILE" supervisor "Supervisor"
-    if [ -n "$launcher" ] && [ "$launcher" != "$supervisor" ]; then
-        stop_pid_file "$LAUNCHER_PID_FILE" launcher "Launcher"
-    else
-        rm -f "$LAUNCHER_PID_FILE"
-    fi
-
-    stop_pid_file "$TUNNEL_PID_FILE" tunnel "Cloudflare Tunnel"
-    stop_pid_file "$SERVER_PID_FILE" server "MCP Server"
-    rm -f "$TUNNEL_URL_FILE"
-    echo "[+] Host MCP tunnel stopped."
 }
 
 supervisor_pid() {
@@ -113,7 +97,7 @@ show_status() {
     supervisor=$(supervisor_pid || true)
     server=$(read_pid "$SERVER_PID_FILE")
     tunnel=$(read_pid "$TUNNEL_PID_FILE")
-    url=$(connector_url || true)
+    url=$(active_connector_url || true)
 
     pid_matches_kind "$supervisor" supervisor && echo "Supervisor: running ($supervisor)" || echo "Supervisor: stopped"
     pid_matches_kind "$server" server && echo "Server:     running ($server)" || echo "Server:     stopped"
@@ -132,7 +116,11 @@ show_status() {
     elif pid_matches_kind "$tunnel" tunnel; then
         echo "URL:        pending"
     else
-        echo "URL:        unavailable"
+        if connector_url >/dev/null 2>&1; then
+            echo "URL:        stale ($(connector_url))"
+        else
+            echo "URL:        unavailable"
+        fi
     fi
     echo "Logs:       logs/launcher.log, logs/server.log, logs/cloudflared.log"
 }
@@ -142,20 +130,24 @@ case "$action" in
     start)
         ;;
     --stop|stop)
-        stop_all
-        exit 0
+        exec ./scripts/stop_tunnel_server.sh
         ;;
     --restart|restart)
-        stop_all
-        sleep 0.2
+        exec ./scripts/restart_server_only.sh
         ;;
     --status|status)
         show_status
         exit 0
         ;;
     --url|url)
-        connector_url
-        exit $?
+        if active_connector_url; then
+            exit 0
+        fi
+        echo "Quick Tunnel is not active." >&2
+        if connector_url >/dev/null 2>&1; then
+            echo "Last known URL: $(connector_url)" >&2
+        fi
+        exit 1
         ;;
     --help|-h|help)
         echo "Usage: $0 [start|stop|restart|status|url]"
@@ -177,19 +169,23 @@ fi
 # Remove only stale PID files. Preserve the canonical URL when adopting a live tunnel.
 rm -f "$LAUNCHER_PID_FILE" "$SUPERVISOR_PID_FILE"
 existing_tunnel=$(read_pid "$TUNNEL_PID_FILE")
+previous_url=$(connector_url || true)
 if ! pid_matches_kind "$existing_tunnel" tunnel; then
-    rm -f "$TUNNEL_PID_FILE" "$TUNNEL_URL_FILE"
-    : > "$CLOUDFLARED_LOG"
+    rm -f "$TUNNEL_PID_FILE"
 fi
 
-nohup ./scripts/start_tunnel_server.sh > "$LAUNCHER_LOG" 2>&1 &
+if command -v setsid >/dev/null 2>&1; then
+    setsid ./scripts/start_tunnel_server.sh > "$LAUNCHER_LOG" 2>&1 &
+else
+    nohup ./scripts/start_tunnel_server.sh > "$LAUNCHER_LOG" 2>&1 &
+fi
 launcher_pid=$!
 atomic_write_pid "$LAUNCHER_PID_FILE" "$launcher_pid"
 
 echo "[*] Starting Host MCP supervisor (PID $launcher_pid)..."
 for _ in $(seq 1 600); do
-    url=$(connector_url || true)
-    if [ -n "$url" ]; then
+    url=$(active_connector_url || true)
+    if [ -n "$url" ] && { [ -z "$previous_url" ] || [ "$url" != "$previous_url" ]; }; then
         echo "[+] Connector URL: $url"
         echo "[+] Status: ./run_mcp_tunnel.sh status"
         echo "[+] Stop:   ./run_mcp_tunnel.sh stop"

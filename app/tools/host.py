@@ -20,8 +20,8 @@ from app.security import format_error_response
 @mcp.tool(
     name="host_list_directory",
     description=(
-        "List files and directories on the host machine under the configured "
-        "HOST_WORKSPACE_DIR policy."
+        "List files and directories on the host machine. Relative paths are resolved "
+        "from the default directory (HOST_DEFAULT_DIR, e.g. ~/Downloads)."
     ),
 )
 def host_list_directory(path: str = ".", max_entries: int = 500) -> dict[str, Any]:
@@ -35,7 +35,8 @@ def host_list_directory(path: str = ".", max_entries: int = 500) -> dict[str, An
     name="host_read_file",
     description=(
         "Read a UTF-8 text file from the host machine. Relative paths are resolved "
-        "from HOST_WORKSPACE_DIR and optional line bounds are 1-indexed."
+        "from the default directory (HOST_DEFAULT_DIR, e.g. ~/Downloads). Absolute paths "
+        "within HOST_WORKSPACE_DIR are also supported."
     ),
 )
 def host_read_file(
@@ -58,8 +59,9 @@ def host_read_file(
 @mcp.tool(
     name="host_write_file",
     description=(
-        "Create or overwrite a UTF-8 text file on the host machine under the "
-        "configured workspace policy."
+        "Create or overwrite a UTF-8 text file on the host machine. Relative paths are resolved "
+        "from the default directory (HOST_DEFAULT_DIR, e.g. ~/Downloads) to keep the host tidy. "
+        "Absolute paths within HOST_WORKSPACE_DIR are also supported."
     ),
 )
 def host_write_file(
@@ -116,7 +118,11 @@ def host_append_file(path: str, content: str) -> dict[str, Any]:
 
 @mcp.tool(
     name="host_make_directory",
-    description="Create a directory on the host machine under HOST_WORKSPACE_DIR policy.",
+    description=(
+        "Create a directory on the host machine. Relative paths are resolved "
+        "from the default directory (HOST_DEFAULT_DIR, e.g. ~/Downloads). Absolute paths "
+        "within HOST_WORKSPACE_DIR are also supported."
+    ),
 )
 def host_make_directory(path: str, parents: bool = True) -> dict[str, Any]:
     try:
@@ -167,8 +173,8 @@ def host_check_command(command: str) -> dict[str, Any]:
     name="host_run_command",
     description=(
         "Execute a shell command directly on the user's host machine. Relative cwd "
-        "values are resolved from HOST_WORKSPACE_DIR. Output and execution time are "
-        "bounded, and destructive commands are rejected by server-side policy."
+        "values are resolved from the default directory (HOST_DEFAULT_DIR, e.g. ~/Downloads). "
+        "The default working directory is HOST_DEFAULT_DIR. Destructive commands are blocked."
     ),
 )
 def host_run_command(

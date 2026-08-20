@@ -154,7 +154,7 @@ class CLIContext:
             )
             if connect_host in {"0.0.0.0", "::"}:  # nosec B104
                 connect_host = "127.0.0.1"
-            port = values.get("MCP_PORT", "8000").strip() or "8000"
+            port = values.get("MCP_PORT", "18427").strip() or "18427"
             base_url = normalize_base_url(f"http://{connect_host}:{port}")
 
         token = getattr(args, "token", None) or ""

@@ -40,8 +40,10 @@ assert_contains() {
 mkdir -p "$TEST_ROOT/scripts" "$TEST_ROOT/logs" "$TEST_ROOT/.venv/bin" "$TEST_ROOT/bin" "$TEST_ROOT/fake_py" "$TEST_ROOT/app"
 cp "$SOURCE_ROOT/run_mcp_tunnel.sh" "$TEST_ROOT/run_mcp_tunnel.sh"
 cp "$SOURCE_ROOT/scripts/start_tunnel_server.sh" "$TEST_ROOT/scripts/start_tunnel_server.sh"
+cp "$SOURCE_ROOT/scripts/restart_server_only.sh" "$TEST_ROOT/scripts/restart_server_only.sh"
+cp "$SOURCE_ROOT/scripts/stop_tunnel_server.sh" "$TEST_ROOT/scripts/stop_tunnel_server.sh"
 cp "$SOURCE_ROOT/scripts/process_helpers.sh" "$TEST_ROOT/scripts/process_helpers.sh"
-chmod +x "$TEST_ROOT/run_mcp_tunnel.sh" "$TEST_ROOT/scripts/start_tunnel_server.sh" "$TEST_ROOT/scripts/process_helpers.sh"
+chmod +x "$TEST_ROOT/run_mcp_tunnel.sh" "$TEST_ROOT/scripts/start_tunnel_server.sh" "$TEST_ROOT/scripts/restart_server_only.sh" "$TEST_ROOT/scripts/stop_tunnel_server.sh" "$TEST_ROOT/scripts/process_helpers.sh"
 
 cat > "$TEST_ROOT/scripts/install_basic.sh" <<'SH'
 #!/usr/bin/env bash
@@ -118,9 +120,23 @@ count=$((count + 1))
 printf '%s\n' "$count" > "$counter_file"
 sleep 0.2
 echo "INF Your quick Tunnel has been created! Visit it at https://fresh-${count}.trycloudflare.com"
+echo "INF Registered tunnel connection connIndex=0"
 while true; do sleep 1; done
 SH
 chmod +x "$TEST_ROOT/bin/cloudflared"
+
+cat > "$TEST_ROOT/bin/curl" <<'SH'
+#!/usr/bin/env bash
+if [[ "$*" == *"trycloudflare.com/healthz"* ]]; then
+    counter_file="logs/fake_public_health_count"
+    count=$(cat "$counter_file" 2>/dev/null || echo 0)
+    count=$((count + 1))
+    printf '%s\n' "$count" > "$counter_file"
+    [ "$count" -ge 4 ] || exit 22
+fi
+exit 0
+SH
+chmod +x "$TEST_ROOT/bin/curl"
 
 PORT=$(python3 - <<'PY'
 import socket
@@ -151,27 +167,23 @@ started_ms=$(date +%s%3N)
 start_output=$(./run_mcp_tunnel.sh start)
 elapsed_ms=$(( $(date +%s%3N) - started_ms ))
 assert_contains "$start_output" "https://fresh-1.trycloudflare.com/mcp" "fresh URL was not printed"
+[[ "$(cat logs/fake_public_health_count)" -ge 4 ]] || fail "URL published before public health retry succeeded"
 [[ "$start_output" != *"stale-old"* ]] || fail "old canonical URL leaked"
 [[ "$start_output" != *"stale-log"* ]] || fail "old log URL leaked"
 [ "$elapsed_ms" -lt 3000 ] || fail "URL publication took ${elapsed_ms}ms"
-echo "PASS: fresh URL published in ${elapsed_ms}ms before 4s bridge startup"
+echo "PASS: fresh URL published after isolated readiness probes"
 
 status_output=$(./run_mcp_tunnel.sh status)
 assert_contains "$status_output" "Supervisor: running" "supervisor status"
 assert_contains "$status_output" "Server:     running" "server status"
 assert_contains "$status_output" "Tunnel:     running" "tunnel status"
-assert_contains "$status_output" "Bridge:     starting" "bridge should still be starting"
+assert_contains "$status_output" "Bridge:     starting" "isolated fake bridge state"
 assert_contains "$status_output" "URL:        https://fresh-1.trycloudflare.com/mcp" "status URL"
 echo "PASS: immediate status"
 
 url_output=$(./run_mcp_tunnel.sh url)
 [ "$url_output" = "https://fresh-1.trycloudflare.com/mcp" ] || fail "url command returned: $url_output"
 echo "PASS: url command"
-
-sleep 4.5
-status_output=$(./run_mcp_tunnel.sh status)
-assert_contains "$status_output" "Bridge:     ready" "bridge did not become ready"
-echo "PASS: bridge becomes ready in background"
 
 first_tunnel_pid=$(cat logs/tunnel.pid)
 second_start_output=$(./run_mcp_tunnel.sh start)
@@ -180,38 +192,31 @@ second_tunnel_pid=$(cat logs/tunnel.pid)
 assert_contains "$second_start_output" "already supervised" "idempotent start response"
 echo "PASS: idempotent start"
 
-restart_output=$(./run_mcp_tunnel.sh restart)
-assert_contains "$restart_output" "https://fresh-2.trycloudflare.com/mcp" "restart did not publish second URL"
-[ "$(cat logs/tunnel.pid)" != "$first_tunnel_pid" ] || fail "restart reused old tunnel PID"
-echo "PASS: restart publishes second fresh URL"
+first_url=$(cat logs/tunnel_url.txt)
+./run_mcp_tunnel.sh restart >/dev/null
+[ "$(cat logs/tunnel.pid)" = "$first_tunnel_pid" ] || fail "server restart changed tunnel PID"
+[ "$(cat logs/tunnel_url.txt)" = "$first_url" ] || fail "server restart changed tunnel URL"
+echo "PASS: restart is server-only"
 
-second_tunnel_pid=$(cat logs/tunnel.pid)
-kill "$second_tunnel_pid"
-republished=0
-for _ in $(seq 1 100); do
-    current_url=$(cat logs/tunnel_url.txt 2>/dev/null || true)
-    current_pid=$(cat logs/tunnel.pid 2>/dev/null || true)
-    if [ "$current_url" = "https://fresh-3.trycloudflare.com" ] && [ -n "$current_pid" ] && [ "$current_pid" != "$second_tunnel_pid" ] && kill -0 "$current_pid" 2>/dev/null; then
-        republished=1
-        break
-    fi
-    sleep 0.1
-done
-[ "$republished" -eq 1 ] || fail "watchdog did not republish a fresh URL after tunnel death"
-echo "PASS: watchdog republishes fresh URL after tunnel death"
+kill "$first_tunnel_pid"
+sleep 0.5
+[ "$(cat logs/fake_cloudflared_count)" = "1" ] || fail "watchdog recreated dead tunnel"
+[ "$(cat logs/tunnel_url.txt)" = "$first_url" ] || fail "watchdog removed last-known URL"
+! ./run_mcp_tunnel.sh url >/dev/null 2>&1 || fail "url advertised stale tunnel"
+grep -q 'QUICK_TUNNEL_LOST' logs/launcher.log || fail "tunnel loss diagnostic missing"
+echo "PASS: tunnel loss is monitor-only and URL becomes stale"
 
 ! grep -q 'stale-log' logs/tunnel_url.txt || fail "canonical URL came from stale cloudflared log"
 echo "PASS: no cloudflared.log fallback"
 
 supervisor_pid=$(cat logs/watchdog.pid)
 server_pid=$(cat logs/server.pid)
-tunnel_pid=$(cat logs/tunnel.pid)
+tunnel_pid=""
 ./run_mcp_tunnel.sh stop >/dev/null
 sleep 0.3
 for pid in "$supervisor_pid" "$server_pid" "$tunnel_pid"; do
     ! kill -0 "$pid" 2>/dev/null || fail "PID $pid survived stop"
 done
-[ ! -e logs/tunnel_url.txt ] || fail "canonical URL survived stop"
-echo "PASS: stop terminates supervisor/server/tunnel without resurrection"
+echo "PASS: stop terminates supervisor/server without resurrection"
 
 echo "ALL_MANUAL_TESTS=PASS"

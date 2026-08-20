@@ -190,7 +190,7 @@ Example:
 
   × Could not complete `health`
 
-  Unable to connect to http://127.0.0.1:8000.
+  Unable to connect to http://127.0.0.1:18427.
 
   Try:
     bqa doctor --local-only

@@ -153,16 +153,9 @@ def _render_lifecycle_result(
 
 
 def _confirm_restart(args) -> None:
-    if args.yes:
-        return
-    prompt = "Restart the full runtime and replace the current tunnel URL? [y/N] "
-    if not sys.stdin.isatty():
-        raise CLIError(
-            "Full tunnel restart requires --yes in non-interactive mode.", EXIT_USAGE
-        )
-    answer = input(prompt).strip().lower()
-    if answer not in {"y", "yes"}:
-        raise CLIError("Restart cancelled.", EXIT_OPERATION_FAILED)
+    # Kept as a compatibility hook for callers/tests. Restart is now server-only
+    # and never needs confirmation because it preserves the Quick Tunnel.
+    return None
 
 
 def _dispatch(ctx: CLIContext, args) -> int:
@@ -180,7 +173,7 @@ def _dispatch(ctx: CLIContext, args) -> int:
     if command == "restart":
         _confirm_restart(args)
         _render_lifecycle_result(
-            ctx, restart(ctx.repo_root), operation="restart", state="restarted"
+            ctx, restart(ctx.repo_root, ctx.values), operation="restart", state="restarted"
         )
         return 0
     if command == "status":
@@ -188,9 +181,12 @@ def _dispatch(ctx: CLIContext, args) -> int:
         _render_status(ctx, data)
         return 0 if data["ok"] else 1
     if command == "url":
-        url = connector_url(ctx.repo_root, ctx.values)
+        runtime = status_data(ctx.repo_root, ctx.values)
+        url = runtime.get("url") if runtime.get("connector_ready") else None
         if not url:
-            raise CLIError("Connector URL is unavailable.")
+            last_known = runtime.get("last_known_url")
+            detail = f" Last known URL: {last_known}" if last_known else ""
+            raise CLIError(f"Quick Tunnel is not active.{detail}")
         if ctx.json_output:
             emit_json({"ok": True, "status": "available", "url": url})
         elif ctx.quiet:
@@ -312,24 +308,26 @@ def _error_hint(exit_code: int, operation: str) -> str:
 
 def main(argv: Sequence[str] | None = None) -> int:
     raw_argv = list(sys.argv[1:] if argv is None else argv)
-    if not raw_argv or (
-        _operation_name(raw_argv) == "command"
-        and not any(arg in ("-h", "--help", "--version", "help") for arg in raw_argv)
-    ):
-        if not any(not arg.startswith("-") for arg in raw_argv if arg != "--"):
-            root = repo_root()
-            values = load_env(root)
-            start(root)
-            url = connector_url(root, values)
-            if not url:
-                raise CLIError("Connector URL is unavailable.")
-            emit_quiet(url)
-            return 0
-        raw_argv = ["start", *raw_argv]
-    parser = build_parser()
-    ctx: CLIContext | None = None
     operation = _operation_name(raw_argv)
+    ctx: CLIContext | None = None
     try:
+        if not raw_argv or (
+            _operation_name(raw_argv) == "command"
+            and not any(arg in ("-h", "--help", "--version", "help") for arg in raw_argv)
+        ):
+            if not any(not arg.startswith("-") for arg in raw_argv if arg != "--"):
+                root = repo_root()
+                values = load_env(root)
+                start(root)
+                runtime = status_data(root, values)
+                url = runtime.get("url") if runtime.get("connector_ready") else None
+                if not url:
+                    raise CLIError("Connector URL is unavailable.")
+                emit_quiet(url)
+                return 0
+            raw_argv = ["start", *raw_argv]
+            operation = _operation_name(raw_argv)
+        parser = build_parser()
         args = parser.parse_args(extract_global_options(raw_argv))
         ctx = CLIContext.from_args(args)
         return _dispatch(ctx, args)

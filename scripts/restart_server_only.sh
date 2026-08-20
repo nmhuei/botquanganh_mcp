@@ -24,7 +24,7 @@ PY
 
 MCP_BIND_HOST="${MCP_BIND_HOST:-$(read_env MCP_BIND_HOST 127.0.0.1)}"
 MCP_CONNECT_HOST="${MCP_CONNECT_HOST:-127.0.0.1}"
-MCP_PORT="${MCP_PORT:-$(read_env MCP_PORT 8000)}"
+MCP_PORT="${MCP_PORT:-$(read_env MCP_PORT 18427)}"
 MCP_PATH="${MCP_PATH:-$(read_env MCP_PATH /mcp)}"
 PID_FILE="logs/server.pid"
 SUPERVISOR_PID_FILE="logs/watchdog.pid"
@@ -71,16 +71,23 @@ start_server_standalone() {
 }
 
 wait_for_replacement() {
-    local previous_pid="$1" expected_pid="${2:-}" current_pid=""
+    local previous_pid="$1" expected_pid="${2:-}" current_pid="" listener_pid=""
     for _ in $(seq 1 60); do
         current_pid=$(read_pid_file "$PID_FILE")
-        if pid_matches_kind "$current_pid" server \
-            && [ "$current_pid" != "$previous_pid" ] \
-            && { [ -z "$expected_pid" ] || [ "$current_pid" = "$expected_pid" ]; } \
-            && socket_ready; then
-            echo "[+] Host MCP restarted: http://${MCP_CONNECT_HOST}:${MCP_PORT}${MCP_PATH} (PID $current_pid)"
-            return 0
-        fi
+        for listener_pid in $(listening_pids_on_port "$MCP_PORT"); do
+            if pid_matches_kind "$listener_pid" server \
+                && [ "$listener_pid" != "$previous_pid" ] \
+                && { [ -z "$expected_pid" ] || [ "$listener_pid" = "$expected_pid" ]; } \
+                && socket_ready; then
+                # The supervisor can briefly overwrite server.pid while a new
+                # interpreter is still starting. Canonicalize it to the process
+                # that actually owns the listening socket before reporting success.
+                [ "$current_pid" = "$listener_pid" ] \
+                    || atomic_write_runtime_file "$PID_FILE" "$listener_pid"
+                echo "[+] Host MCP restarted: http://${MCP_CONNECT_HOST}:${MCP_PORT}${MCP_PATH} (PID $listener_pid)"
+                return 0
+            fi
+        done
         sleep 0.25
     done
     echo "[-] Server socket did not become ready. Check logs/server.log." >&2

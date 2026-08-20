@@ -29,7 +29,7 @@ PY
 
 MCP_BIND_HOST="${MCP_BIND_HOST:-$(read_env MCP_BIND_HOST 127.0.0.1)}"
 MCP_CONNECT_HOST="${MCP_CONNECT_HOST:-127.0.0.1}"
-MCP_PORT="${MCP_PORT:-$(read_env MCP_PORT 8000)}"
+MCP_PORT="${MCP_PORT:-$(read_env MCP_PORT 18427)}"
 MCP_PATH="${MCP_PATH:-$(read_env MCP_PATH /mcp)}"
 SERVER_PID_FILE="logs/server.pid"
 TUNNEL_PID_FILE="logs/tunnel.pid"
@@ -41,6 +41,8 @@ CLOUDFLARED_LOG="logs/cloudflared.log"
 
 SERVER_STARTED_AT=0
 PUBLISHED_TUNNEL_PID=""
+TUNNEL_LOG_OFFSET=0
+TUNNEL_LOST_REPORTED=0
 SHUTTING_DOWN=0
 
 read_pid() {
@@ -77,14 +79,23 @@ shutdown() {
 
 trap shutdown TERM INT
 
-socket_ready() {
-    .venv/bin/python - "$MCP_CONNECT_HOST" "$MCP_PORT" <<'PY' >/dev/null 2>&1
-import socket
-import sys
+local_health_ready() {
+    curl --fail --silent --show-error --max-time 1 \
+        "http://${MCP_CONNECT_HOST}:${MCP_PORT}/healthz" >/dev/null 2>&1
+}
 
-with socket.create_connection((sys.argv[1], int(sys.argv[2])), timeout=0.25):
-    pass
-PY
+public_health_ready() {
+    local url="$1" host="" ip=""
+    curl --fail --silent --show-error --max-time 3 \
+        "${url%/}/healthz" >/dev/null 2>&1 && return 0
+    host=${url#https://}
+    host=${host%%/*}
+    if command -v dig >/dev/null 2>&1; then
+        ip=$(dig +short +time=2 +tries=1 @1.1.1.1 "$host" A | head -n 1)
+    fi
+    [ -n "$ip" ] || return 1
+    curl --fail --silent --show-error --max-time 3 \
+        --resolve "${host}:443:${ip}" "${url%/}/healthz" >/dev/null 2>&1
 }
 
 start_server() {
@@ -118,12 +129,13 @@ start_tunnel() {
     fi
 
     rm -f "$TUNNEL_PID_FILE" "$TUNNEL_URL_FILE"
-    : > "$CLOUDFLARED_LOG"
+    TUNNEL_LOG_OFFSET=$(wc -c < "$CLOUDFLARED_LOG" 2>/dev/null || printf '0')
     nohup cloudflared tunnel --url "http://${MCP_CONNECT_HOST}:${MCP_PORT}" \
-        > "$CLOUDFLARED_LOG" 2>&1 &
+        >> "$CLOUDFLARED_LOG" 2>&1 &
     local pid=$!
     atomic_write "$TUNNEL_PID_FILE" "$pid"
     PUBLISHED_TUNNEL_PID=""
+    TUNNEL_LOST_REPORTED=0
     echo "[+] Cloudflare Tunnel process started (PID $pid)."
 }
 
@@ -136,8 +148,11 @@ publish_tunnel_url() {
         return 0
     fi
 
-    url=$(grep -o -E 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' "$CLOUDFLARED_LOG" 2>/dev/null | head -n 1 || true)
+    url=$(quick_tunnel_url_from_log_since "$CLOUDFLARED_LOG" "$TUNNEL_LOG_OFFSET" || true)
     [ -n "$url" ] || return 1
+    cloudflared_registered_since "$CLOUDFLARED_LOG" "$TUNNEL_LOG_OFFSET" || return 1
+    local_health_ready || return 1
+    public_health_ready "$url" || return 1
 
     atomic_write "$TUNNEL_URL_FILE" "$url"
     PUBLISHED_TUNNEL_PID="$pid"
@@ -154,7 +169,12 @@ atomic_write "$SUPERVISOR_PID_FILE" "$$"
 # These functions only spawn processes; neither waits for bridge readiness.
 # Therefore the server and tunnel begin startup in parallel from the user's perspective.
 start_server
-start_tunnel
+initial_tunnel_pid=$(read_pid "$TUNNEL_PID_FILE")
+if pid_matches_kind "$initial_tunnel_pid" tunnel; then
+    PUBLISHED_TUNNEL_PID="$initial_tunnel_pid"
+else
+    start_tunnel
+fi
 
 health_failures=0
 last_health_check=0
@@ -162,22 +182,31 @@ last_health_check=0
 while true; do
     server_pid=$(read_pid "$SERVER_PID_FILE")
     if ! pid_matches_kind "$server_pid" server; then
-        start_server
-        health_failures=0
+        now=$(date +%s)
+        # A freshly spawned script/interpreter may not have exec'd FastMCP yet.
+        # Treat its owned PID as starting during the grace period instead of
+        # overwriting server.pid and creating a duplicate-spawn storm.
+        if ! pid_is_alive "$server_pid" || [ $((now - SERVER_STARTED_AT)) -ge 20 ]; then
+            start_server
+            health_failures=0
+        fi
     fi
 
     tunnel_pid=$(read_pid "$TUNNEL_PID_FILE")
     if ! pid_matches_kind "$tunnel_pid" tunnel; then
-        rm -f "$TUNNEL_URL_FILE"
-        start_tunnel
+        if [ "$TUNNEL_LOST_REPORTED" -eq 0 ]; then
+            echo "[!] QUICK_TUNNEL_LOST: automatic recreation disabled; existing connector URL is no longer recoverable; manual reprovisioning required."
+            TUNNEL_LOST_REPORTED=1
+        fi
+    else
+        TUNNEL_LOST_REPORTED=0
+        publish_tunnel_url || true
     fi
-
-    publish_tunnel_url || true
 
     now=$(date +%s)
     if [ "$now" -ne "$last_health_check" ]; then
         last_health_check=$now
-        if socket_ready; then
+        if local_health_ready; then
             health_failures=0
         elif [ $((now - SERVER_STARTED_AT)) -ge 20 ]; then
             health_failures=$((health_failures + 1))

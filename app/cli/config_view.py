@@ -13,7 +13,7 @@ SECRET_MARKERS = ("TOKEN", "SECRET", "PASSWORD", "PASSWD", "API_KEY", "PRIVATE_K
 DEFAULTS: dict[str, str] = {
     "MCP_BIND_HOST": "127.0.0.1",
     "MCP_CONNECT_HOST": "127.0.0.1",
-    "MCP_PORT": "8000",
+    "MCP_PORT": "18427",
     "MCP_PATH": "/mcp",
     "MCP_JSON_RESPONSE": "true",
     "MCP_STATELESS_HTTP": "true",

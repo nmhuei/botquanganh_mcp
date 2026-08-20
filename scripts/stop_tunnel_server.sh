@@ -13,6 +13,8 @@ WATCHDOG_PID_FILE="logs/watchdog.pid"
 LAUNCHER_PID_FILE="logs/launcher.pid"
 TUNNEL_URL_FILE="logs/tunnel_url.txt"
 
+echo "[!] Stopping cloudflared destroys this ephemeral Quick Tunnel URL." >&2
+
 # Stop ownership controller first so it cannot recreate children.
 stop_managed_pid_file "$WATCHDOG_PID_FILE" supervisor "Supervisor"
 stop_managed_pid_file "$LAUNCHER_PID_FILE" launcher "Launcher"
@@ -21,11 +23,11 @@ stop_managed_pid_file "$SERVER_PID_FILE" server "MCP Server"
 rm -f "$TUNNEL_URL_FILE"
 
 # Report unrelated port occupants but never terminate them.
-MCP_PORT=8000
+MCP_PORT=18427
 if [ -x .venv/bin/python ]; then
     MCP_PORT=$(.venv/bin/python - <<'PY'
 from dotenv import dotenv_values
-print(dotenv_values('.env').get('MCP_PORT') or '8000')
+print(dotenv_values('.env').get('MCP_PORT') or '18427')
 PY
 )
 fi

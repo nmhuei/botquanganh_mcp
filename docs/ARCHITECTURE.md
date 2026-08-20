@@ -132,8 +132,11 @@ start_tunnel_server.sh supervisor
 - Server and tunnel start independently.
 - The canonical tunnel URL is written atomically to `logs/tunnel_url.txt`.
 - Process ownership is validated through `/proc/<pid>/cmdline`, not PID liveness alone.
-- The supervisor can recover a failed server or tunnel independently.
-- `bqa server restart` changes only the bridge and preserves tunnel PID/URL.
+- The supervisor self-heals a failed or unhealthy FastMCP server.
+- The tunnel is monitor-only: tunnel loss is logged and never triggers automatic cloudflared recreation.
+- The last-known URL remains available for diagnostics with `url_state=stale`, but `bqa url` refuses it.
+- `bqa restart` and `bqa server restart` converge on one server-only implementation and preserve tunnel PID/URL.
+- Cold start parses only cloudflared log bytes written by the current launch and publishes the URL only after local health, connector registration, and public health succeed.
 - Stop operations terminate the ownership controller first and refuse unrelated reused PIDs.
 
 ## CLI and operations

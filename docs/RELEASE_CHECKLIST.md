@@ -36,12 +36,13 @@ uvx detect-secrets scan --all-files \
 - [ ] `.env` is not tracked and uses mode `600`.
 - [ ] Production authentication is enabled with a newly rotated token.
 - [ ] `HOST_WORKSPACE_DIR` and command policy are production-appropriate.
-- [ ] Command/rate capacity limits are sized for the host.
+- [ ] Request-rate limits and host resources are sized for expected parallel load.
 
 ## Runtime and recovery
 
 - [ ] `bqa status` reports owned supervisor/server/tunnel processes.
 - [ ] `bqa server restart` preserves tunnel PID and URL.
+- [ ] Tunnel loss leaves the last-known URL stale and does not spawn another cloudflared process.
 - [ ] Local and public REST health pass.
 - [ ] Local and public MCP initialize pass.
 - [ ] Redacted diagnostics can be collected.

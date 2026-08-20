@@ -4,7 +4,7 @@ import asyncio
 import httpx
 
 async def main():
-    base_url = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000/mcp"
+    base_url = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:18427/mcp"
     print(f"Connecting to SSE endpoint: {base_url} ...")
     
     async with httpx.AsyncClient() as client:

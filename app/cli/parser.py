@@ -115,10 +115,10 @@ Output modes:
     )
     commands.add_parser("stop", help="Stop supervisor, tunnel, and server")
     restart = commands.add_parser(
-        "restart", help="Restart supervisor, tunnel, and server"
+        "restart", help="Restart only the MCP server; preserve tunnel PID and URL"
     )
     restart.add_argument(
-        "--yes", action="store_true", help="Skip the tunnel URL warning"
+        "--yes", action="store_true", help=argparse.SUPPRESS
     )
     commands.add_parser("status", help="Show runtime status")
     commands.add_parser("url", help="Print the current connector URL")

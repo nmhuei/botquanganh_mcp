@@ -111,7 +111,7 @@ def benchmark_command_capacity(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Non-destructive resilience benchmark")
-    parser.add_argument("--local-base", default="http://127.0.0.1:8000")
+    parser.add_argument("--local-base", default="http://127.0.0.1:18427")
     parser.add_argument("--public-base")
     parser.add_argument("--health-count", type=int, default=40)
     parser.add_argument("--health-workers", type=int, default=10)

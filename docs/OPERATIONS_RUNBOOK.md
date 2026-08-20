@@ -42,18 +42,23 @@ bqa doctor
 After ordinary Python/code changes, restart only the bridge:
 
 ```bash
-bqa server restart
+bqa restart
 ```
 
-This operation must preserve the tunnel PID and URL. Do not use `bqa restart` for normal code changes.
+`bqa restart` and `bqa server restart` use the same server-only implementation and
+must preserve the tunnel PID and URL.
 
-Full restart, including a new Quick Tunnel URL:
+Do not use `stop && start` as MCP recovery. `bqa stop` is an intentional destructive
+shutdown: stopping `cloudflared` invalidates the random Quick Tunnel hostname.
 
 ```bash
-bqa restart --yes
+bqa status
+./scripts/diagnose_tunnel.sh
 ```
 
-Use only when the tunnel is dead, the URL is invalid, or a full restart is explicitly required.
+If the tunnel dies, the supervisor keeps FastMCP healthy but does not recreate the
+tunnel. Provision a new Quick Tunnel only through an explicit cold `bqa start` after
+the old supervisor state has been intentionally retired during an authorized window.
 
 ## 3. Quality gates
 
@@ -153,12 +158,12 @@ bqa start
 
 The supervisor should recreate only the tunnel and publish the fresh canonical URL in `logs/tunnel_url.txt`.
 
-### Port 8000 is occupied by an unrelated process
+### Port 18427 is occupied by an unrelated process
 
 `bqa server restart` refuses to terminate it. Identify the process manually:
 
 ```bash
-lsof -nP -i :8000
+lsof -nP -i :18427
 ```
 
 Resolve the conflict explicitly; do not bypass the ownership check.
@@ -198,7 +203,7 @@ bqa doctor
 
 A rollback of normal code must not restart the tunnel.
 
-## 8. Logs and capacity
+## 8. Logs and request controls
 
 ```bash
 bqa logs server -n 100
@@ -212,7 +217,6 @@ Health exposes:
 - request/error/status counts;
 - p50/p95 latency;
 - in-flight and peak requests;
-- active/queued/rejected command capacity;
 - tracked rate-limit clients and capacity rejections.
 
 Audit logs rotate according to:
@@ -232,5 +236,5 @@ Before deployment:
 4. Run `bqa config validate --strict`.
 5. Run `./scripts/quality_gate.sh --full` against the authorized target.
 6. Confirm no uncommitted or unreviewed changes.
-7. Confirm capacity limits match the host resources.
+7. Confirm request-rate limits and host resources are appropriate for expected parallel load.
 8. Record rollback and recovery commands.

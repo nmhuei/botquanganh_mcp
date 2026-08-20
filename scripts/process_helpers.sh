@@ -48,6 +48,28 @@ atomic_write_runtime_file() {
     mv -f "$tmp" "$file"
 }
 
+quick_tunnel_url_from_log_since() {
+    local file="$1" offset="${2:-0}"
+    case "$offset" in
+        ''|*[!0-9]*) return 2 ;;
+    esac
+    [ -r "$file" ] || return 1
+    # tail -c is 1-indexed. The offset is the byte size captured before spawn.
+    tail -c "+$((offset + 1))" "$file" 2>/dev/null \
+        | grep -o -E 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' \
+        | head -n 1
+}
+
+cloudflared_registered_since() {
+    local file="$1" offset="${2:-0}"
+    case "$offset" in
+        ''|*[!0-9]*) return 2 ;;
+    esac
+    [ -r "$file" ] || return 1
+    tail -c "+$((offset + 1))" "$file" 2>/dev/null \
+        | grep -q 'Registered tunnel connection'
+}
+
 listening_pids_on_port() {
     local port="${1:-}"
     case "$port" in
