@@ -32,11 +32,15 @@ bqa stop             # dừng toàn bộ, URL hiện tại sẽ mất
 
 ## Cấu hình
 
-Sửa file `.env` nếu cần thay đổi workspace hoặc bật xác thực:
+Sửa file `.env` nếu cần thay đổi workspace, lệnh cho phép hoặc bật xác thực:
 
 ```env
 HOST_WORKSPACE_DIR=/home/user
 HOST_DEFAULT_DIR=/home/user/Downloads
+HOST_COMMAND_POLICY=guarded
+HOST_ALLOWED_COMMANDS=all
+HOST_INHERIT_ENV=true
+MAX_CONCURRENT_COMMANDS=100
 REQUIRE_AUTH=false
 GATEWAY_TOKEN=
 ```

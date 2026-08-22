@@ -13,7 +13,6 @@ ChatGPT / bqa / REST client
                  │
                  ▼
        TokenAuthMiddleware
-       ├── bounded per-client rate limiting
        └── gateway-token verification
                  │
                  ▼
@@ -114,7 +113,7 @@ Unexpected internal exceptions return a generic public message. Known repository
 
 ## Metrics and audit
 
-Metrics are recorded after the final HTTP response body and include authentication and rate-limit rejections. Health exposes status/path counts, client/server errors, auth/rate-limit counts, average/p50/p95 latency, in-flight/peak requests, command capacity, and rate-limiter state.
+Metrics are recorded after the final HTTP response body and include authentication rejections. Health exposes status/path counts, client/server errors, auth failure counts, average/p50/p95 latency, in-flight/peak requests, and command capacity.
 
 Audit events are versioned JSONL records written to a rotating log. Sensitive keys, inline credential formats, and key material are redacted; long fields are truncated.
 
