@@ -10,7 +10,6 @@ from app.config import (
     MAX_OUTPUT_BYTES,
     MAX_SINGLE_FILE_BYTES,
     MAX_TIMEOUT_SECONDS,
-    RATE_LIMIT_MAX_CLIENTS,
     SERVICE_NAME,
     VERSION,
     AGENT_RUNTIME_URL,
@@ -19,7 +18,6 @@ from app.host.executor import command_capacity
 from app.logging_audit import log_audit_event
 from app.mcp_server import mcp
 from app.metrics import metrics
-from app.ratelimit import rate_limiter
 from app.security import format_error_response
 from app.tools.agent_runtime import AGENT_RUNTIME_TOOLS
 
@@ -66,7 +64,6 @@ def health_check() -> dict:
             },
             "capacity": {
                 "commands": command_capacity.get_stats(),
-                "rate_limiter": rate_limiter.get_stats(),
             },
         }
     except Exception as exc:
@@ -104,7 +101,6 @@ def get_capabilities() -> dict:
                 "max_output_bytes": MAX_OUTPUT_BYTES,
                 "max_concurrent_commands": MAX_CONCURRENT_COMMANDS,
                 "command_queue_timeout_seconds": COMMAND_QUEUE_TIMEOUT_SECONDS,
-                "rate_limit_max_clients": RATE_LIMIT_MAX_CLIENTS,
             },
             "features": {
                 "host_filesystem": True,

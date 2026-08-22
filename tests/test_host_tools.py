@@ -102,6 +102,13 @@ def test_allowlist_policy_rejects_unknown_command(host_workspace, monkeypatch):
     assert result["rule"] == "command_not_allowlisted"
 
 
+def test_allowlist_policy_permits_all_when_configured_all(host_workspace, monkeypatch):
+    monkeypatch.setattr(app.config, "HOST_COMMAND_POLICY", "allowlist")
+    monkeypatch.setattr(app.config, "HOST_ALLOWED_COMMANDS", ["all"])
+    result = inspect_host_command("custom-tool-123 --flag")
+    assert result["allowed"] is True
+
+
 def test_host_knowledge_reads_guides_and_detects_tools(monkeypatch):
     repo_root = Path(__file__).resolve().parents[1]
     monkeypatch.setattr(app.config, "HOST_KNOWLEDGE_DIR", repo_root / "knowledge")

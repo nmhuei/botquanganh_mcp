@@ -42,7 +42,7 @@ def test_release_and_security_documentation_exists_and_is_linked():
     assert "SERVICE_BUSY" in architecture
     assert "--noprofile --norc" in architecture
     security = (repo / "SECURITY.md").read_text(encoding="utf-8")
-    assert "RATE_LIMIT_MAX_CLIENTS" in security
+    assert "GATEWAY_TOKEN" in security
     assert "MAX_CONCURRENT_COMMANDS" in security
 
 

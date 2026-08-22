@@ -16,7 +16,6 @@ from app.config import (
 )
 from app.error_contract import format_error_code
 from app.metrics import metrics
-from app.ratelimit import rate_limiter
 
 logger = logging.getLogger("botquanganh_host_mcp")
 FASTMCP_COMPAT_VERSION = "3.4.0"
@@ -30,23 +29,10 @@ if getattr(fastmcp, "__version__", "") != FASTMCP_COMPAT_VERSION:
 
 
 class TokenAuthMiddleware:
-    """Apply per-IP rate limiting and gateway-token authentication."""
+    """Apply gateway-token authentication."""
 
     def __init__(self, app):
         self.app = app
-
-    @staticmethod
-    def _get_client_ip(scope: dict) -> str:
-        headers = {
-            key.decode("latin-1").lower(): value.decode("latin-1")
-            for key, value in scope.get("headers", [])
-        }
-        if TRUST_PROXY_HEADERS:
-            forwarded = headers.get("x-forwarded-for", "")
-            if forwarded:
-                return forwarded.split(",", 1)[0].strip()
-        client = scope.get("client")
-        return str(client[0]) if client else "unknown"
 
     async def __call__(self, scope, receive, send):
         path = scope.get("path", "")
@@ -55,20 +41,6 @@ class TokenAuthMiddleware:
             return
 
         if scope.get("type") in {"http", "websocket"}:
-            client_ip = self._get_client_ip(scope)
-            allowed, retry_after = rate_limiter.is_allowed(client_ip)
-            if not allowed:
-                response = JSONResponse(
-                    format_error_code(
-                        "RATE_LIMITED",
-                        message="Rate limit exceeded.",
-                        extra={"retry_after": retry_after},
-                    ),
-                    status_code=429,
-                    headers={"Retry-After": str(retry_after)},
-                )
-                await response(scope, receive, send)
-                return
 
             headers = {
                 key.decode("latin-1").lower(): value.decode("latin-1")

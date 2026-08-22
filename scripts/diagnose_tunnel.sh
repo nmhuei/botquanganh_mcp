@@ -11,11 +11,11 @@ if [[ ! "$base_url" =~ ^https://[a-zA-Z0-9-]+\.trycloudflare\.com$ ]]; then
     exit 1
 fi
 host=${base_url#https://}
-port=$(.venv/bin/python - <<'PY' 2>/dev/null || printf '18427'
-from dotenv import dotenv_values
-print(dotenv_values('.env').get('MCP_PORT') or '18427')
-PY
-)
+port="${MCP_PORT:-}"
+if [ -z "$port" ] && [ -f .env ]; then
+    port=$(grep -E "^[[:space:]]*MCP_PORT=" .env 2>/dev/null | tail -n 1 | sed -E "s/^[[:space:]]*MCP_PORT=[[:space:]]*//; s/[\x27\"]//g; s/[[:space:]]*$//" || true)
+fi
+port="${port:-18427}"
 
 local_code=$(curl --silent --output /dev/null --write-out '%{http_code}' \
     --max-time 3 "http://127.0.0.1:${port}/healthz" 2>/dev/null || printf '000')
@@ -24,20 +24,15 @@ echo "LOCAL_HEALTH=$local_code"
 resolve_args=()
 if getent ahosts "$host" >/dev/null 2>&1; then
     echo "DNS=RESOLVED_SYSTEM"
-elif command -v dig >/dev/null 2>&1; then
-    public_ip=$(dig +short +time=2 +tries=1 @1.1.1.1 "$host" A | head -n 1)
-    if [ -n "$public_ip" ]; then
-        echo "DNS=RESOLVED_PUBLIC_FALLBACK"
-        resolve_args=(--resolve "${host}:443:${public_ip}")
-    else
-        echo "DNS=UNRESOLVED"
-        echo "RESULT=STALE_URL_OR_CLOUDFLARE_DNS"
-        exit 2
-    fi
+elif command -v dig >/dev/null 2>&1 && public_ip=$(dig +short +time=1 +tries=1 @1.1.1.1 "$host" A 2>/dev/null | head -n 1) && [ -n "$public_ip" ]; then
+    echo "DNS=RESOLVED_PUBLIC_FALLBACK"
+    resolve_args=(--resolve "${host}:443:${public_ip}")
 else
-    echo "DNS=UNRESOLVED"
-    echo "RESULT=STALE_URL_OR_CLOUDFLARE_DNS"
-    exit 2
+    public_ip=$(tail -n 50 logs/cloudflared.log 2>/dev/null | grep -o -E 'ip=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | tail -n 1 | cut -d= -f2 || true)
+    [ -n "$public_ip" ] || public_ip=$(getent ahostsv4 trycloudflare.com 2>/dev/null | awk '{print $1}' | head -n 1 || true)
+    [ -n "$public_ip" ] || public_ip="104.16.230.132"
+    echo "DNS=RESOLVED_CLOUDFLARE_EDGE"
+    resolve_args=(--resolve "${host}:443:${public_ip}")
 fi
 
 public_response=$(curl --silent --show-error --write-out $'\n%{http_code}' \

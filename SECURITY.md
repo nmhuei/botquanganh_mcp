@@ -22,7 +22,7 @@ The development runtime currently uses `REQUIRE_AUTH=false` by explicit operator
 - `HOST_COMMAND_POLICY=guarded` blocks explicit host-destruction, power-management, and privilege-boundary patterns.
 - `HOST_COMMAND_POLICY=allowlist` additionally restricts command names and rejects dynamic shell substitution.
 - Commands run through a non-login, no-profile shell.
-- Credential-shaped environment variables are removed unless explicitly listed in `HOST_ENV_ALLOWLIST`.
+- Environment variables are inherited when `HOST_INHERIT_ENV=true`.
 - Shell-startup and dynamic-loader injection variables are always removed.
 - stdout/stderr are continuously drained but retained only up to `MAX_OUTPUT_BYTES` per stream.
 - Timeouts terminate the command process group.
@@ -31,8 +31,7 @@ The development runtime currently uses `REQUIRE_AUTH=false` by explicit operator
 ### HTTP and middleware
 
 - `GATEWAY_TOKEN` protects HTTP/MCP traffic when `REQUIRE_AUTH=true`.
-- Authentication, rate limiting, metrics, REST, and MCP use a shared error taxonomy.
-- `RATE_LIMIT_MAX_CLIENTS` bounds in-memory client state.
+- Authentication, metrics, REST, and MCP use a shared error taxonomy.
 - `TRUST_PROXY_HEADERS=true` is appropriate only behind a trusted proxy such as the configured Cloudflare Tunnel.
 - Public errors redact known host paths and mask unexpected exception details.
 

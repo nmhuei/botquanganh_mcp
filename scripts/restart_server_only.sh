@@ -11,15 +11,20 @@ mkdir -p logs
 
 read_env() {
     local key="$1" default_value="$2"
-    .venv/bin/python - "$key" "$default_value" <<'PY'
-import os
-import sys
-from dotenv import dotenv_values
-
-key, default = sys.argv[1], sys.argv[2]
-values = dotenv_values('.env')
-print(os.environ.get(key) or values.get(key) or default)
-PY
+    local env_var="${!key:-}"
+    if [ -n "$env_var" ]; then
+        printf '%s\n' "$env_var"
+        return 0
+    fi
+    if [ -f .env ]; then
+        local file_var
+        file_var=$(grep -E "^[[:space:]]*${key}=" .env 2>/dev/null | tail -n 1 | sed -E "s/^[[:space:]]*${key}=[[:space:]]*//; s/[\x27\"]//g; s/[[:space:]]*$//" || true)
+        if [ -n "$file_var" ]; then
+            printf '%s\n' "$file_var"
+            return 0
+        fi
+    fi
+    printf '%s\n' "$default_value"
 }
 
 MCP_BIND_HOST="${MCP_BIND_HOST:-$(read_env MCP_BIND_HOST 127.0.0.1)}"
@@ -31,13 +36,23 @@ SUPERVISOR_PID_FILE="logs/watchdog.pid"
 LAUNCHER_PID_FILE="logs/launcher.pid"
 
 socket_ready() {
-    .venv/bin/python - "$MCP_CONNECT_HOST" "$MCP_PORT" <<'PY' >/dev/null 2>&1
+    if (echo > "/dev/tcp/${MCP_CONNECT_HOST}/${MCP_PORT}") >/dev/null 2>&1; then
+        return 0
+    fi
+    if command -v nc >/dev/null 2>&1; then
+        nc -z -w 1 "$MCP_CONNECT_HOST" "$MCP_PORT" >/dev/null 2>&1 && return 0
+    fi
+    if [ -x .venv/bin/python ]; then
+        .venv/bin/python - "$MCP_CONNECT_HOST" "$MCP_PORT" <<'PY' >/dev/null 2>&1
 import socket
 import sys
 
 with socket.create_connection((sys.argv[1], int(sys.argv[2])), timeout=0.3):
     pass
 PY
+        return $?
+    fi
+    return 1
 }
 
 active_supervisor_pid() {

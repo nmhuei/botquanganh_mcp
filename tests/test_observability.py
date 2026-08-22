@@ -8,7 +8,6 @@ import app.auth
 import app.logging_audit as audit
 import app.mcp_server as mcp_server
 from app.metrics import MetricsTracker
-from app.ratelimit import rate_limiter
 from app.tools.health import health_check
 
 
@@ -50,7 +49,6 @@ def test_auth_failure_is_observed_by_outer_metrics(monkeypatch):
     async def send(message):
         sent.append(message)
 
-    monkeypatch.setattr(rate_limiter, "is_allowed", lambda _ip: (True, 0))
     monkeypatch.setattr(app.auth, "verify_token", lambda _token: False)
     tracker = MetricsTracker()
     monkeypatch.setattr(mcp_server, "metrics", tracker)

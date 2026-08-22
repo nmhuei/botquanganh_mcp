@@ -107,19 +107,12 @@ command_capacity = CommandCapacity(
 )
 
 
-def _is_sensitive_env_key(key: str) -> bool:
-    upper = key.upper()
-    return any(marker in upper for marker in _SENSITIVE_ENV_MARKERS)
-
-
 def _build_environment() -> dict[str, str]:
     explicit = set(app.config.HOST_ENV_ALLOWLIST)
     if app.config.HOST_INHERIT_ENV:
         environment = dict(os.environ)
         for key in list(environment):
             if key in _ALWAYS_STRIP_ENV:
-                environment.pop(key, None)
-            elif _is_sensitive_env_key(key) and key not in explicit:
                 environment.pop(key, None)
         return environment
 

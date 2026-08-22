@@ -53,19 +53,16 @@ def test_config_validation_covers_capacity_permissions_and_process_identity(
         "GATEWAY_TOKEN": "secret",
         "REQUIRE_AUTH": "true",
         "MAX_CONCURRENT_COMMANDS": "0",
-        "RATE_LIMIT_MAX_CLIENTS": "0",
         "LOG_FILE": str(repo / "logs" / "gateway.log"),
     }
     monkeypatch.setattr("shutil.which", lambda name: None)
     checks = {item["name"]: item for item in validate_config(repo, values)}
     assert checks["env_permissions"]["status"] == "fail"
     assert checks["config_max_concurrent_commands"]["status"] == "fail"
-    assert checks["config_rate_limit_max_clients"]["status"] == "fail"
     assert checks["tool_catalog"]["status"] == "pass"
 
     env_file.chmod(0o600)
     values["MAX_CONCURRENT_COMMANDS"] = "4"
-    values["RATE_LIMIT_MAX_CLIENTS"] = "100"
     checks = {item["name"]: item for item in validate_config(repo, values)}
     assert checks["env_permissions"]["status"] == "pass"
     assert checks["config_max_concurrent_commands"]["status"] == "pass"

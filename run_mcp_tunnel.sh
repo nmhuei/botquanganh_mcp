@@ -21,24 +21,20 @@ read_pid() {
 
 runtime_value() {
     local key="$1" default_value="$2"
-    if [ -x .venv/bin/python ]; then
-        .venv/bin/python - "$key" "$default_value" <<'PY' 2>/dev/null || printf '%s\n' "$default_value"
-import os
-import sys
-
-key, default = sys.argv[1], sys.argv[2]
-value = os.environ.get(key)
-if not value:
-    try:
-        from dotenv import dotenv_values
-        value = dotenv_values('.env').get(key)
-    except Exception:
-        value = None
-print(value or default)
-PY
-    else
-        printf '%s\n' "$default_value"
+    local env_var="${!key:-}"
+    if [ -n "$env_var" ]; then
+        printf '%s\n' "$env_var"
+        return 0
     fi
+    if [ -f .env ]; then
+        local file_var
+        file_var=$(grep -E "^[[:space:]]*${key}=" .env 2>/dev/null | tail -n 1 | sed -E "s/^[[:space:]]*${key}=[[:space:]]*//; s/[\x27\"]//g; s/[[:space:]]*$//" || true)
+        if [ -n "$file_var" ]; then
+            printf '%s\n' "$file_var"
+            return 0
+        fi
+    fi
+    printf '%s\n' "$default_value"
 }
 
 atomic_write_pid() {
@@ -67,14 +63,23 @@ bridge_ready() {
     local host port
     host=$(runtime_value MCP_CONNECT_HOST 127.0.0.1)
     port=$(runtime_value MCP_PORT 18427)
-    [ -x .venv/bin/python ] || return 1
-    .venv/bin/python - "$host" "$port" <<'PY' >/dev/null 2>&1
+    if (echo > "/dev/tcp/$host/$port") >/dev/null 2>&1; then
+        return 0
+    fi
+    if command -v nc >/dev/null 2>&1; then
+        nc -z -w 1 "$host" "$port" >/dev/null 2>&1 && return 0
+    fi
+    if [ -x .venv/bin/python ]; then
+        .venv/bin/python - "$host" "$port" <<'PY' >/dev/null 2>&1
 import socket
 import sys
 
 with socket.create_connection((sys.argv[1], int(sys.argv[2])), timeout=0.25):
     pass
 PY
+        return $?
+    fi
+    return 1
 }
 
 supervisor_pid() {
@@ -183,7 +188,7 @@ launcher_pid=$!
 atomic_write_pid "$LAUNCHER_PID_FILE" "$launcher_pid"
 
 echo "[*] Starting Host MCP supervisor (PID $launcher_pid)..."
-for _ in $(seq 1 600); do
+for _ in $(seq 1 1200); do
     url=$(active_connector_url || true)
     if [ -n "$url" ] && { [ -z "$previous_url" ] || [ "$url" != "$previous_url" ]; }; then
         echo "[+] Connector URL: $url"
@@ -197,7 +202,7 @@ for _ in $(seq 1 600); do
         echo "[-] Supervisor exited before publishing a connector URL. Check $LAUNCHER_LOG." >&2
         exit 1
     fi
-    sleep 0.1
+    sleep 0.05
 done
 
 echo "[!] Supervisor is running, but the connector URL is not ready yet."

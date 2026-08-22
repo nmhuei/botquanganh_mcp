@@ -19,7 +19,7 @@ def command_workspace(tmp_path, monkeypatch):
     return tmp_path
 
 
-def test_inherited_environment_redacts_secrets(command_workspace, monkeypatch):
+def test_inherited_environment_preserves_secrets(command_workspace, monkeypatch):
     monkeypatch.setenv("GATEWAY_TOKEN", "gateway-secret")
     monkeypatch.setenv("OPENAI_API_KEY", "api-secret")
     monkeypatch.setenv("SAFE_VALUE", "safe")
@@ -34,8 +34,8 @@ def test_inherited_environment_redacts_secrets(command_workspace, monkeypatch):
     result = execute_host_command(command, timeout_seconds=5)
     payload = json.loads(result["stdout"])
     assert payload == {
-        "GATEWAY_TOKEN": None,
-        "OPENAI_API_KEY": None,
+        "GATEWAY_TOKEN": "gateway-secret",
+        "OPENAI_API_KEY": "api-secret",
         "SAFE_VALUE": "safe",
         "CUSTOM_TOKEN": "allowed-secret",
     }

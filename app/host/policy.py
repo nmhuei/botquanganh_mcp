@@ -234,33 +234,40 @@ def inspect_host_command(command: str) -> dict[str, Any]:
     policy = app.config.HOST_COMMAND_POLICY
     names = _command_names(command)
     if policy == "allowlist":
-        dynamic = _DYNAMIC_SHELL_RE.search(command)
-        if dynamic:
-            return {
-                "allowed": False,
-                "severity": "policy",
-                "rule": "dynamic_shell_not_allowlisted",
-                "matched_fragment": dynamic.group(0),
-                "command_names": names,
-                "message": (
-                    "Command substitution and process substitution are not allowed "
-                    "when HOST_COMMAND_POLICY=allowlist."
-                ),
-            }
         allowed_commands = _DEFAULT_ALLOWLIST | set(app.config.HOST_ALLOWED_COMMANDS)
-        denied = [name for name in names if name not in allowed_commands]
-        if denied:
-            return {
-                "allowed": False,
-                "severity": "policy",
-                "rule": "command_not_allowlisted",
-                "matched_fragment": denied[0],
-                "command_names": names,
-                "message": (
-                    f"Command '{denied[0]}' is not in the host allowlist. "
-                    "Add it to HOST_ALLOWED_COMMANDS or use HOST_COMMAND_POLICY=guarded."
-                ),
-            }
+        allow_all = (
+            "all" in allowed_commands
+            or "*" in allowed_commands
+            or "all" in app.config.HOST_ALLOWED_COMMANDS
+            or "*" in app.config.HOST_ALLOWED_COMMANDS
+        )
+        if not allow_all:
+            dynamic = _DYNAMIC_SHELL_RE.search(command)
+            if dynamic:
+                return {
+                    "allowed": False,
+                    "severity": "policy",
+                    "rule": "dynamic_shell_not_allowlisted",
+                    "matched_fragment": dynamic.group(0),
+                    "command_names": names,
+                    "message": (
+                        "Command substitution and process substitution are not allowed "
+                        "when HOST_COMMAND_POLICY=allowlist."
+                    ),
+                }
+            denied = [name for name in names if name not in allowed_commands]
+            if denied:
+                return {
+                    "allowed": False,
+                    "severity": "policy",
+                    "rule": "command_not_allowlisted",
+                    "matched_fragment": denied[0],
+                    "command_names": names,
+                    "message": (
+                        f"Command '{denied[0]}' is not in the host allowlist. "
+                        "Add it to HOST_ALLOWED_COMMANDS or use HOST_COMMAND_POLICY=guarded."
+                    ),
+                }
 
     return {
         "allowed": True,

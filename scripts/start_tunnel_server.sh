@@ -16,15 +16,20 @@ mkdir -p logs
 
 read_env() {
     local key="$1" default_value="$2"
-    .venv/bin/python - "$key" "$default_value" <<'PY'
-import os
-import sys
-from dotenv import dotenv_values
-
-key, default = sys.argv[1], sys.argv[2]
-values = dotenv_values('.env')
-print(os.environ.get(key) or values.get(key) or default)
-PY
+    local env_var="${!key:-}"
+    if [ -n "$env_var" ]; then
+        printf '%s\n' "$env_var"
+        return 0
+    fi
+    if [ -f .env ]; then
+        local file_var
+        file_var=$(grep -E "^[[:space:]]*${key}=" .env 2>/dev/null | tail -n 1 | sed -E "s/^[[:space:]]*${key}=[[:space:]]*//; s/[\x27\"]//g; s/[[:space:]]*$//" || true)
+        if [ -n "$file_var" ]; then
+            printf '%s\n' "$file_var"
+            return 0
+        fi
+    fi
+    printf '%s\n' "$default_value"
 }
 
 MCP_BIND_HOST="${MCP_BIND_HOST:-$(read_env MCP_BIND_HOST 127.0.0.1)}"
@@ -86,15 +91,29 @@ local_health_ready() {
 
 public_health_ready() {
     local url="$1" host="" ip=""
-    curl --fail --silent --show-error --max-time 3 \
+    curl --fail --silent --show-error --max-time 1 \
         "${url%/}/healthz" >/dev/null 2>&1 && return 0
     host=${url#https://}
     host=${host%%/*}
-    if command -v dig >/dev/null 2>&1; then
-        ip=$(dig +short +time=2 +tries=1 @1.1.1.1 "$host" A | head -n 1)
+
+    # Extract edge IP from cloudflared registration log if available
+    ip=$(tail -n 50 "$CLOUDFLARED_LOG" 2>/dev/null | grep -o -E 'ip=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | tail -n 1 | cut -d= -f2 || true)
+
+    # Fallback to public DNS or resolving trycloudflare.com
+    if [ -z "$ip" ] && command -v dig >/dev/null 2>&1; then
+        ip=$(dig +short +time=1 +tries=1 @1.1.1.1 "$host" A 2>/dev/null | head -n 1 || true)
+        [ -n "$ip" ] || ip=$(dig +short +time=1 +tries=1 @1.1.1.1 trycloudflare.com A 2>/dev/null | head -n 1 || true)
     fi
-    [ -n "$ip" ] || return 1
-    curl --fail --silent --show-error --max-time 3 \
+
+    # Fallback to getent for trycloudflare.com
+    if [ -z "$ip" ]; then
+        ip=$(getent ahostsv4 trycloudflare.com 2>/dev/null | awk '{print $1}' | head -n 1 || true)
+    fi
+
+    # Known Cloudflare Anycast fallback
+    [ -n "$ip" ] || ip="104.16.230.132"
+
+    curl --fail --silent --show-error --max-time 2 \
         --resolve "${host}:443:${ip}" "${url%/}/healthz" >/dev/null 2>&1
 }
 

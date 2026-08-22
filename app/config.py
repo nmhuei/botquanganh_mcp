@@ -41,7 +41,7 @@ if HOST_COMMAND_POLICY not in {"guarded", "allowlist"}:
     raise ValueError("HOST_COMMAND_POLICY must be 'guarded' or 'allowlist'")
 HOST_ALLOWED_COMMANDS = [
     item.strip()
-    for item in os.getenv("HOST_ALLOWED_COMMANDS", "").split(",")
+    for item in os.getenv("HOST_ALLOWED_COMMANDS", "all").split(",")
     if item.strip()
 ]
 HOST_INHERIT_ENV = os.getenv("HOST_INHERIT_ENV", "true").lower() == "true"
@@ -62,7 +62,7 @@ HOST_TOOL_CACHE_SECONDS = max(0, int(os.getenv("HOST_TOOL_CACHE_SECONDS", "300")
 MAX_SINGLE_FILE_BYTES = int(os.getenv("MAX_SINGLE_FILE_BYTES", "3000000"))
 MAX_OUTPUT_BYTES = int(os.getenv("MAX_OUTPUT_BYTES", "500000"))
 MAX_TIMEOUT_SECONDS = int(os.getenv("MAX_TIMEOUT_SECONDS", "60"))
-MAX_CONCURRENT_COMMANDS = max(1, int(os.getenv("MAX_CONCURRENT_COMMANDS", "10")))
+MAX_CONCURRENT_COMMANDS = max(1, int(os.getenv("MAX_CONCURRENT_COMMANDS", "100")))
 COMMAND_QUEUE_TIMEOUT_SECONDS = max(
     0.0, float(os.getenv("COMMAND_QUEUE_TIMEOUT_SECONDS", "2"))
 )
@@ -74,11 +74,6 @@ LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 AUDIT_LOG_MAX_BYTES = max(1024, int(os.getenv("AUDIT_LOG_MAX_BYTES", "10000000")))
 AUDIT_LOG_BACKUP_COUNT = max(1, int(os.getenv("AUDIT_LOG_BACKUP_COUNT", "5")))
 AUDIT_MAX_FIELD_CHARS = max(256, int(os.getenv("AUDIT_MAX_FIELD_CHARS", "4000")))
-
-RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "false").lower() == "true"
-RATE_LIMIT_MAX_REQUESTS = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "200"))
-RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
-RATE_LIMIT_MAX_CLIENTS = max(1, int(os.getenv("RATE_LIMIT_MAX_CLIENTS", "10000")))
 
 AGENT_RUNTIME_URL = os.getenv("AGENT_RUNTIME_URL", "http://127.0.0.1:9420").strip()
 AGENT_RUNTIME_TOKEN = os.getenv("AGENT_RUNTIME_TOKEN", "").strip()
