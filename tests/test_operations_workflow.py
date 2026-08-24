@@ -154,7 +154,11 @@ def test_doctor_local_only_skips_public_and_strict_counts_warnings(
 
 def test_quality_gate_and_diagnostics_scripts_are_executable():
     repo = Path(__file__).resolve().parents[1]
-    for relative in ("scripts/quality_gate.sh", "scripts/collect_diagnostics.sh"):
+    for relative in (
+        "scripts/quality_gate.sh",
+        "scripts/collect_diagnostics.sh",
+        "scripts/collect_mcp_forensics.sh",
+    ):
         path = repo / relative
         assert path.is_file()
         assert os.access(path, os.X_OK)

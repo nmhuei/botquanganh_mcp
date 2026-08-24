@@ -6,9 +6,11 @@ def test_health_reports_host_profile():
     assert result["ok"] is True
     assert result["profile"] == "host"
     assert result["service"] == "botquanganh-host-mcp"
+    assert "mcp_http_requests_total" in result["metrics"]
+    assert "mcp_tool_calls_total" in result["transport"]
 
 
-def test_capabilities_expose_host_and_optional_agent_runtime_features():
+def test_capabilities_expose_host_core_features_only():
     result = get_capabilities()
     assert result["ok"] is True
     assert result["profile"] == "host"
@@ -17,9 +19,7 @@ def test_capabilities_expose_host_and_optional_agent_runtime_features():
         "host_command_execution": True,
         "host_knowledge": True,
         "installed_tool_inventory": True,
-        "agent_runtime_control_plane": True,
     }
     assert result["host"]["caller_approval_parameter"] is False
-    assert result["agent_runtime"]["optional_dependency"] is True
-    assert "agent_run_start" in result["agent_runtime"]["tools"]
-    assert "agent_runtime_health" in result["tools"]
+    assert len(result["tools"]) == 12
+    assert all(not name.startswith("agent_") for name in result["tools"])

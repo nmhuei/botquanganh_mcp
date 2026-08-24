@@ -6,6 +6,7 @@ from app.cli.client import RESTClient
 from app.cli.context import CLIContext
 from app.cli.errors import PolicyCLIError, TimeoutCLIError
 from app.cli.output import emit_json, emit_quiet, renderer_for
+from app.cli.progress import progress_for
 
 
 def _policy_blocked(result: dict) -> bool:
@@ -16,10 +17,12 @@ def handle_command(ctx: CLIContext, args) -> int:
     client = RESTClient(ctx.base_url, ctx.token, ctx.request_timeout)
 
     if args.cmd_command == "check":
-        result = client.post(
-            "/api/v1/commands/check",
-            json_body={"command": args.shell_command},
-        )
+        with progress_for(ctx, "Checking command policy...") as progress:
+            result = client.post(
+                "/api/v1/commands/check",
+                json_body={"command": args.shell_command},
+            )
+            progress.finish("Checked command policy")
         allowed = bool(result.get("allowed"))
         payload = {**result, "status": "allowed" if allowed else "blocked"}
         if ctx.json_output:
@@ -56,28 +59,45 @@ def handle_command(ctx: CLIContext, args) -> int:
                 )
         return 0 if allowed else 5
 
-    if args.check_first:
-        policy = client.post(
-            "/api/v1/commands/check",
-            json_body={"command": args.shell_command},
-        )
-        if _policy_blocked(policy):
-            raise PolicyCLIError(
-                str(policy.get("message") or "Command was blocked by policy."), policy
+    progress_total = 2 if args.check_first else None
+    initial_message = "Checking command policy..." if args.check_first else "Running command..."
+    with progress_for(
+        ctx,
+        initial_message,
+        total=progress_total,
+        summary_non_tty=False,
+    ) as progress:
+        if args.check_first:
+            policy = client.post(
+                "/api/v1/commands/check",
+                json_body={"command": args.shell_command},
             )
+            if _policy_blocked(policy):
+                raise PolicyCLIError(
+                    str(policy.get("message") or "Command was blocked by policy."), policy
+                )
+            progress.advance("Running command...")
 
-    result = client.post(
-        "/api/v1/commands/run",
-        json_body={
-            "command": args.shell_command,
-            "cwd": args.cwd,
-            "timeout_seconds": args.timeout,
-        },
-        allow_command_failure=True,
-    )
-    error = result.get("error") if isinstance(result, dict) else None
-    if isinstance(error, dict) and error.get("code") == "TIMEOUT":
-        raise TimeoutCLIError(str(error.get("message") or "Command timed out."), result)
+        result = client.post(
+            "/api/v1/commands/run",
+            json_body={
+                "command": args.shell_command,
+                "cwd": args.cwd,
+                "timeout_seconds": args.timeout,
+            },
+            allow_command_failure=True,
+        )
+        error = result.get("error") if isinstance(result, dict) else None
+        if isinstance(error, dict) and error.get("code") == "TIMEOUT":
+            raise TimeoutCLIError(
+                str(error.get("message") or "Command timed out."), result
+            )
+        if progress_total is not None:
+            progress.advance("Completed command")
+        progress.finish(
+            "Completed command",
+            detail=f"exit {result.get('exit_code', 'unknown')}",
+        )
 
     if ctx.json_output:
         emit_json(result)

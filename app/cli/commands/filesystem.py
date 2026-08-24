@@ -7,6 +7,7 @@ from app.cli.client import RESTClient
 from app.cli.context import CLIContext
 from app.cli.errors import CLIError, EXIT_USAGE, NotFoundCLIError
 from app.cli.output import emit_json, emit_quiet, renderer_for
+from app.cli.progress import progress_for
 
 
 def _content(args) -> str:
@@ -42,6 +43,13 @@ def _item_type(item: dict) -> str:
     return "file"
 
 
+def _request_with_progress(ctx: CLIContext, message: str, summary: str, callback):
+    with progress_for(ctx, message) as progress:
+        result = callback()
+        progress.finish(summary)
+    return result
+
+
 def _render_mutation(ctx: CLIContext, result: dict, command: str) -> int:
     ok = bool(result.get("ok", True))
     state = "success" if ok else "failed"
@@ -53,22 +61,17 @@ def _render_mutation(ctx: CLIContext, result: dict, command: str) -> int:
         emit_quiet(primary)
     else:
         renderer = renderer_for(ctx)
-        renderer.header("Filesystem", command.capitalize())
-        renderer.blank()
-        renderer.status(
-            state,
-            f"{command.capitalize()} completed"
-            if ok
-            else f"{command.capitalize()} failed",
-        )
-        details = [
-            (key.replace("_", " ").title(), value)
-            for key, value in result.items()
-            if key != "ok"
-        ]
-        if details:
-            renderer.blank()
-            renderer.facts(details)
+        path = str(result.get("path") or command)
+        changed = command in {"append", "replace"} or bool(result.get("overwrote"))
+        renderer.result_item("+" if ok else "-", path, "success" if ok else "error")
+        if ctx.verbose:
+            details = [
+                (key.replace("_", " ").title(), value)
+                for key, value in result.items()
+                if key not in {"ok", "path"}
+            ]
+            if details:
+                renderer.facts(details)
     return 0 if ok else 1
 
 
@@ -77,9 +80,14 @@ def handle_filesystem(ctx: CLIContext, args) -> int:
     command = args.fs_command
 
     if command == "ls":
-        result = client.get(
-            "/api/v1/files",
-            query={"path": args.path, "max_entries": args.max_entries},
+        result = _request_with_progress(
+            ctx,
+            "Listing directory...",
+            "Listed directory",
+            lambda: client.get(
+                "/api/v1/files",
+                query={"path": args.path, "max_entries": args.max_entries},
+            ),
         )
         items = result.get("items", [])
         if ctx.json_output:
@@ -114,14 +122,19 @@ def handle_filesystem(ctx: CLIContext, args) -> int:
         start_line = end_line = None
         if args.lines:
             start_line, end_line = args.lines
-        result = client.get(
-            "/api/v1/files/content",
-            query={
-                "path": args.path,
-                "start_line": start_line,
-                "end_line": end_line,
-                "max_bytes": args.max_bytes,
-            },
+        result = _request_with_progress(
+            ctx,
+            "Reading file...",
+            "Read file",
+            lambda: client.get(
+                "/api/v1/files/content",
+                query={
+                    "path": args.path,
+                    "start_line": start_line,
+                    "end_line": end_line,
+                    "max_bytes": args.max_bytes,
+                },
+            ),
         )
         if ctx.json_output:
             emit_json({**result, "status": "success"})
@@ -137,48 +150,73 @@ def handle_filesystem(ctx: CLIContext, args) -> int:
         return 0
 
     if command == "write":
-        result = client.put(
-            "/api/v1/files/content",
-            json_body={
-                "path": args.path,
-                "content": _content(args),
-                "overwrite": not args.no_overwrite,
-                "create_parents": not args.no_create_parents,
-            },
+        result = _request_with_progress(
+            ctx,
+            "Writing file...",
+            "Wrote file",
+            lambda: client.put(
+                "/api/v1/files/content",
+                json_body={
+                    "path": args.path,
+                    "content": _content(args),
+                    "overwrite": not args.no_overwrite,
+                    "create_parents": not args.no_create_parents,
+                },
+            ),
         )
         return _render_mutation(ctx, result, command)
     if command == "append":
-        result = client.post(
-            "/api/v1/files/append",
-            json_body={"path": args.path, "content": _content(args)},
+        result = _request_with_progress(
+            ctx,
+            "Appending file...",
+            "Appended file",
+            lambda: client.post(
+                "/api/v1/files/append",
+                json_body={"path": args.path, "content": _content(args)},
+            ),
         )
         return _render_mutation(ctx, result, command)
     if command == "replace":
-        result = client.patch(
-            "/api/v1/files/content",
-            json_body={
-                "path": args.path,
-                "old": _file_text(args.old, args.old_file, "old"),
-                "new": _file_text(args.new, args.new_file, "new"),
-                "expected_count": args.expected_count,
-            },
+        result = _request_with_progress(
+            ctx,
+            "Replacing file content...",
+            "Updated file",
+            lambda: client.patch(
+                "/api/v1/files/content",
+                json_body={
+                    "path": args.path,
+                    "old": _file_text(args.old, args.old_file, "old"),
+                    "new": _file_text(args.new, args.new_file, "new"),
+                    "expected_count": args.expected_count,
+                },
+            ),
         )
         return _render_mutation(ctx, result, command)
     if command == "mkdir":
-        result = client.post(
-            "/api/v1/directories",
-            json_body={"path": args.path, "parents": not args.no_parents},
+        result = _request_with_progress(
+            ctx,
+            "Creating directory...",
+            "Created directory",
+            lambda: client.post(
+                "/api/v1/directories",
+                json_body={"path": args.path, "parents": not args.no_parents},
+            ),
         )
         return _render_mutation(ctx, result, command)
     if command == "search":
-        result = client.get(
-            "/api/v1/search",
-            query={
-                "query": args.query,
-                "path": args.path,
-                "case_sensitive": str(args.case_sensitive).lower(),
-                "max_results": args.max_results,
-            },
+        result = _request_with_progress(
+            ctx,
+            "Searching files...",
+            "Searched files",
+            lambda: client.get(
+                "/api/v1/search",
+                query={
+                    "query": args.query,
+                    "path": args.path,
+                    "case_sensitive": str(args.case_sensitive).lower(),
+                    "max_results": args.max_results,
+                },
+            ),
         )
         matches = result.get("results", [])
         if ctx.json_output:

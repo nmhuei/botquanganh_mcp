@@ -12,14 +12,13 @@ from app.config import (
     MAX_TIMEOUT_SECONDS,
     SERVICE_NAME,
     VERSION,
-    AGENT_RUNTIME_URL,
 )
 from app.host.executor import command_capacity
 from app.logging_audit import log_audit_event
 from app.mcp_server import mcp
 from app.metrics import metrics
+from app.observability import transport_observability
 from app.security import format_error_response
-from app.tools.agent_runtime import AGENT_RUNTIME_TOOLS
 
 HOST_TOOLS = [
     "host_list_directory",
@@ -50,6 +49,7 @@ def health_check() -> dict:
             "metrics": {
                 "uptime_seconds": stats["uptime_seconds"],
                 "total_requests": stats["total_requests"],
+                "mcp_http_requests_total": stats["mcp_http_requests_total"],
                 "error_count": stats["error_count"],
                 "client_error_count": stats["client_error_count"],
                 "auth_failures": stats["auth_failures"],
@@ -59,12 +59,19 @@ def health_check() -> dict:
                 "avg_latency_ms": stats["avg_latency_ms"],
                 "p50_latency_ms": stats["p50_latency_ms"],
                 "p95_latency_ms": stats["p95_latency_ms"],
+                "p99_latency_ms": stats["p99_latency_ms"],
+                "response_bytes": stats["response_bytes"],
+                "mcp_response_bytes": stats["mcp_response_bytes"],
+                "avg_response_bytes": stats["avg_response_bytes"],
+                "incomplete_responses": stats["incomplete_responses"],
+                "client_disconnects": stats["client_disconnects"],
                 "status_counts": stats["status_counts"],
                 "latency_sample_size": stats["latency_sample_size"],
             },
             "capacity": {
                 "commands": command_capacity.get_stats(),
             },
+            "transport": transport_observability.snapshot(),
         }
     except Exception as exc:
         log_audit_event("HEALTH_CHECK_FAIL", {"error": str(exc)})
@@ -86,7 +93,6 @@ def get_capabilities() -> dict:
                 "health_check",
                 "get_capabilities",
                 *HOST_TOOLS,
-                *AGENT_RUNTIME_TOOLS,
             ],
             "host": {
                 "workspace": str(HOST_WORKSPACE_DIR),
@@ -107,13 +113,6 @@ def get_capabilities() -> dict:
                 "host_command_execution": True,
                 "host_knowledge": True,
                 "installed_tool_inventory": True,
-                "agent_runtime_control_plane": True,
-            },
-            "agent_runtime": {
-                "configured": bool(AGENT_RUNTIME_URL),
-                "optional_dependency": True,
-                "tools": AGENT_RUNTIME_TOOLS,
-                "availability": "use agent_runtime_health",
             },
         }
     except Exception as exc:

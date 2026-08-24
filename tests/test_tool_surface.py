@@ -16,19 +16,6 @@ EXPECTED_TOOLS = {
     "host_check_command",
     "host_run_command",
     "host_knowledge",
-    "agent_runtime_health",
-    "agent_run_start",
-    "agent_run_status",
-    "agent_run_events",
-    "agent_run_message",
-    "agent_run_cancel",
-    "agent_run_result",
-    "agent_list",
-    "agent_message",
-    "agent_cancel",
-    "task_status",
-    "task_retry",
-    "artifact_get",
 }
 
 

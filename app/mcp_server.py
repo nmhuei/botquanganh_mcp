@@ -1,8 +1,10 @@
 import logging
 import time
+from ipaddress import ip_address
 
 import fastmcp
 from fastmcp import FastMCP
+from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.routing import Route
 
@@ -15,7 +17,14 @@ from app.config import (
     HOST_DEFAULT_DIR,
 )
 from app.error_contract import format_error_code
+from app.logging_audit import log_audit_event
 from app.metrics import metrics
+from app.observability import MCPForensicsMiddleware, transport_observability
+from app.request_context import (
+    new_request_id,
+    reset_request_context,
+    set_request_context,
+)
 
 logger = logging.getLogger("botquanganh_host_mcp")
 FASTMCP_COMPAT_VERSION = "3.4.0"
@@ -75,6 +84,154 @@ async def healthz_endpoint(_request):
     return PlainTextResponse("OK", status_code=200)
 
 
+def _headers(scope) -> dict[str, str]:
+    return {
+        key.decode("latin-1").lower(): value.decode("latin-1")
+        for key, value in scope.get("headers", [])
+    }
+
+
+def _is_loopback(host: str) -> bool:
+    try:
+        return ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+async def debug_transport_endpoint(_request: Request) -> JSONResponse:
+    """Return bounded transport metadata only; no payloads, secrets, or paths."""
+    snapshot = transport_observability.snapshot()
+    return JSONResponse(
+        {
+            "server": "ok",
+            "version": VERSION,
+            "fastmcp": getattr(fastmcp, "__version__", "unknown"),
+            "stateless": MCP_STATELESS_HTTP,
+            **snapshot,
+        }
+    )
+
+
+class LocalDebugMiddleware:
+    """Keep transport diagnostics on a direct loopback connection only."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http" or scope.get("path") != "/debug/transport":
+            await self.app(scope, receive, send)
+            return
+
+        headers = _headers(scope)
+        client = scope.get("client") or ("", 0)
+        # A request via Cloudflare carries proxy headers even though cloudflared
+        # reaches the origin from 127.0.0.1. Reject it so this route remains a
+        # direct local diagnostic, not a public tunnel endpoint.
+        is_direct = not any(
+            headers.get(name)
+            for name in ("cf-connecting-ip", "x-forwarded-for", "x-real-ip")
+        )
+        if not _is_loopback(str(client[0])) or not is_direct:
+            response = JSONResponse({"detail": "Not found."}, status_code=404)
+            await response(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
+
+
+class ForensicsHTTPMiddleware:
+    """Correlate each HTTP request with the FastMCP middleware evidence chain."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        headers = _headers(scope)
+        path = str(scope.get("path", "unknown"))
+        client = scope.get("client") or ("", 0)
+        client_host = str(client[0])
+        request_id = new_request_id(headers.get("x-request-id"))
+        started = time.monotonic()
+        status_code = 500
+        response_bytes = 0
+        response_complete = False
+        client_disconnected = False
+        tokens = set_request_context(
+            request_id, path=path, client_host=client_host
+        )
+        transport_observability.record_http_request()
+        log_audit_event(
+            "HTTP_REQUEST_RECEIVED",
+            {
+                "request_id": request_id,
+                "method": scope.get("method", "unknown"),
+                "path": path,
+                "client_host": client_host,
+                "cf_ray": headers.get("cf-ray"),
+                "mcp_protocol_version": headers.get("mcp-protocol-version"),
+                "mcp_method": headers.get("mcp-method"),
+                "mcp_name": headers.get("mcp-name"),
+            },
+        )
+
+        async def wrapped_receive():
+            nonlocal client_disconnected
+            message = await receive()
+            if message.get("type") == "http.disconnect":
+                client_disconnected = True
+            return message
+
+        async def wrapped_send(message):
+            nonlocal status_code, response_bytes, response_complete
+            if message.get("type") == "http.response.start":
+                status_code = int(message.get("status", 0) or 500)
+                response_headers = list(message.get("headers", []))
+                if not any(key.lower() == b"x-request-id" for key, _ in response_headers):
+                    response_headers.append((b"x-request-id", request_id.encode("ascii")))
+                message["headers"] = response_headers
+            elif message.get("type") == "http.response.body":
+                response_bytes += len(message.get("body", b""))
+                if not message.get("more_body", False):
+                    response_complete = True
+            await send(message)
+
+        try:
+            await self.app(scope, wrapped_receive, wrapped_send)
+        except Exception as exc:
+            log_audit_event(
+                "HTTP_REQUEST_FAILED",
+                {
+                    "request_id": request_id,
+                    "path": path,
+                    "error_type": type(exc).__name__,
+                },
+            )
+            raise
+        finally:
+            duration_ms = (time.monotonic() - started) * 1000
+            incomplete = not response_complete
+            if incomplete:
+                transport_observability.record_incomplete_response(
+                    client_disconnected=client_disconnected
+                )
+            log_audit_event(
+                "HTTP_RESPONSE_SENT" if not incomplete else "HTTP_RESPONSE_INCOMPLETE",
+                {
+                    "request_id": request_id,
+                    "path": path,
+                    "status": status_code,
+                    "duration_ms": round(duration_ms, 1),
+                    "response_bytes": response_bytes,
+                    "client_disconnected": client_disconnected,
+                },
+            )
+            reset_request_context(tokens)
+
+
 class MetricsMiddleware:
     """Record complete HTTP requests, including auth and rate-limit responses."""
 
@@ -89,6 +246,9 @@ class MetricsMiddleware:
         started = time.monotonic()
         path = scope.get("path", "unknown")
         status_code = 500
+        response_bytes = 0
+        response_complete = False
+        client_disconnected = False
         finished = False
         metrics.begin_request()
 
@@ -101,12 +261,19 @@ class MetricsMiddleware:
                 path,
                 (time.monotonic() - started) * 1000,
                 status_code,
+                response_bytes=response_bytes,
+                incomplete=not response_complete,
+                client_disconnected=client_disconnected,
             )
 
         async def wrapped_send(message):
-            nonlocal status_code
+            nonlocal status_code, response_bytes, response_complete
             if message.get("type") == "http.response.start":
                 status_code = int(message.get("status", 0) or 500)
+            if message.get("type") == "http.response.body":
+                response_bytes += len(message.get("body", b""))
+                if not message.get("more_body", False):
+                    response_complete = True
             await send(message)
             if (
                 message.get("type") == "http.response.body"
@@ -114,8 +281,15 @@ class MetricsMiddleware:
             ):
                 finish_once()
 
+        async def wrapped_receive():
+            nonlocal client_disconnected
+            message = await receive()
+            if message.get("type") == "http.disconnect":
+                client_disconnected = True
+            return message
+
         try:
-            await self.app(scope, receive, wrapped_send)
+            await self.app(scope, wrapped_receive, wrapped_send)
             finish_once()
         except Exception:
             status_code = 500
@@ -148,13 +322,24 @@ def _chatgpt_http_app(self, *args, **kwargs):
             0,
             Route("/healthz", endpoint=healthz_endpoint, methods=["GET"]),
         )
+    if not any(
+        getattr(route, "path", None) == "/debug/transport"
+        for route in app.router.routes
+    ):
+        app.router.routes.insert(
+            1,
+            Route("/debug/transport", endpoint=debug_transport_endpoint, methods=["GET"]),
+        )
 
     from app.rest_api import install_rest_routes
 
     install_rest_routes(app)
-    # Add auth first, then metrics. Starlette wraps middleware in reverse order,
-    # making MetricsMiddleware outermost so 401 and 429 responses are observed.
+    # Starlette wraps middleware in reverse order. Metrics stays outermost for
+    # every response; Forensics binds a request id before FastMCP dispatch; the
+    # local-only guard prevents Cloudflare from exposing /debug/transport.
     app.add_middleware(TokenAuthMiddleware)
+    app.add_middleware(LocalDebugMiddleware)
+    app.add_middleware(ForensicsHTTPMiddleware)
     app.add_middleware(MetricsMiddleware)
     return app
 
@@ -172,3 +357,4 @@ mcp = FastMCP(
         f"Operations are allowed and restricted to the workspace boundary: '{HOST_WORKSPACE_DIR}'."
     ),
 )
+mcp.add_middleware(MCPForensicsMiddleware())

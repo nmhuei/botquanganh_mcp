@@ -4,6 +4,7 @@ from app.cli.config_view import is_secret_key, safe_config, validate_config
 from app.cli.context import CLIContext
 from app.cli.errors import NotFoundCLIError
 from app.cli.output import emit_json, emit_quiet, renderer_for
+from app.cli.progress import progress_for
 
 
 def _human_value(key: str, value: str) -> str:
@@ -71,8 +72,13 @@ def handle_config(ctx: CLIContext, args) -> int:
             renderer.facts([(key, value)])
         return 0
 
-    checks = validate_config(ctx.repo_root, ctx.values)
-    strict = bool(getattr(args, "strict", False))
+    with progress_for(ctx, "Validating configuration...", total=3) as progress:
+        progress.advance("Checking values and paths...")
+        checks = validate_config(ctx.repo_root, ctx.values)
+        progress.advance("Checking runtime prerequisites...")
+        strict = bool(getattr(args, "strict", False))
+        progress.advance("Summarizing validation...")
+        progress.finish("Validated configuration")
     failure_count = sum(check["status"] == "fail" for check in checks)
     warning_count = sum(check["status"] == "warn" for check in checks)
     ok = failure_count == 0 and not (strict and warning_count > 0)

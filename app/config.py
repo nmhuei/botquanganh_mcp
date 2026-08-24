@@ -74,14 +74,3 @@ LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 AUDIT_LOG_MAX_BYTES = max(1024, int(os.getenv("AUDIT_LOG_MAX_BYTES", "10000000")))
 AUDIT_LOG_BACKUP_COUNT = max(1, int(os.getenv("AUDIT_LOG_BACKUP_COUNT", "5")))
 AUDIT_MAX_FIELD_CHARS = max(256, int(os.getenv("AUDIT_MAX_FIELD_CHARS", "4000")))
-
-AGENT_RUNTIME_URL = os.getenv("AGENT_RUNTIME_URL", "http://127.0.0.1:9420").strip()
-AGENT_RUNTIME_TOKEN = os.getenv("AGENT_RUNTIME_TOKEN", "").strip()
-# Keep optional-runtime values as strings so invalid runtime-only configuration
-# degrades agent tools instead of preventing the host MCP server from starting.
-AGENT_RUNTIME_TIMEOUT_SECONDS = os.getenv(
-    "AGENT_RUNTIME_TIMEOUT_SECONDS", "30"
-).strip()
-AGENT_RUNTIME_RESULT_TIMEOUT_SECONDS = os.getenv(
-    "AGENT_RUNTIME_RESULT_TIMEOUT_SECONDS", "60"
-).strip()

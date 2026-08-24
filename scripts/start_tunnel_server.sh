@@ -148,7 +148,11 @@ start_tunnel() {
     fi
 
     rm -f "$TUNNEL_PID_FILE" "$TUNNEL_URL_FILE"
-    TUNNEL_LOG_OFFSET=$(wc -c < "$CLOUDFLARED_LOG" 2>/dev/null || printf '0')
+    # A fresh installation may not have created cloudflared.log yet. Create the
+    # file without truncating an existing log so the launch offset is quiet and
+    # still excludes stale URLs from earlier tunnel processes.
+    touch "$CLOUDFLARED_LOG"
+    TUNNEL_LOG_OFFSET=$(wc -c < "$CLOUDFLARED_LOG")
     nohup cloudflared tunnel --url "http://${MCP_CONNECT_HOST}:${MCP_PORT}" \
         >> "$CLOUDFLARED_LOG" 2>&1 &
     local pid=$!

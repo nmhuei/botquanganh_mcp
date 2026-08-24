@@ -55,6 +55,27 @@ PY
     return 1
 }
 
+healthz_ready() {
+    local health_url="http://${MCP_CONNECT_HOST}:${MCP_PORT}/healthz"
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsS --connect-timeout 1 --max-time 2 "$health_url" \
+            >/dev/null 2>&1
+        return $?
+    fi
+    if [ -x .venv/bin/python ]; then
+        .venv/bin/python - "$health_url" <<'PY' >/dev/null 2>&1
+import sys
+from urllib.request import urlopen
+
+with urlopen(sys.argv[1], timeout=2) as response:  # nosec B310
+    if response.status != 200:
+        raise SystemExit(1)
+PY
+        return $?
+    fi
+    return 1
+}
+
 active_supervisor_pid() {
     local pid=""
     pid=$(read_pid_file "$SUPERVISOR_PID_FILE")
@@ -93,7 +114,8 @@ wait_for_replacement() {
             if pid_matches_kind "$listener_pid" server \
                 && [ "$listener_pid" != "$previous_pid" ] \
                 && { [ -z "$expected_pid" ] || [ "$listener_pid" = "$expected_pid" ]; } \
-                && socket_ready; then
+                && socket_ready \
+                && healthz_ready; then
                 # The supervisor can briefly overwrite server.pid while a new
                 # interpreter is still starting. Canonicalize it to the process
                 # that actually owns the listening socket before reporting success.
@@ -105,7 +127,7 @@ wait_for_replacement() {
         done
         sleep 0.25
     done
-    echo "[-] Server socket did not become ready. Check logs/server.log." >&2
+    echo "[-] Server health endpoint did not become ready. Check logs/server.log." >&2
     return 1
 }
 

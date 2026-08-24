@@ -43,33 +43,6 @@ ERROR_SPECS: dict[str, ErrorSpec] = {
     "SERVICE_BUSY": ErrorSpec(
         "SERVICE_BUSY", 503, "Retry when command execution capacity becomes available."
     ),
-    "RUNTIME_UNAVAILABLE": ErrorSpec(
-        "RUNTIME_UNAVAILABLE", 503, "Start the agent runtime or check AGENT_RUNTIME_URL."
-    ),
-    "RUN_NOT_FOUND": ErrorSpec(
-        "RUN_NOT_FOUND", 404, "Check the run_id and runtime retention policy."
-    ),
-    "AGENT_NOT_FOUND": ErrorSpec(
-        "AGENT_NOT_FOUND", 404, "Check the agent_id and its parent run."
-    ),
-    "TASK_NOT_FOUND": ErrorSpec(
-        "TASK_NOT_FOUND", 404, "Check the task_id and its parent run."
-    ),
-    "ARTIFACT_NOT_FOUND": ErrorSpec(
-        "ARTIFACT_NOT_FOUND", 404, "Check the artifact_id and runtime artifact retention."
-    ),
-    "INVALID_STATE_TRANSITION": ErrorSpec(
-        "INVALID_STATE_TRANSITION", 409, "Refresh status before retrying this operation."
-    ),
-    "BUDGET_EXCEEDED": ErrorSpec(
-        "BUDGET_EXCEEDED", 429, "Increase the run budget or reduce the requested work."
-    ),
-    "TOOL_PERMISSION_DENIED": ErrorSpec(
-        "TOOL_PERMISSION_DENIED", 403, "Check the runtime tool allowlist and workspace policy."
-    ),
-    "AUTHENTICATION_FAILED": ErrorSpec(
-        "AUTHENTICATION_FAILED", 401, "Check AGENT_RUNTIME_TOKEN configuration."
-    ),
     "INTERNAL_ERROR": ErrorSpec(
         "INTERNAL_ERROR", 500, "Check server and audit logs using an authorized local account."
     ),

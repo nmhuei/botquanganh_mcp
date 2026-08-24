@@ -3,11 +3,14 @@ from __future__ import annotations
 from app.cli.client import RESTClient
 from app.cli.context import CLIContext
 from app.cli.output import emit_json, emit_quiet, human_duration, renderer_for
+from app.cli.progress import progress_for
 
 
 def handle_health(ctx: CLIContext, _args) -> int:
     client = RESTClient(ctx.base_url, ctx.token, ctx.request_timeout)
-    result = client.get("/api/v1/health")
+    with progress_for(ctx, "Checking service health...") as progress:
+        result = client.get("/api/v1/health")
+        progress.finish("Checked service health")
     state = "healthy" if result.get("ok") else "unhealthy"
     payload = {**result, "status": state}
     if ctx.json_output:
@@ -54,7 +57,9 @@ def handle_health(ctx: CLIContext, _args) -> int:
 
 def handle_capabilities(ctx: CLIContext, args) -> int:
     client = RESTClient(ctx.base_url, ctx.token, ctx.request_timeout)
-    result = client.get("/api/v1/capabilities")
+    with progress_for(ctx, "Loading service capabilities...") as progress:
+        result = client.get("/api/v1/capabilities")
+        progress.finish("Loaded service capabilities")
     selected = [
         name for name in ("tools", "limits", "host") if getattr(args, name, False)
     ]

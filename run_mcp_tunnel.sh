@@ -175,6 +175,7 @@ fi
 rm -f "$LAUNCHER_PID_FILE" "$SUPERVISOR_PID_FILE"
 existing_tunnel=$(read_pid "$TUNNEL_PID_FILE")
 previous_url=$(connector_url || true)
+previous_active_url=$(active_connector_url || true)
 if ! pid_matches_kind "$existing_tunnel" tunnel; then
     rm -f "$TUNNEL_PID_FILE"
 fi
@@ -190,7 +191,7 @@ atomic_write_pid "$LAUNCHER_PID_FILE" "$launcher_pid"
 echo "[*] Starting Host MCP supervisor (PID $launcher_pid)..."
 for _ in $(seq 1 1200); do
     url=$(active_connector_url || true)
-    if [ -n "$url" ] && { [ -z "$previous_url" ] || [ "$url" != "$previous_url" ]; }; then
+    if [ -n "$url" ] && { [ -n "$previous_active_url" ] || [ -z "$previous_url" ] || [ "$url" != "$previous_url" ]; }; then
         echo "[+] Connector URL: $url"
         echo "[+] Status: ./run_mcp_tunnel.sh status"
         echo "[+] Stop:   ./run_mcp_tunnel.sh stop"

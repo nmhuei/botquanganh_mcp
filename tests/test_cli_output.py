@@ -125,3 +125,18 @@ def test_copyable_value_never_inserts_hard_wraps():
     renderer.copyable_value("Endpoint", url)
 
     assert stream.getvalue().splitlines() == ["  Endpoint", url]
+
+
+def test_error_renderer_uses_compact_uv_style_tree():
+    stream = io.StringIO()
+    renderer = Renderer(color_mode="never", stream=stream, width=80)
+    renderer.error(
+        "Could not complete `start`",
+        "Connector URL is unavailable.",
+        "bqa doctor",
+    )
+    rendered = stream.getvalue()
+    assert "× Could not complete `start`" in rendered
+    assert "╰─▶ Connector URL is unavailable." in rendered
+    assert "hint: bqa doctor" in rendered
+    assert "Operation failed" not in rendered

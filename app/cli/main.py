@@ -12,8 +12,12 @@ from app.cli.commands.filesystem import handle_filesystem
 from app.cli.commands.health import handle_capabilities, handle_health
 from app.cli.commands.knowledge import handle_knowledge
 from app.cli.commands.logs import handle_logs
-from app.cli.config_view import load_env
-from app.cli.context import CLIContext, extract_global_options, repo_root
+from app.cli.context import (
+    GLOBAL_FLAG_OPTIONS,
+    GLOBAL_VALUE_OPTIONS,
+    CLIContext,
+    extract_global_options,
+)
 from app.cli.errors import CLIError, EXIT_OPERATION_FAILED, EXIT_USAGE
 from app.cli.lifecycle import (
     connector_url,
@@ -25,6 +29,7 @@ from app.cli.lifecycle import (
 )
 from app.cli.output import Renderer, emit_json, emit_quiet, renderer_for
 from app.cli.parser import build_parser
+from app.cli.progress import progress_for
 
 
 def _process_label(process: dict) -> str:
@@ -105,14 +110,47 @@ def _render_status(ctx: CLIContext, data: dict, *, server_only: bool = False) ->
     renderer.hint("bqa logs server", "Inspect activity with")
 
 
+def _run_lifecycle_action(ctx: CLIContext, operation: str, action):
+    total = 3 if operation == "stop" else 4
+    labels = {
+        "start": ("Starting or adopting runtime...", "Started runtime"),
+        "restart": ("Restarting MCP bridge...", "Restarted runtime"),
+        "stop": ("Stopping managed runtime...", "Stopped runtime"),
+        "server_restart": ("Restarting MCP bridge...", "Restarted bridge"),
+    }
+    working, completed = labels[operation]
+    rows = (
+        ("supervisor", "tunnel", "server")
+        if operation == "stop"
+        else ("server", "tunnel", "bridge", "endpoint")
+    )
+    with progress_for(ctx, working, total=total) as progress:
+        progress.set_items(rows)
+        status_data(ctx.repo_root, ctx.values)
+        result = action()
+        runtime = status_data(ctx.repo_root, ctx.values)
+        for row in rows:
+            progress.complete_item(row)
+        progress.finish(completed)
+    return result, runtime
+
+
 def _render_lifecycle_result(
-    ctx: CLIContext, result: dict, *, operation: str, state: str
+    ctx: CLIContext,
+    result: dict,
+    *,
+    operation: str,
+    state: str,
+    runtime: dict | None = None,
 ) -> None:
     payload = {**result, "operation": operation, "status": state}
 
     url = None
     if operation in {"start", "restart"}:
-        url = connector_url(ctx.repo_root, ctx.values)
+        if runtime and runtime.get("connector_ready"):
+            url = runtime.get("url")
+        if not url:
+            url = connector_url(ctx.repo_root, ctx.values)
         if url:
             payload["url"] = url
 
@@ -127,29 +165,23 @@ def _render_lifecycle_result(
         return
 
     renderer = renderer_for(ctx)
-    renderer.header("Lifecycle", operation.capitalize())
-    renderer.blank()
-    renderer.status("success", f"Runtime {state}")
     if url:
-        renderer.blank()
-        renderer.copyable_value("Endpoint · copy-safe", url)
+        # Keep the primary artifact on stdout as one copy-safe line. Progress and
+        # summaries live on stderr, so piping `bqa` still yields only the URL.
+        emit_quiet(url)
     if ctx.verbose:
         details = []
         if result.get("script"):
             details.append(("Script", result["script"]))
         details.append(("Exit code", result.get("exit_code", 0)))
         if details:
-            renderer.blank()
             renderer.facts(details)
         stdout = str(result.get("stdout", "")).strip()
         stderr = str(result.get("stderr", "")).strip()
         if stdout or stderr:
-            renderer.blank()
             renderer.section("Process output")
             for line in [*stdout.splitlines(), *stderr.splitlines()]:
                 renderer.summary(line)
-    renderer.blank()
-    renderer.hint("bqa status", "Verify with")
 
 
 def _confirm_restart(args) -> None:
@@ -161,19 +193,28 @@ def _confirm_restart(args) -> None:
 def _dispatch(ctx: CLIContext, args) -> int:
     command = args.command
     if command == "start":
+        result, runtime = _run_lifecycle_action(
+            ctx, "start", lambda: start(ctx.repo_root)
+        )
         _render_lifecycle_result(
-            ctx, start(ctx.repo_root), operation="start", state="started"
+            ctx, result, operation="start", state="started", runtime=runtime
         )
         return 0
     if command == "stop":
+        result, runtime = _run_lifecycle_action(
+            ctx, "stop", lambda: stop(ctx.repo_root)
+        )
         _render_lifecycle_result(
-            ctx, stop(ctx.repo_root), operation="stop", state="stopped"
+            ctx, result, operation="stop", state="stopped", runtime=runtime
         )
         return 0
     if command == "restart":
         _confirm_restart(args)
+        result, runtime = _run_lifecycle_action(
+            ctx, "restart", lambda: restart(ctx.repo_root, ctx.values)
+        )
         _render_lifecycle_result(
-            ctx, restart(ctx.repo_root, ctx.values), operation="restart", state="restarted"
+            ctx, result, operation="restart", state="restarted", runtime=runtime
         )
         return 0
     if command == "status":
@@ -218,7 +259,11 @@ def _dispatch(ctx: CLIContext, args) -> int:
             data = status_data(ctx.repo_root, ctx.values)
             _render_status(ctx, data, server_only=True)
             return 0 if data["server"]["running"] and data["bridge"] == "ready" else 1
-        result = server_restart(ctx.repo_root, ctx.values)
+        result, _runtime = _run_lifecycle_action(
+            ctx,
+            "server_restart",
+            lambda: server_restart(ctx.repo_root, ctx.values),
+        )
         if ctx.json_output:
             emit_json(result)
         elif ctx.quiet:
@@ -290,11 +335,28 @@ def _dispatch(ctx: CLIContext, args) -> int:
 
 
 def _operation_name(raw_argv: Sequence[str]) -> str:
-    for token in raw_argv:
+    index = 0
+    while index < len(raw_argv):
+        token = raw_argv[index]
         if token == "--":
             break
+        if token in GLOBAL_FLAG_OPTIONS:
+            index += 1
+            continue
+        matched_value_option = next(
+            (
+                name
+                for name in GLOBAL_VALUE_OPTIONS
+                if token == name or token.startswith(name + "=")
+            ),
+            None,
+        )
+        if matched_value_option:
+            index += 1 if token != matched_value_option else 2
+            continue
         if not token.startswith("-"):
             return token
+        index += 1
     return "command"
 
 
@@ -315,18 +377,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             _operation_name(raw_argv) == "command"
             and not any(arg in ("-h", "--help", "--version", "help") for arg in raw_argv)
         ):
-            if not any(not arg.startswith("-") for arg in raw_argv if arg != "--"):
-                root = repo_root()
-                values = load_env(root)
-                start(root)
-                runtime = status_data(root, values)
-                url = runtime.get("url") if runtime.get("connector_ready") else None
-                if not url:
-                    raise CLIError("Connector URL is unavailable.")
-                emit_quiet(url)
-                return 0
+            # Bare `bqa` is the human-friendly start command. Route it through
+            # the normal parser/dispatcher so it gets the same progress model,
+            # JSON/quiet handling, and final copy-safe endpoint as `bqa start`.
             raw_argv = ["start", *raw_argv]
-            operation = _operation_name(raw_argv)
+            operation = "start"
         parser = build_parser()
         args = parser.parse_args(extract_global_options(raw_argv))
         ctx = CLIContext.from_args(args)

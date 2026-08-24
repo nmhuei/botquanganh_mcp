@@ -148,3 +148,19 @@ def test_server_restart_requires_the_replacement_to_own_the_listener():
     source = (repo_root / "scripts/restart_server_only.sh").read_text(encoding="utf-8")
     assert 'listening_pids_on_port "$MCP_PORT"' in source
     assert 'atomic_write_runtime_file "$PID_FILE" "$listener_pid"' in source
+    assert 'healthz_ready' in source
+
+
+def test_launcher_accepts_adopted_active_connector_without_waiting_for_new_url():
+    repo_root = Path(__file__).resolve().parents[1]
+    source = (repo_root / "run_mcp_tunnel.sh").read_text(encoding="utf-8")
+    assert 'previous_active_url=$(active_connector_url || true)' in source
+    assert '[ -n "$previous_active_url" ] || [ -z "$previous_url" ] || [ "$url" != "$previous_url" ]' in source
+
+
+def test_tunnel_start_creates_log_before_reading_launch_offset():
+    repo_root = Path(__file__).resolve().parents[1]
+    source = (repo_root / "scripts/start_tunnel_server.sh").read_text(encoding="utf-8")
+    touch_index = source.index('touch "$CLOUDFLARED_LOG"')
+    offset_index = source.index('TUNNEL_LOG_OFFSET=$(wc -c < "$CLOUDFLARED_LOG")')
+    assert touch_index < offset_index

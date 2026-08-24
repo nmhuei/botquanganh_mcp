@@ -27,8 +27,16 @@ def host_default_dir() -> Path:
 
 def _lexical_absolute_path(user_path: Optional[str]) -> Path:
     default_dir = host_default_dir()
+    workspace_dir = host_workspace_dir()
     raw = Path(user_path or ".").expanduser()
-    candidate = raw if raw.is_absolute() else default_dir / raw
+    if raw.is_absolute():
+        candidate = raw
+    elif (default_dir / raw).exists():
+        candidate = default_dir / raw
+    elif (workspace_dir / raw).exists():
+        candidate = workspace_dir / raw
+    else:
+        candidate = default_dir / raw
     # abspath removes `.` and `..` without following symlinks.
     return Path(os.path.abspath(candidate))
 

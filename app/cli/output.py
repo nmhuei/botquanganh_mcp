@@ -29,6 +29,8 @@ _COLORS = {
     "yellow": "\033[33m",
     "red": "\033[31m",
     "cyan": "\033[36m",
+    "white": "\033[37m",
+    "black_dim": "\033[2;30m",
     "dim": "\033[2m",
     "bold": "\033[1m",
     "reset": "\033[0m",
@@ -417,6 +419,22 @@ class Renderer:
         else:
             self._write(" " * INDENT + text)
 
+    def result_item(self, marker: str, text: str, state: str = "success") -> None:
+        _symbol, color = _STATUS.get(state, _STATUS["unknown"])
+        rendered_marker = style(
+            marker,
+            color,
+            color_mode=self.color_mode,
+            stream=self.stream,
+        )
+        rendered_text = style(
+            str(text),
+            "bold",
+            color_mode=self.color_mode,
+            stream=self.stream,
+        )
+        self._write(f" {rendered_marker} {rendered_text}")
+
     def hint(self, command: str, intro: str = "Run") -> None:
         prefix = " " * INDENT + "› "
         available = max(10, self.columns - visible_width(prefix))
@@ -461,17 +479,33 @@ class Renderer:
     def error(
         self, title: str, reason: str | None = None, hint: str | None = None
     ) -> None:
-        self.header("Operation failed")
-        self.blank()
-        self.status("error", title)
+        marker = style(
+            "×",
+            "red",
+            color_mode=self.color_mode,
+            stream=self.stream,
+        )
+        self._write(f"  {marker} {title}")
         if reason and reason != title:
-            self.blank()
-            for line in wrap_visible(reason, max(10, self.columns - INDENT)):
-                self._write(" " * INDENT + line)
+            lines = wrap_visible(reason, max(10, self.columns - 7))
+            if lines:
+                branch = style(
+                    "╰─▶",
+                    "red",
+                    color_mode=self.color_mode,
+                    stream=self.stream,
+                )
+                self._write(f"  {branch} {lines[0]}")
+                for line in lines[1:]:
+                    self._write("      " + line)
         if hint:
-            self.blank()
-            self._write(" " * INDENT + "Try:")
-            self._write(" " * CONTINUATION_INDENT + hint)
+            rendered = style(
+                f"hint: {hint}",
+                "dim",
+                color_mode=self.color_mode,
+                stream=self.stream,
+            )
+            self._write("      " + rendered)
 
 
 def renderer_for(

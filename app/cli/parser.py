@@ -77,6 +77,11 @@ def _add_global_options(parser: argparse.ArgumentParser) -> None:
         "--no-color", action="store_true", help="Alias for --color never"
     )
     parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="Hide live progress bars and spinners",
+    )
+    parser.add_argument(
         "--verbose", action="store_true", help="Show operation metadata"
     )
     parser.add_argument("--version", action="version", version=f"bqa {VERSION}")

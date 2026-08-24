@@ -5,6 +5,7 @@ from typing import Any
 from app.cli.client import RESTClient
 from app.cli.context import CLIContext
 from app.cli.output import emit_json, emit_quiet, renderer_for
+from app.cli.progress import progress_for
 
 
 def _query(args, section: str) -> dict[str, Any]:
@@ -85,7 +86,9 @@ def _quiet_inventory(inventory: dict[str, Any]) -> list[str]:
 def handle_knowledge(ctx: CLIContext, args) -> int:
     section = args.knowledge_command
     client = RESTClient(ctx.base_url, ctx.token, ctx.request_timeout)
-    result = client.get("/api/v1/knowledge", query=_query(args, section))
+    with progress_for(ctx, f"Loading knowledge {section}...") as progress:
+        result = client.get("/api/v1/knowledge", query=_query(args, section))
+        progress.finish(f"Loaded knowledge {section}")
     if ctx.json_output:
         emit_json(result)
         return 0

@@ -19,8 +19,11 @@ class MetricsTracker:
         self._in_flight = 0
         self._peak_in_flight = 0
         self._latencies = deque(maxlen=1000)
+        self._response_bytes = deque(maxlen=1000)
         self._path_counts = defaultdict(int)
         self._status_counts = defaultdict(int)
+        self._incomplete_responses = 0
+        self._client_disconnects = 0
         self._start_time = time.time()
 
     def begin_request(self) -> None:
@@ -33,10 +36,15 @@ class MetricsTracker:
         path: str,
         latency_ms: float,
         status_code: int = 200,
+        *,
+        response_bytes: int = 0,
+        incomplete: bool = False,
+        client_disconnected: bool = False,
     ) -> None:
         with self._lock:
             self._request_count += 1
             self._latencies.append(max(0.0, float(latency_ms)))
+            self._response_bytes.append(max(0, int(response_bytes)))
             self._path_counts[path] += 1
             self._status_counts[str(int(status_code))] += 1
             if self._in_flight > 0:
@@ -49,6 +57,10 @@ class MetricsTracker:
                 self._client_error_count += 1
             elif status_code >= 500:
                 self._error_count += 1
+            if incomplete:
+                self._incomplete_responses += 1
+            if client_disconnected:
+                self._client_disconnects += 1
 
     def record_rate_limit(self) -> None:
         """Backward-compatible direct counter for non-HTTP rate-limit events."""
@@ -68,9 +80,11 @@ class MetricsTracker:
             uptime = time.time() - self._start_time
             latencies = list(self._latencies)
             avg_latency = sum(latencies) / len(latencies) if latencies else 0.0
+            response_bytes = list(self._response_bytes)
             return {
                 "uptime_seconds": round(uptime, 1),
                 "total_requests": self._request_count,
+                "mcp_http_requests_total": self._request_count,
                 "error_count": self._error_count,
                 "client_error_count": self._client_error_count,
                 "auth_failures": self._auth_failure_count,
@@ -80,6 +94,14 @@ class MetricsTracker:
                 "avg_latency_ms": round(avg_latency, 1),
                 "p50_latency_ms": round(self._percentile(latencies, 0.50), 1),
                 "p95_latency_ms": round(self._percentile(latencies, 0.95), 1),
+                "p99_latency_ms": round(self._percentile(latencies, 0.99), 1),
+                "response_bytes": sum(response_bytes),
+                "mcp_response_bytes": sum(response_bytes),
+                "avg_response_bytes": round(
+                    sum(response_bytes) / len(response_bytes), 1
+                ) if response_bytes else 0.0,
+                "incomplete_responses": self._incomplete_responses,
+                "client_disconnects": self._client_disconnects,
                 "path_counts": dict(self._path_counts),
                 # Kept for compatibility with earlier health consumers.
                 "tool_calls": dict(self._path_counts),

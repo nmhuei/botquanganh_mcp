@@ -269,21 +269,24 @@ def test_url_quiet_is_exact_copyable_value(monkeypatch, capsys):
     assert captured.err == ""
 
 
-def test_start_human_renders_copyable_url(monkeypatch, capsys):
+def test_start_human_renders_uv_style_summary_then_copyable_url(monkeypatch, capsys):
     url = "https://my-test-tunnel.trycloudflare.com/mcp"
+    runtime = {"connector_ready": True, "url": url}
     monkeypatch.setattr("app.cli.main.start", lambda *_args: {"ok": True, "exit_code": 0})
-    monkeypatch.setattr("app.cli.main.connector_url", lambda *_args: url)
+    monkeypatch.setattr("app.cli.main.status_data", lambda *_args: runtime)
 
     assert main(["start", "--color", "never"]) == 0
-    output = capsys.readouterr().out
-    assert "Endpoint · copy-safe" in output
-    assert url in output
+    captured = capsys.readouterr()
+    assert captured.out == f"{url}\n"
+    assert "Started runtime in " in captured.err
+    assert "Endpoint · copy-safe" not in captured.out
 
 
 def test_start_quiet_renders_exact_copyable_url(monkeypatch, capsys):
     url = "https://my-test-tunnel.trycloudflare.com/mcp"
+    runtime = {"connector_ready": True, "url": url}
     monkeypatch.setattr("app.cli.main.start", lambda *_args: {"ok": True, "exit_code": 0})
-    monkeypatch.setattr("app.cli.main.connector_url", lambda *_args: url)
+    monkeypatch.setattr("app.cli.main.status_data", lambda *_args: runtime)
 
     assert main(["start", "--quiet"]) == 0
     captured = capsys.readouterr()
@@ -293,17 +296,19 @@ def test_start_quiet_renders_exact_copyable_url(monkeypatch, capsys):
 
 def test_start_json_renders_url_in_payload(monkeypatch, capsys):
     url = "https://my-test-tunnel.trycloudflare.com/mcp"
+    runtime = {"connector_ready": True, "url": url}
     monkeypatch.setattr("app.cli.main.start", lambda *_args: {"ok": True, "exit_code": 0, "script": "run.sh"})
-    monkeypatch.setattr("app.cli.main.connector_url", lambda *_args: url)
+    monkeypatch.setattr("app.cli.main.status_data", lambda *_args: runtime)
 
     assert main(["start", "--json"]) == 0
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
     assert payload["url"] == url
     assert payload["status"] == "started"
+    assert captured.err == ""
 
 
-def test_empty_args_defaults_to_start(monkeypatch, capsys):
+def test_empty_args_defaults_to_start_with_progress_summary(monkeypatch, capsys):
     url = "https://my-test-tunnel.trycloudflare.com/mcp"
     called = []
     monkeypatch.setattr("app.cli.main.start", lambda *_args: called.append("start") or {"ok": True, "exit_code": 0})
@@ -313,4 +318,4 @@ def test_empty_args_defaults_to_start(monkeypatch, capsys):
     assert called == ["start"]
     captured = capsys.readouterr()
     assert captured.out == f"{url}\n"
-    assert captured.err == ""
+    assert "Started runtime in " in captured.err

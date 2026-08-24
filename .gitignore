@@ -16,3 +16,5 @@ dist/
 manual_test_workspace_*/
 .cli_manual_test_*/
 artifacts/*-diagnostics/
+artifacts/live-forensics/
+artifacts/stress/

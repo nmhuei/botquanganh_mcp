@@ -54,6 +54,8 @@ bqa restart
 ## Tài liệu
 
 - [Kiến trúc hệ thống](docs/ARCHITECTURE.md)
+- [CLI UI contract](docs/CLI_UI.md)
 - [Hướng dẫn vận hành](docs/OPERATIONS_RUNBOOK.md)
+- [Runbook điều tra MCP 502](docs/MCP_FORENSICS_RUNBOOK.md)
 - [Checklist phát hành](docs/RELEASE_CHECKLIST.md)
 - [Chính sách bảo mật](SECURITY.md)

@@ -48,6 +48,7 @@ run_gate "bash syntax" bash -n \
     bin/bqa \
     manual_test_tunnel_logic.sh \
     scripts/collect_diagnostics.sh \
+    scripts/collect_mcp_forensics.sh \
     scripts/install_basic.sh \
     scripts/install_cli.sh \
     scripts/manual_test_installer.sh \

@@ -13,6 +13,7 @@ from app.cli.output import OutputMode
 GLOBAL_FLAG_OPTIONS = {
     "--json",
     "--no-color",
+    "--no-progress",
     "--verbose",
     "--quiet",
     "--public",
@@ -100,6 +101,7 @@ class CLIContext:
     color: str = "auto"
     verbose: bool = False
     public: bool = False
+    no_progress: bool = False
     # Compatibility fields retained for callers that construct CLIContext directly.
     json_output: bool = False
     quiet: bool = False
@@ -208,4 +210,5 @@ class CLIContext:
             color=color,
             verbose=bool(getattr(args, "verbose", False)),
             public=public,
+            no_progress=bool(getattr(args, "no_progress", False)),
         )

@@ -50,11 +50,14 @@ def test_parser_covers_primary_command_tree():
 
 def test_color_option_and_output_modes_are_global():
     args = build_parser().parse_args(
-        extract_global_options(["health", "--color", "never", "--quiet"])
+        extract_global_options(
+            ["health", "--color", "never", "--quiet", "--no-progress"]
+        )
     )
     assert args.command == "health"
     assert args.color == "never"
     assert args.quiet is True
+    assert args.no_progress is True
 
 
 def test_json_and_quiet_are_mutually_exclusive():
