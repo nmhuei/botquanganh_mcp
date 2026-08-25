@@ -268,12 +268,23 @@ class Renderer:
             + style(title, "bold", color_mode=self.color_mode, stream=self.stream)
         )
 
-    def facts(self, rows: Iterable[tuple[str, Any]]) -> None:
+    def facts(
+        self,
+        rows: Iterable[tuple[str, Any]],
+        *,
+        no_wrap: Iterable[str] | None = None,
+    ) -> None:
         prepared = [
             (str(key), "" if value is None else str(value)) for key, value in rows
         ]
         if not prepared:
             return
+        # Values for these label names are copy-critical (URLs, tokens): they
+        # are never hard-wrapped or truncated. When one cannot fit beside its
+        # label, the label row stands alone and the value follows below as a
+        # single contiguous logical line (the terminal may soft-wrap it
+        # visually, but selection and redirected output keep one string).
+        protected = {str(label) for label in (no_wrap or ())}
         if self.columns < COMPACT_WIDTH:
             value_width = max(10, self.columns - CONTINUATION_INDENT)
             for key, value in prepared:
@@ -281,14 +292,29 @@ class Renderer:
                     " " * INDENT
                     + style(key, "dim", color_mode=self.color_mode, stream=self.stream)
                 )
+                if key in protected:
+                    self._write(" " * CONTINUATION_INDENT + strip_ansi(value))
+                    continue
                 for line in wrap_visible(value, value_width):
                     self._write(" " * CONTINUATION_INDENT + line)
             return
 
+        # Labels are identifiers the user may need in full (config keys, check
+        # names), so they are never truncated; long values wrap instead.
         label_width = max(visible_width(key) for key, _ in prepared)
-        label_width = min(label_width, max(12, self.columns // 3))
         value_width = max(10, self.columns - INDENT - label_width - LABEL_GAP)
+        continuation = " " * (INDENT + label_width + LABEL_GAP)
         for key, value in prepared:
+            if key in protected and visible_width(value) > value_width:
+                rendered_key = style(
+                    pad_to_width(truncate_visible(key, label_width), label_width),
+                    "dim",
+                    color_mode=self.color_mode,
+                    stream=self.stream,
+                )
+                self._write(" " * INDENT + rendered_key)
+                self._write(" " * CONTINUATION_INDENT + strip_ansi(value))
+                continue
             lines = wrap_visible(value, value_width)
             rendered_key = style(
                 pad_to_width(truncate_visible(key, label_width), label_width),
@@ -297,7 +323,6 @@ class Renderer:
                 stream=self.stream,
             )
             self._write(" " * INDENT + rendered_key + " " * LABEL_GAP + lines[0])
-            continuation = " " * (INDENT + label_width + LABEL_GAP)
             for line in lines[1:]:
                 self._write(continuation + line)
 

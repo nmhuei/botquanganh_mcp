@@ -12,7 +12,16 @@ from app.cli.context import (
     CLIContext,
     extract_global_options,
 )
-from app.cli.errors import CLIError, EXIT_OPERATION_FAILED, EXIT_USAGE
+from app.cli.errors import (
+    CLIError,
+    EXIT_AUTH,
+    EXIT_CONNECTION,
+    EXIT_NOT_FOUND,
+    EXIT_OPERATION_FAILED,
+    EXIT_POLICY,
+    EXIT_TIMEOUT,
+    EXIT_USAGE,
+)
 from app.cli.lifecycle import (
     connector_url,
     restart,
@@ -92,7 +101,8 @@ def _render_status(ctx: CLIContext, data: dict, *, server_only: bool = False) ->
                 ("Workspace", data["workspace"]),
             ]
         )
-    renderer.facts(rows)
+    # The endpoint URL is copy-critical: never let facts() hard-wrap it.
+    renderer.facts(rows, no_wrap=("Endpoint",))
     renderer.blank()
     if state in {"running", "ready"}:
         renderer.summary("Runtime checks passed.", "success")
@@ -428,6 +438,16 @@ def _operation_name(raw_argv: Sequence[str]) -> str:
 def _error_hint(exit_code: int, operation: str) -> str:
     if exit_code == EXIT_USAGE:
         return f"bqa {operation} --help" if operation != "command" else "bqa --help"
+    if exit_code == EXIT_NOT_FOUND:
+        return f"re-run `bqa {operation}` with a corrected path"
+    # Access-control failures: the policy engine can explain the decision.
+    if exit_code in {EXIT_POLICY, EXIT_AUTH}:
+        return "bqa cmd check '<command>'"
+    # Connection-level failures (server down, tunnel/bridge unreachable).
+    if exit_code in {EXIT_CONNECTION, EXIT_TIMEOUT}:
+        if operation in {"status", "health", "server", "doctor"}:
+            return "bqa doctor --local-only"
+        return "bqa doctor"
     if operation in {"status", "health", "server", "doctor"}:
         return "bqa doctor --local-only"
     return "bqa doctor"
