@@ -53,8 +53,10 @@ Default mode for direct terminal use.
 - Header and semantic status symbols are allowed.
 - Color follows `--color auto|always|never`.
 - `NO_COLOR`, `TERM=dumb`, non-TTY output, and CI disable automatic color.
-- Long values wrap or truncate according to terminal width.
+- Long values wrap or truncate according to terminal width, except copy-safe values (below).
 - Copy-critical values such as the connector URL use `Renderer.copyable_value`: the terminal may soft-wrap visually, but the CLI never inserts a hard newline inside the value.
+- `Renderer.facts` accepts `no_wrap` protected labels (`Endpoint` in `status`): a protected value that cannot fit beside its label moves below it as one unwrapped line.
+- Copy-safe guarantee: a connector URL or absolute path value is always presented as one contiguous string somewhere in the output at any terminal width, never ellipsized and never split mid-token.
 - Tables are borderless.
 
 ### Quiet
@@ -121,6 +123,7 @@ The renderer supports three layouts:
 At compact widths:
 
 - Facts become stacked label/value blocks.
+- Protected (`no_wrap`) fact values stay on a single continuation line instead of wrapping.
 - Tables become repeated fact lists.
 - Hints wrap with a continuation indent.
 
@@ -196,6 +199,16 @@ Example:
     bqa doctor --local-only
 ```
 
+The next command is not a fixed `bqa doctor`: hints are exit-code-aware.
+
+| Exit code | Hint |
+| --- | --- |
+| 2 (usage) | `bqa <operation> --help`, or `bqa --help` when no subcommand applies |
+| 4 / 5 (auth / policy) | `bqa cmd check '<command>'` |
+| 6 (not found) | Re-run `bqa <operation>` with a corrected path |
+| 3 / 7 (connection / timeout) | `bqa doctor --local-only` for `status`/`health`/`server`/`doctor`, otherwise `bqa doctor` |
+| other | Same doctor variants as connection failures |
+
 ## Verification matrix
 
 Automated tests cover:
@@ -233,4 +246,8 @@ Manual verification must use only read-only commands unless lifecycle behavior i
 [x] Dim elapsed suffix appears only after 2 seconds
 [x] Unchanged progress lines are never rewritten (diff rendering)
 [x] finish() prints exactly one summary line, no duplicate final frame
+[x] Connector URL and absolute path values stay one contiguous string at every width
+[x] Doctor lifts URL-bearing check messages into own-line copyable blocks
+[x] Error hints map from the exit code instead of always suggesting doctor
+[x] Help groups commands into themed sections with a `<command>` metavar
 ```

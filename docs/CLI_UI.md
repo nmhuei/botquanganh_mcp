@@ -78,6 +78,21 @@ https://example.trycloudflare.com/mcp
 Filesystem/result changes use uv-style change markers (`+`, `-`, or `~` when an
 existing object is updated) rather than a success panel.
 
+## Copy-safe values
+
+A connector URL or absolute path value is presented as one contiguous string
+somewhere in the output, at any terminal width: never ellipsized, never split
+mid-token. The terminal may soft-wrap the line visually, but selection and
+redirected output keep one logical string.
+
+- `Renderer.facts` accepts `no_wrap` protected labels; `bqa status` protects
+  `Endpoint`, so when its value cannot fit beside the label the value moves
+  to its own line instead of wrapping.
+- `bqa doctor` lifts check messages that embed a URL (and any message too
+  long for the inline value budget at narrow widths) out of the truncating
+  checks grid and emits each through `Renderer.copyable_value` on its own
+  line.
+
 ## Progress suppression
 
 Live progress is suppressed for:
@@ -104,6 +119,17 @@ Any live progress region is cleared before the error tree is printed:
       hint: bqa doctor
 ```
 
+The hint line is not a fixed `bqa doctor`: hints are chosen from the exit
+code (`_error_hint`):
+
+| Exit | Class | Hint |
+| --- | --- | --- |
+| 2 | usage | `bqa <operation> --help` (`bqa --help` when no subcommand applies) |
+| 4, 5 | auth / policy | `bqa cmd check '<command>'` |
+| 6 | not found | re-run `bqa <operation>` with a corrected path |
+| 3, 7 | connection / timeout | `bqa doctor`, or `bqa doctor --local-only` for `status`/`health`/`server`/`doctor` |
+| other | fallback | `bqa doctor`, or `bqa doctor --local-only` for `status`/`health`/`server`/`doctor` |
+
 ## Command mapping
 
 Multi-line uv-style progress:
@@ -125,6 +151,14 @@ No progress for instant display/streaming operations:
 - help/completion
 - config show/get/path
 - log output/follow
+
+## Help screens
+
+Top-level help lists subcommands in grouped sections (Lifecycle, Inspection,
+Files & commands, Diagnostics, Config & help) with the subcommand metavar
+rendered as `<command>`. On Python 3.14+ the parser disables argparse's own
+color palette unconditionally, so all help styling stays owned by the shared
+output layer.
 
 ## Automation contract
 
