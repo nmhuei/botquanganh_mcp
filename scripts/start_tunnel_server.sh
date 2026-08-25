@@ -187,6 +187,27 @@ if pid_matches_kind "$existing_supervisor" supervisor && [ "$existing_supervisor
     echo "[i] Supervisor is already running (PID $existing_supervisor)."
     exit 0
 fi
+
+# mkdir is the atomic primitive here: two concurrent supervisors cannot both
+# create the lock directory, closing the PID-file check/write race window.
+SUPERVISOR_LOCK_DIR="logs/.supervisor_lock"
+if ! mkdir "$SUPERVISOR_LOCK_DIR" 2>/dev/null; then
+    # The lock holder may not have published its PID yet; give it a beat and
+    # re-check before declaring the lock stale, closing the takeover race.
+    if pid_matches_kind "$existing_supervisor" supervisor && kill -0 "$existing_supervisor" 2>/dev/null; then
+        echo "[i] Supervisor is already running (PID $existing_supervisor)."
+        exit 0
+    fi
+    sleep 0.2
+    existing_supervisor=$(read_pid "$SUPERVISOR_PID_FILE")
+    if pid_matches_kind "$existing_supervisor" supervisor && kill -0 "$existing_supervisor" 2>/dev/null; then
+        echo "[i] Supervisor is already running (PID $existing_supervisor)."
+        exit 0
+    fi
+    rm -rf "$SUPERVISOR_LOCK_DIR"
+    mkdir "$SUPERVISOR_LOCK_DIR"
+fi
+trap 'rm -rf "$SUPERVISOR_LOCK_DIR" 2>/dev/null || true' EXIT
 atomic_write "$SUPERVISOR_PID_FILE" "$$"
 
 # These functions only spawn processes; neither waits for bridge readiness.

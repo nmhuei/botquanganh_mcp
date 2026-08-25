@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import functools
 from typing import Any, Callable
 
-from starlette.concurrency import run_in_threadpool
+import anyio
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
@@ -27,6 +28,11 @@ from app.security import format_error_response
 
 API_PREFIX = "/api/v1"
 
+# Dedicated worker budget for blocking REST handlers. Without it, a burst of
+# concurrent command runs can occupy the shared default pool and freeze every
+# REST endpoint; actual execution volume is still bounded by CommandCapacity.
+_REST_BLOCKING_POOL = anyio.CapacityLimiter(16)
+
 
 def _error_status(exc: Exception) -> int:
     return http_status_for_exception(exc)
@@ -38,7 +44,10 @@ def _result_status(result: Any) -> int:
 
 async def _call(function: Callable[..., Any], *args: Any, **kwargs: Any) -> JSONResponse:
     try:
-        result = await run_in_threadpool(function, *args, **kwargs)
+        result = await anyio.to_thread.run_sync(
+            functools.partial(function, *args, **kwargs),
+            limiter=_REST_BLOCKING_POOL,
+        )
         return JSONResponse(result, status_code=_result_status(result))
     except Exception as exc:
         return JSONResponse(format_error_response(exc), status_code=_error_status(exc))

@@ -290,11 +290,11 @@ class MetricsMiddleware:
 
         try:
             await self.app(scope, wrapped_receive, wrapped_send)
-            finish_once()
         except Exception:
             status_code = 500
-            finish_once()
             raise
+        finally:
+            finish_once()
 
 
 _original_http_app = FastMCP.http_app

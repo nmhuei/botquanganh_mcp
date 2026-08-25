@@ -10,7 +10,9 @@ def verify_token(token: str | None = None) -> bool:
     if not GATEWAY_TOKEN:
         return False
     candidate = token if token is not None else str()
-    return hmac.compare_digest(candidate, GATEWAY_TOKEN)
+    return hmac.compare_digest(
+        candidate.encode("utf-8"), GATEWAY_TOKEN.encode("utf-8")
+    )
 
 
 def require_token(token: str | None = None) -> None:

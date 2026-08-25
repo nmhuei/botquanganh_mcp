@@ -47,6 +47,11 @@ def extract_global_options(argv: Sequence[str]) -> list[str]:
 
     Command payloads should be passed as one quoted positional argument. Tokens after
     an explicit ``--`` are preserved verbatim.
+
+    Known limitation: a subcommand-local option that shares a name with a global
+    option (e.g. a subcommand's own ``--json``) is hoisted as global regardless of
+    position. Subcommand option names should therefore stay distinct from
+    GLOBAL_FLAG_OPTIONS / GLOBAL_VALUE_OPTIONS.
     """
     globals_found: list[str] = []
     remaining: list[str] = []

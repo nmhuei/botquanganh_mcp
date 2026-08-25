@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import app.config
-from app.host.paths import host_workspace_dir
+from app.host.paths import host_default_dir, host_workspace_dir
 
 
 # These rules are intentionally small and explicit.  They prevent obvious
@@ -156,6 +156,17 @@ def _command_names(command: str) -> list[str]:
     return names
 
 
+def _flag_is_recursive(flag: str) -> bool:
+    lowered = flag.lower()
+    if lowered == "--recursive":
+        return True
+    if lowered.startswith("--"):
+        # Long options like --verbose or --dir contain an 'r' but are not
+        # recursive flags; only the exact spelling above counts.
+        return False
+    return "r" in lowered.lstrip("-")
+
+
 def _inspect_recursive_rm(command: str) -> dict[str, Any] | None:
     """Reject recursive removal of absolute paths outside the host workspace."""
     workspace = host_workspace_dir()
@@ -170,7 +181,7 @@ def _inspect_recursive_rm(command: str) -> dict[str, Any] | None:
         if command_name != "rm":
             continue
         flags = [word for word in words[1:] if word.startswith("-")]
-        recursive = any("r" in flag.lstrip("-") or flag == "--recursive" for flag in flags)
+        recursive = any(_flag_is_recursive(flag) for flag in flags)
         if not recursive:
             continue
         for word in words[1:]:
@@ -178,7 +189,7 @@ def _inspect_recursive_rm(command: str) -> dict[str, Any] | None:
                 continue
             candidate = Path(word).expanduser()
             if not candidate.is_absolute():
-                continue
+                candidate = host_default_dir() / candidate
             resolved = candidate.resolve(strict=False)
             try:
                 resolved.relative_to(workspace)

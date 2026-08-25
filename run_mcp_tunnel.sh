@@ -208,3 +208,4 @@ done
 
 echo "[!] Supervisor is running, but the connector URL is not ready yet."
 echo "[i] Check: ./run_mcp_tunnel.sh status"
+exit 1

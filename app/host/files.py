@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import fcntl
+import itertools
 import os
 import stat
 import uuid
@@ -116,8 +117,12 @@ def _directory_sort_key(path: Path) -> tuple[bool, str]:
 def list_directory(path: str = ".", *, max_entries: int = 500) -> dict[str, Any]:
     resolved = resolve_host_path(path, must_exist=True, expect_directory=True)
     max_entries = max(1, min(int(max_entries), 2000))
+    selected = list(
+        itertools.islice(sorted(resolved.iterdir(), key=_directory_sort_key), max_entries + 1)
+    )
+    truncated = len(selected) > max_entries
     items: list[dict[str, Any]] = []
-    for item in sorted(resolved.iterdir(), key=_directory_sort_key):
+    for item in selected[:max_entries]:
         try:
             item_stat = item.lstat()
             is_symlink = stat.S_ISLNK(item_stat.st_mode)
@@ -140,13 +145,11 @@ def list_directory(path: str = ".", *, max_entries: int = 500) -> dict[str, Any]
                     "error": str(exc),
                 }
             )
-        if len(items) >= max_entries:
-            break
     return {
         "ok": True,
         "path": display_host_path(resolved),
         "items": items,
-        "truncated": len(items) >= max_entries,
+        "truncated": truncated,
     }
 
 
@@ -244,7 +247,7 @@ def replace_text_in_file(
     expected_count: int = 1,
 ) -> dict[str, Any]:
     resolved = resolve_host_path(path, must_exist=True, expect_directory=False)
-    fd = _open_regular_file(resolved, os.O_RDONLY)
+    fd = _open_regular_file(resolved, os.O_RDWR)
     try:
         fcntl.flock(fd, fcntl.LOCK_EX)
         file_size = os.fstat(fd).st_size
@@ -254,17 +257,20 @@ def replace_text_in_file(
                 f"{app.config.MAX_SINGLE_FILE_BYTES}"
             )
         raw = _read_up_to(fd, file_size + 1)
+        content = raw.decode("utf-8")
+        count = content.count(old)
+        if count == 0:
+            raise ValueError("Target text was not found.")
+        if expected_count >= 0 and count != expected_count:
+            raise ValueError(f"Expected {expected_count} occurrence(s), found {count}.")
+        updated = content.replace(old, new)
+        updated_raw, _size = _validate_write_size(updated)
+        os.ftruncate(fd, 0)
+        os.lseek(fd, 0, os.SEEK_SET)
+        _write_all(fd, updated_raw)
+        os.fsync(fd)
     finally:
         os.close(fd)
-    content = raw.decode("utf-8")
-    count = content.count(old)
-    if count == 0:
-        raise ValueError("Target text was not found.")
-    if expected_count >= 0 and count != expected_count:
-        raise ValueError(f"Expected {expected_count} occurrence(s), found {count}.")
-    updated = content.replace(old, new)
-    updated_raw, _size = _validate_write_size(updated)
-    _atomic_write(resolved, updated_raw, overwrite=True)
     log_audit_event(
         "HOST_REPLACE_FILE",
         {"path": str(resolved), "replacement_count": count},

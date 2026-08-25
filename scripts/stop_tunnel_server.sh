@@ -23,14 +23,17 @@ stop_managed_pid_file "$SERVER_PID_FILE" server "MCP Server"
 rm -f "$TUNNEL_URL_FILE"
 
 # Report unrelated port occupants but never terminate them.
-MCP_PORT=18427
-if [ -x .venv/bin/python ]; then
-    MCP_PORT=$(.venv/bin/python - <<'PY'
+# Exported MCP_PORT wins over .env, matching the precedence used at start time.
+MCP_PORT="${MCP_PORT:-$(
+    if [ -x .venv/bin/python ]; then
+        .venv/bin/python - <<'PY'
 from dotenv import dotenv_values
 print(dotenv_values('.env').get('MCP_PORT') or '18427')
 PY
-)
-fi
+    else
+        echo "18427"
+    fi
+)}"
 if command -v lsof >/dev/null 2>&1; then
     for port_pid in $(lsof -t -i :"$MCP_PORT" 2>/dev/null | sort -u || true); do
         if pid_matches_kind "$port_pid" server; then

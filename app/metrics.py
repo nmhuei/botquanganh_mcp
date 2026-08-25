@@ -21,6 +21,7 @@ class MetricsTracker:
         self._latencies = deque(maxlen=1000)
         self._response_bytes = deque(maxlen=1000)
         self._path_counts = defaultdict(int)
+        self._max_path_keys = 512
         self._status_counts = defaultdict(int)
         self._incomplete_responses = 0
         self._client_disconnects = 0
@@ -45,7 +46,12 @@ class MetricsTracker:
             self._request_count += 1
             self._latencies.append(max(0.0, float(latency_ms)))
             self._response_bytes.append(max(0, int(response_bytes)))
-            self._path_counts[path] += 1
+            if path in self._path_counts:
+                self._path_counts[path] += 1
+            elif len(self._path_counts) < self._max_path_keys - 1:
+                self._path_counts[path] += 1
+            else:
+                self._path_counts["<overflow>"] += 1
             self._status_counts[str(int(status_code))] += 1
             if self._in_flight > 0:
                 self._in_flight -= 1

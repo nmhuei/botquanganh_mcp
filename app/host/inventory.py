@@ -83,14 +83,14 @@ def curated_tool_inventory(
     now = time.monotonic()
     with _CACHE_LOCK:
         cached = _CACHE.get(cache_key)
-        age = now - float(_CACHE.get("created_at", 0.0))
+        age = now - float(_CACHE.get(f"created_at:{cache_key}", 0.0))
         if not refresh and cached is not None and age < app.config.HOST_TOOL_CACHE_SECONDS:
             return [dict(item) for item in cached]
 
     inventory = _build_curated_inventory(include_versions)
     with _CACHE_LOCK:
         _CACHE[cache_key] = [dict(item) for item in inventory]
-        _CACHE["created_at"] = now
+        _CACHE[f"created_at:{cache_key}"] = now
     return inventory
 
 

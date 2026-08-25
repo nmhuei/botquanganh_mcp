@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -58,7 +60,7 @@ def classify_exception(exc: Exception) -> ErrorSpec:
         return ERROR_SPECS["FILE_EXISTS"]
     if isinstance(exc, FileNotFoundError):
         return ERROR_SPECS["FILE_NOT_FOUND"]
-    if isinstance(exc, TimeoutError):
+    if isinstance(exc, (TimeoutError, subprocess.TimeoutExpired)):
         return ERROR_SPECS["TIMEOUT"]
     if isinstance(exc, (TypeError, ValueError, NotADirectoryError, IsADirectoryError)):
         return ERROR_SPECS["INVALID_ARGUMENT"]
@@ -79,7 +81,7 @@ def _redact_known_paths(message: str) -> str:
         if raw:
             replacements.append((raw, label))
     for raw, label in sorted(replacements, key=lambda item: len(item[0]), reverse=True):
-        message = message.replace(raw, label)
+        message = re.sub(re.escape(raw) + r"(?=[/\"'\s.,;:)\]}]|$)", label, message)
     return message
 
 

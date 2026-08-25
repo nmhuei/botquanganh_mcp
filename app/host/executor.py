@@ -218,12 +218,13 @@ def _execute_host_command_impl(
         timed_out = True
         exit_code = _terminate_process_group(process)
     finally:
-        stdout_thread.join(timeout=5)
-        stderr_thread.join(timeout=5)
+        stdout_thread.join(timeout=2)
+        stderr_thread.join(timeout=2)
         if stdout_thread.is_alive() or stderr_thread.is_alive():
             _terminate_process_group(process)
-            stdout_thread.join(timeout=2)
-            stderr_thread.join(timeout=2)
+            stdout_thread.join(timeout=1)
+            stderr_thread.join(timeout=1)
+    output_incomplete = stdout_thread.is_alive() or stderr_thread.is_alive()
 
     stdout = str(stdout_result.get("text", ""))
     stderr = str(stderr_result.get("text", ""))
@@ -253,6 +254,7 @@ def _execute_host_command_impl(
         "stderr": stderr,
         "stdout_truncated": stdout_truncated,
         "stderr_truncated": stderr_truncated,
+        "output_incomplete": output_incomplete,
         "duration_ms": duration_ms,
         "policy": policy,
     }

@@ -146,13 +146,14 @@ def _render_lifecycle_result(
     payload = {**result, "operation": operation, "status": state}
 
     url = None
+    ready = True
     if operation in {"start", "restart"}:
-        if runtime and runtime.get("connector_ready"):
-            url = runtime.get("url")
-        if not url:
-            url = connector_url(ctx.repo_root, ctx.values)
+        ready = bool(runtime and runtime.get("connector_ready"))
+        if ready:
+            url = runtime.get("url") or connector_url(ctx.repo_root, ctx.values)
         if url:
             payload["url"] = url
+        payload["runtime_ready"] = ready
 
     if ctx.json_output:
         emit_json(payload)
@@ -169,6 +170,8 @@ def _render_lifecycle_result(
         # Keep the primary artifact on stdout as one copy-safe line. Progress and
         # summaries live on stderr, so piping `bqa` still yields only the URL.
         emit_quiet(url)
+    if not ready and not ctx.json_output and not ctx.quiet:
+        renderer.hint("bqa status", "Endpoint not confirmed ready yet; inspect with")
     if ctx.verbose:
         details = []
         if result.get("script"):
