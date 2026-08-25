@@ -14,8 +14,7 @@ visual/interaction contract, not a loose inspiration.
 The primary long-running form mirrors uv's `PrepareReporter`:
 
 ```text
-⠋ Starting runtime... (0/4)
-server   ------------------------------   0/1
+⠹ Establishing Quick Tunnel... (1/4) · 3.1s
 tunnel   ------------------------------   0/1
 bridge   ------------------------------   0/1
 endpoint ------------------------------   0/1
@@ -26,10 +25,14 @@ Rules:
 - Spinner sequence: `⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏`.
 - Spinner tick: 200 ms.
 - Root template: `spinner + message + (pos/len)`.
+- Once 2 seconds have elapsed, the root line gains a dim ` · Ns` suffix; shorter commands render exactly as before.
 - Active child rows are rendered underneath the root line.
 - Child names align to the longest active name.
 - Numeric child rows use a 30-character `-` bar, matching uv's request rows.
 - Completed child rows disappear from the live region (`finish_and_clear` behavior).
+- Lifecycle progress is milestone-driven: each row (`server`/`tunnel`/`bridge`/`endpoint` on start and restart; `supervisor`/`tunnel`/`server` on stop) ticks complete only when its real condition turns true, polled every ~150 ms — rows never complete as one batch.
+- On `start`/`restart` the root message narrates stages as rows complete: `Starting MCP server...` -> `Establishing Quick Tunnel...` -> `Warming bridge...` -> `Publishing connector URL...`; `stop` keeps a single working message.
+- Rendering is diff-based: a tick rewrites only lines whose text changed (an unchanged line receives zero writes); structural changes fall back to a full erase + redraw.
 - Unknown-size rows use uv's literal four-dot form:
 
 ```text
@@ -58,8 +61,9 @@ knowledge query.
 
 ## Completion
 
-Live progress is cleared before the persistent result. Completion summaries use
-the same compact `verb ... in TIME` shape:
+Live progress is cleared before the persistent result. `finish()` draws no
+final frame: the transient block is erased and exactly one summary line is
+printed. Summaries use the same compact `verb ... in TIME` shape:
 
 ```text
 Started runtime in 184ms

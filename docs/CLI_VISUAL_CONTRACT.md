@@ -228,4 +228,9 @@ Manual verification must use only read-only commands unless lifecycle behavior i
 [x] External logs honor color policy
 [x] Width and output matrices are tested
 [x] Tunnel is not restarted during presentation verification
+[x] Lifecycle progress ticks milestones in row order, not all at once
+[x] Root message narrates each lifecycle stage
+[x] Dim elapsed suffix appears only after 2 seconds
+[x] Unchanged progress lines are never rewritten (diff rendering)
+[x] finish() prints exactly one summary line, no duplicate final frame
 ```
