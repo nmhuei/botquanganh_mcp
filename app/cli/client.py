@@ -4,9 +4,6 @@ import json
 import socket
 from dataclasses import dataclass
 from typing import Any, Mapping
-from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urlsplit
-from urllib.request import Request, urlopen
 
 from app.cli.errors import (
     CLIError,
@@ -37,6 +34,8 @@ class HTTPResult:
 
 class RESTClient:
     def __init__(self, base_url: str, token: str | None = None, timeout: float = 15.0):
+        from urllib.parse import urlsplit
+
         normalized = base_url.rstrip("/")
         parsed = urlsplit(normalized)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
@@ -69,6 +68,10 @@ class RESTClient:
         json_body: Any = None,
         accept: str = "application/json",
     ) -> HTTPResult:
+        from urllib.error import HTTPError, URLError
+        from urllib.parse import urlencode
+        from urllib.request import Request, urlopen
+
         normalized_path = path if path.startswith("/") else f"/{path}"
         url = f"{self.base_url}{normalized_path}"
         if query:

@@ -6,14 +6,6 @@ import time
 from typing import Any, Sequence
 
 from app.cli import VERSION
-from app.cli.commands.command import handle_command
-from app.cli.commands.completion import handle_completion
-from app.cli.commands.config import handle_config
-from app.cli.commands.doctor import handle_doctor
-from app.cli.commands.filesystem import handle_filesystem
-from app.cli.commands.health import handle_capabilities, handle_health
-from app.cli.commands.knowledge import handle_knowledge
-from app.cli.commands.logs import handle_logs
 from app.cli.context import (
     GLOBAL_FLAG_OPTIONS,
     GLOBAL_VALUE_OPTIONS,
@@ -354,22 +346,40 @@ def _dispatch(ctx: CLIContext, args) -> int:
             renderer.hint("bqa server status", "Verify with")
         return 0 if result["ok"] else 1
     if command == "health":
+        from app.cli.commands.health import handle_health
+
         return handle_health(ctx, args)
     if command == "capabilities":
+        from app.cli.commands.health import handle_capabilities
+
         return handle_capabilities(ctx, args)
     if command == "fs":
+        from app.cli.commands.filesystem import handle_filesystem
+
         return handle_filesystem(ctx, args)
     if command == "cmd":
+        from app.cli.commands.command import handle_command
+
         return handle_command(ctx, args)
     if command == "knowledge":
+        from app.cli.commands.knowledge import handle_knowledge
+
         return handle_knowledge(ctx, args)
     if command == "logs":
+        from app.cli.commands.logs import handle_logs
+
         return handle_logs(ctx, args)
     if command == "config":
+        from app.cli.commands.config import handle_config
+
         return handle_config(ctx, args)
     if command == "doctor":
+        from app.cli.commands.doctor import handle_doctor
+
         return handle_doctor(ctx, args)
     if command == "completion":
+        from app.cli.commands.completion import handle_completion
+
         return handle_completion(ctx, args)
     if command == "version":
         payload = {
