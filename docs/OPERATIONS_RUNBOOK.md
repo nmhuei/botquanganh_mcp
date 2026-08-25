@@ -182,6 +182,28 @@ Remove only the repository-owned symlink:
 ./scripts/uninstall_cli.sh
 ```
 
+### Server hangs mid-response: undrained `stderr=subprocess.PIPE`
+
+If the MCP server is launched by a wrapper that captures its stderr with
+`subprocess.PIPE` and never drains it, the pipe's fixed buffer eventually fills
+and every write to stderr blocks — the server deadlocks mid-response while a
+request is in flight. Capture stderr to a file (or a `tempfile`) instead of an
+undrained pipe. This applies to supervisors, tunnel runners, and any test
+harness that spawns the server.
+
+Two-line reproduction hint: spawn the server with
+`subprocess.Popen(..., stderr=subprocess.PIPE)` and never call `.read()`/`.communicate()`; once enough log volume accumulates
+(e.g. hammer it with `scripts/stress_mcp.py`), requests stop completing even
+though the process is alive.
+
+Check for this first when the symptom is "server alive but all requests hang":
+
+```bash
+ls -l /proc/<server-pid>/fd | grep pipe
+```
+
+combined with a wrapper that is not reading from its end of the pipe.
+
 ## 7. Rollback
 
 Before rollback, collect diagnostics and record the current tree:
@@ -218,6 +240,15 @@ Health exposes:
 - p50/p95 latency;
 - in-flight and peak requests;
 - tracked rate-limit clients and capacity rejections.
+
+### Liveness checks under load
+
+Use `/healthz` when checking whether the server is alive under load: it bypasses
+the REST blocking pool and always answers, even during command storms.
+`/api/v1/*` endpoints share the 16-slot blocking limiter, so they may queue
+behind long-running commands and appear unresponsive while the server is
+healthy (**pending fix**: a routing change is expected to move `/api/v1/*` off
+the shared limiter — update this entry once it merges).
 
 Audit logs rotate according to:
 
