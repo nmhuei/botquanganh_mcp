@@ -1,0 +1,58 @@
+{
+  "schemaVersion": "ecc.install.v1",
+  "installedAt": "2026-08-25T09:43:16.816Z",
+  "target": {
+    "id": "claude-project",
+    "target": "claude-project",
+    "kind": "project",
+    "root": "/home/light/GitHub/botquanganh_mcp/.claude",
+    "installStatePath": "/home/light/GitHub/botquanganh_mcp/.claude/ecc/install-state.json"
+  },
+  "request": {
+    "profile": null,
+    "modules": [],
+    "includeComponents": [
+      "skill:python-patterns",
+      "skill:python-testing"
+    ],
+    "excludeComponents": [],
+    "legacyLanguages": [],
+    "legacyMode": false
+  },
+  "resolution": {
+    "selectedModules": [
+      "skill-python-patterns",
+      "skill-python-testing"
+    ],
+    "skippedModules": []
+  },
+  "source": {
+    "repoVersion": "2.2.0",
+    "repoCommit": "d8409a4b0813771235555e32e3d8046a73988bfa",
+    "manifestVersion": 1
+  },
+  "operations": [
+    {
+      "kind": "copy-file",
+      "moduleId": "skill-python-patterns",
+      "sourcePath": "/home/light/.claude/plugins/marketplaces/ecc/skills/python-patterns/SKILL.md",
+      "sourceRelativePath": "skills/python-patterns/SKILL.md",
+      "destinationPath": "/home/light/GitHub/botquanganh_mcp/.claude/skills/python-patterns/SKILL.md",
+      "strategy": "preserve-relative-path",
+      "ownership": "managed",
+      "scaffoldOnly": false,
+      "contentSha256": "103e0130dac33a49d26705fc5a2df804980fcab6a0138d65bc7f370a987d49f6"
+    },
+    {
+      "kind": "copy-file",
+      "moduleId": "skill-python-testing",
+      "sourcePath": "/home/light/.claude/plugins/marketplaces/ecc/skills/python-testing/SKILL.md",
+      "sourceRelativePath": "skills/python-testing/SKILL.md",
+      "destinationPath": "/home/light/GitHub/botquanganh_mcp/.claude/skills/python-testing/SKILL.md",
+      "strategy": "preserve-relative-path",
+      "ownership": "managed",
+      "scaffoldOnly": false,
+      "contentSha256": "b9f7a158dae3b6c06c9c75ffe84e27a1edc86092d2afdcb39e96fc2569902eb7"
+    }
+  ]
+}

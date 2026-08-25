@@ -12,7 +12,7 @@ curl -fsSL https://raw.githubusercontent.com/nmhuei/botquanganh_mcp/main/install
 bqa
 ```
 
-Lệnh trên khởi động MCP server và in URL để kết nối:
+Lệnh trên khởi động MCP server và in URL để kết nối (URL chỉ được in sau khi connector xác nhận sẵn sàng):
 
 ```text
 https://<random>.trycloudflare.com/mcp

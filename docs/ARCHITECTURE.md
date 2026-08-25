@@ -26,7 +26,7 @@ ChatGPT / bqa / REST client
                  ▼
        Shared host services
        ├── paths.py       lexical/resolved workspace policy
-       ├── files.py       no-follow, atomic, bounded filesystem operations
+       ├── files.py       no-follow, bounded, locked/fsynced filesystem operations
        ├── policy.py      command identity and guarded/allowlist policy
        ├── executor.py    sanitized, bounded, capacity-controlled processes
        └── inventory.py   guide/tool inventory and trusted version probes
@@ -89,7 +89,7 @@ Public file operations:
 5. Open the final component with no-follow semantics where supported.
 6. Require a regular file for file operations.
 7. Enforce byte limits.
-8. Use locking and atomic/fsynced mutation where applicable.
+8. Mutate under an exclusive flock: full-file writes go through temp+rename (atomic); in-place replacement truncates, writes, and fsyncs the locked fd and is not atomic across a crash.
 
 Listings and search use lexical display paths and do not expose or traverse symlink targets.
 
