@@ -50,6 +50,7 @@ run_gate "bash syntax" bash -n \
     scripts/collect_diagnostics.sh \
     scripts/install_basic.sh \
     scripts/install_cli.sh \
+    scripts/install_desktop_launcher.sh \
     scripts/manual_test_installer.sh \
     scripts/process_helpers.sh \
     scripts/quality_gate.sh \

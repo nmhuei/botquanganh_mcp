@@ -15,6 +15,8 @@ EXPECTED_TOOLS = {
     "host_search_text",
     "host_check_command",
     "host_run_command",
+    "ctf_fetch_url",
+    "ctf_render_fetch_result",
     "host_knowledge",
     "agent_runtime_health",
     "agent_run_start",

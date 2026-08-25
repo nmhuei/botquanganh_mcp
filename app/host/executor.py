@@ -14,6 +14,7 @@ from app.error_contract import ServiceBusyError
 from app.host.paths import display_host_path, resolve_host_path
 from app.host.policy import require_host_command_allowed
 from app.logging_audit import log_audit_event
+from app.activity_log import record_mcp_command_activity
 
 
 _ALWAYS_STRIP_ENV = {
@@ -273,14 +274,36 @@ def execute_host_command(
     *,
     cwd: Optional[str] = None,
     timeout_seconds: int = 30,
+    activity_source: str | None = None,
 ) -> dict[str, Any]:
     """Execute a host command within the configured concurrency capacity."""
     command_capacity.acquire()
+    activity_started = time.monotonic()
     try:
-        return _execute_host_command_impl(
-            command,
-            cwd=cwd,
-            timeout_seconds=timeout_seconds,
-        )
+        try:
+            result = _execute_host_command_impl(
+                command,
+                cwd=cwd,
+                timeout_seconds=timeout_seconds,
+            )
+        except Exception as exc:
+            if activity_source == "mcp":
+                record_mcp_command_activity(
+                    command=command,
+                    cwd=cwd or ".",
+                    result={
+                        "ok": False,
+                        "stderr": str(exc),
+                        "duration_ms": int((time.monotonic() - activity_started) * 1000),
+                    },
+                )
+            raise
+        if activity_source == "mcp":
+            record_mcp_command_activity(
+                command=command,
+                cwd=str(result.get("cwd", cwd or ".")),
+                result=result,
+            )
+        return result
     finally:
         command_capacity.release()

@@ -116,6 +116,8 @@ CLI_VERSION="$("$TARGET_LINK" version)"
 [ -n "$CLI_VERSION" ] || fail "verification failed when executing '$TARGET_LINK version'."
 echo "[+] Verification SUCCESS: $CLI_VERSION installed at $TARGET_LINK"
 
+./scripts/install_desktop_launcher.sh
+
 echo ""
 echo "=================================================="
 echo "        Installation Completed Successfully!      "

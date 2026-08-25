@@ -122,6 +122,13 @@ Output modes:
     )
     commands.add_parser("status", help="Show runtime status")
     commands.add_parser("url", help="Print the current connector URL")
+    ui = commands.add_parser("ui", help="Open the native Python desktop control center")
+    ui.add_argument(
+        "--detach",
+        action="store_true",
+        help="Launch the desktop window independently from the terminal",
+    )
+    commands.add_parser("tui", help="Open the terminal control center")
     help_parser = commands.add_parser("help", help="Show help information")
     help_parser.add_argument("topic", nargs="?", help="Subcommand to get help for")
 

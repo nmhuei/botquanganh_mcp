@@ -1,0 +1,199 @@
+<main class="card" aria-live="polite">
+  <header class="header">
+    <div>
+      <p class="eyebrow">READ-ONLY CTF FETCH</p>
+      <h1>HTTP result</h1>
+    </div>
+    <span id="status-badge" class="badge neutral">Waiting</span>
+  </header>
+
+  <p id="message" class="message">Waiting for the bounded fetch result.</p>
+
+  <dl id="details" class="details" hidden>
+    <div>
+      <dt>URL</dt>
+      <dd id="url" class="url"></dd>
+    </div>
+    <div>
+      <dt>HTTP</dt>
+      <dd id="http-status"></dd>
+    </div>
+    <div>
+      <dt>Content type</dt>
+      <dd id="content-type"></dd>
+    </div>
+    <div>
+      <dt>Redirects</dt>
+      <dd id="redirects"></dd>
+    </div>
+  </dl>
+
+  <details id="body-panel" class="body-panel" hidden open>
+    <summary>Response body</summary>
+    <pre id="body"></pre>
+  </details>
+
+  <p id="limit-note" class="limit-note" hidden></p>
+</main>
+
+<style>
+  :root {
+    color: #17202a;
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  .card {
+    max-width: 760px;
+    padding: 18px;
+    border: 1px solid #d9dee8;
+    border-radius: 14px;
+    background: #ffffff;
+  }
+
+  .header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .eyebrow {
+    margin: 0 0 4px;
+    color: #536175;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+  }
+
+  h1 { margin: 0; font-size: 20px; }
+  .message { margin: 16px 0 0; color: #3d4a5c; }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 4px 9px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .neutral { background: #edf0f5; color: #405064; }
+  .success { background: #dcf7e7; color: #12623d; }
+  .warning { background: #fff2c9; color: #7a4d00; }
+  .error { background: #fde2e1; color: #a32424; }
+
+  .details {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 16px;
+    margin: 16px 0 0;
+  }
+
+  .details div { min-width: 0; }
+  dt { color: #66758a; font-size: 12px; font-weight: 700; }
+  dd { margin: 3px 0 0; color: #17202a; font-size: 14px; overflow-wrap: anywhere; }
+  .url { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+  .body-panel { margin-top: 16px; }
+  summary { cursor: pointer; font-weight: 700; }
+  pre {
+    max-height: 320px;
+    margin: 10px 0 0;
+    padding: 12px;
+    overflow: auto;
+    border-radius: 9px;
+    background: #101827;
+    color: #e5edf8;
+    font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .limit-note { margin: 10px 0 0; color: #7a4d00; font-size: 12px; }
+
+  @media (max-width: 500px) {
+    .details { grid-template-columns: 1fr; }
+  }
+</style>
+
+<script>
+  (() => {
+    const element = (id) => document.getElementById(id);
+    const statusBadge = element("status-badge");
+    const message = element("message");
+    const details = element("details");
+    const bodyPanel = element("body-panel");
+    const limitNote = element("limit-note");
+
+    function setText(id, value) {
+      element(id).textContent = value == null || value === "" ? "—" : String(value);
+    }
+
+    function setBadge(label, kind) {
+      statusBadge.textContent = label;
+      statusBadge.className = `badge ${kind}`;
+    }
+
+    function render(result) {
+      if (!result || typeof result !== "object") {
+        setBadge("No result", "neutral");
+        message.textContent = "No CTF fetch result was provided to this widget.";
+        details.hidden = true;
+        bodyPanel.hidden = true;
+        limitNote.hidden = true;
+        return;
+      }
+
+      if (result.ok === false) {
+        setBadge("Request failed", "error");
+        message.textContent = result.error?.message || "The CTF URL fetch failed.";
+        details.hidden = true;
+        bodyPanel.hidden = true;
+        limitNote.hidden = true;
+        return;
+      }
+
+      const statusCode = Number(result.status_code);
+      const statusKind = statusCode >= 200 && statusCode < 400 ? "success" : "warning";
+      setBadge(Number.isFinite(statusCode) ? `HTTP ${statusCode}` : "Fetched", statusKind);
+      message.textContent = "One read-only GET completed. This widget did not make another request.";
+      setText("url", result.url);
+      setText("http-status", Number.isFinite(statusCode) ? statusCode : null);
+      setText("content-type", result.content_type);
+      setText("redirects", Array.isArray(result.redirects) ? result.redirects.length : 0);
+      element("body").textContent = typeof result.body === "string" ? result.body : "";
+      details.hidden = false;
+      bodyPanel.hidden = false;
+
+      if (result.body_truncated === true) {
+        limitNote.textContent = "The response body was truncated by the configured safe limit.";
+        limitNote.hidden = false;
+      } else {
+        limitNote.hidden = true;
+      }
+    }
+
+    window.addEventListener("message", (event) => {
+      if (event.source !== window.parent) return;
+      const rpc = event.data;
+      if (!rpc || rpc.jsonrpc !== "2.0") return;
+
+      if (rpc.method === "ui/initialize") {
+        const initial = rpc.params?.toolResult?.structuredContent;
+        if (initial) render(initial);
+        if (rpc.id !== undefined) {
+          window.parent.postMessage({ jsonrpc: "2.0", id: rpc.id, result: {} }, "*");
+        }
+        return;
+      }
+
+      if (rpc.method === "ui/notifications/tool-result") {
+        render(rpc.params?.structuredContent);
+      }
+    }, { passive: true });
+  })();
+</script>

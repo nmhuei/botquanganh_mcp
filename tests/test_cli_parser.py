@@ -37,6 +37,9 @@ def test_parser_covers_primary_command_tree():
     parser = build_parser()
     cases = [
         ["server", "restart"],
+        ["ui"],
+        ["ui", "--detach"],
+        ["tui"],
         ["fs", "cat", "README.md", "--lines", "1:5"],
         ["cmd", "run", "printf ok", "--timeout", "5"],
         ["knowledge", "tools", "--versions"],

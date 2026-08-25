@@ -62,6 +62,19 @@ def test_host_command_has_no_approval_parameter():
     assert "approval" not in inspect.signature(host_run_command).parameters
 
 
+def test_host_mcp_command_marks_result_for_the_local_activity_journal(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "app.tools.host.execute_host_command",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or {"ok": True},
+    )
+
+    assert host_run_command("printf ok", timeout_seconds=5, cwd=".") == {"ok": True}
+    assert calls == [
+        (("printf ok",), {"cwd": ".", "timeout_seconds": 5, "activity_source": "mcp"})
+    ]
+
+
 def test_guarded_policy_blocks_privilege_and_root_destruction(host_workspace):
     sudo = inspect_host_command("sudo apt update")
     assert sudo["allowed"] is False

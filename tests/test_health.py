@@ -16,6 +16,7 @@ def test_capabilities_expose_host_and_optional_agent_runtime_features():
         "host_filesystem": True,
         "host_command_execution": True,
         "host_knowledge": True,
+        "ctf_fetch_result_ui": True,
         "installed_tool_inventory": True,
         "agent_runtime_control_plane": True,
     }

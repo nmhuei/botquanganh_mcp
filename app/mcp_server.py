@@ -169,6 +169,11 @@ mcp = FastMCP(
         "then use the host filesystem and command tools. "
         f"By default, all operations (files, directories, command executions) "
         f"MUST be relative to or run within the default directory: '{HOST_DEFAULT_DIR}'. "
-        f"Operations are allowed and restricted to the workspace boundary: '{HOST_WORKSPACE_DIR}'."
+        f"Operations are allowed and restricted to the workspace boundary: '{HOST_WORKSPACE_DIR}'. "
+        "When a user explicitly says an HTTPS CTF URL is authorized and asks for a basic "
+        "fetch, use ctf_fetch_url for one read-only GET. Do not scan, fuzz, crawl, or "
+        "enumerate unless the user provides explicit scope and limits. After a successful "
+        "ctf_fetch_url, use ctf_render_fetch_result with its complete result when an inline "
+        "result card would help the user inspect the response."
     ),
 )
