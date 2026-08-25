@@ -68,6 +68,7 @@ class ProgressReporter:
     _frame: int = 0
     _closed: bool = False
     _drawn_lines: int = 0
+    _last_lines: list[str] = field(default_factory=list)
     _stop: threading.Event = field(default_factory=threading.Event)
     _lock: threading.RLock = field(default_factory=threading.RLock)
     _thread: threading.Thread | None = None
@@ -121,7 +122,11 @@ class ProgressReporter:
             total = max(0, int(self.total))
             completed = min(max(0, self._completed), total)
             suffix = f" ({completed}/{total})"
-        return f"{spinner} {message}{suffix}"
+        elapsed = ""
+        if self.elapsed_seconds >= 2.0:
+            rendered = _format_elapsed(self.elapsed_seconds)
+            elapsed = " · " + style(rendered, "dim", color_mode=self.color_mode, stream=self.stream)
+        return f"{spinner} {message}{suffix}{elapsed}"
 
     def _row_lines(self) -> list[str]:
         if not self._rows:
@@ -169,11 +174,28 @@ class ProgressReporter:
         if not self.animated or self._closed:
             return
         with self._lock:
-            self._erase_previous()
+            previous = self._last_lines
             lines = self._lines()
+            if previous and len(previous) == len(lines):
+                # Same block shape: update only rows whose content changed.
+                stream = self.stream
+                stream.write("\r")
+                if len(lines) > 1:
+                    stream.write(f"\x1b[{len(lines) - 1}A")
+                for index, (line, prev) in enumerate(zip(lines, previous)):
+                    if line != prev:
+                        stream.write(f"\x1b[2K{line}")
+                    if index < len(lines) - 1:
+                        stream.write("\r\x1b[1B")
+                stream.flush()
+                self._last_lines = lines
+                return
+            if previous:
+                self._erase_previous()
             self.stream.write("\n".join(lines))
             self.stream.flush()
             self._drawn_lines = len(lines)
+            self._last_lines = lines
 
     def set_items(self, names: list[str] | tuple[str, ...], *, total_each: int | None = 1) -> None:
         with self._lock:
@@ -234,8 +256,8 @@ class ProgressReporter:
             if self.total is not None:
                 self._completed = max(0, int(self.total))
             self._rows.clear()
-        if self.animated and self.elapsed_seconds >= self.render_delay:
-            self._render()
+        # No final frame: the transient block is erased by close() right after,
+        # so rendering here only causes a visible double-draw artifact.
         self.close(clear=True)
         if not self.human:
             return
@@ -263,6 +285,7 @@ class ProgressReporter:
         if clear:
             with self._lock:
                 self._erase_previous()
+                self._last_lines = []
                 self.stream.flush()
 
 

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import sys
-from typing import Sequence
+import threading
+import time
+from typing import Any, Sequence
 
 from app.cli import VERSION
 from app.cli.commands.command import handle_command
@@ -110,6 +112,26 @@ def _render_status(ctx: CLIContext, data: dict, *, server_only: bool = False) ->
     renderer.hint("bqa logs server", "Inspect activity with")
 
 
+_START_STAGE_MESSAGES = {
+    "server": "Starting MCP server...",
+    "tunnel": "Establishing Quick Tunnel...",
+    "bridge": "Warming bridge...",
+    "endpoint": "Publishing connector URL...",
+}
+
+
+def _row_satisfied(status: dict[str, Any], operation: str, row: str) -> bool:
+    if operation == "stop":
+        return not bool(status.get(row, {}).get("running"))
+    if row == "server":
+        return bool(status.get("server", {}).get("running"))
+    if row == "tunnel":
+        return bool(status.get("tunnel", {}).get("running"))
+    if row == "bridge":
+        return status.get("bridge") == "ready"
+    return bool(status.get("url"))
+
+
 def _run_lifecycle_action(ctx: CLIContext, operation: str, action):
     total = 3 if operation == "stop" else 4
     labels = {
@@ -124,15 +146,45 @@ def _run_lifecycle_action(ctx: CLIContext, operation: str, action):
         if operation == "stop"
         else ("server", "tunnel", "bridge", "endpoint")
     )
+    outcome: dict[str, Any] = {}
+
+    def invoke() -> None:
+        try:
+            outcome["result"] = action()
+        except BaseException as exc:  # noqa: BLE001 - re-raised on the main thread
+            outcome["error"] = exc
+
     with progress_for(ctx, working, total=total) as progress:
         progress.set_items(rows)
         status_data(ctx.repo_root, ctx.values)
-        result = action()
+        worker = threading.Thread(target=invoke, daemon=True)
+        worker.start()
+        settled: set[str] = set()
+        while worker.is_alive():
+            status = status_data(ctx.repo_root, ctx.values)
+            progressed = False
+            for row in rows:
+                if row not in settled and _row_satisfied(status, operation, row):
+                    progress.complete_item(row)
+                    settled.add(row)
+                    progressed = True
+            if progressed and operation != "stop":
+                next_row = next((row for row in rows if row not in settled), None)
+                if next_row is not None:
+                    progress.update(_START_STAGE_MESSAGES.get(next_row, working))
+            time.sleep(0.15)
+        worker.join(timeout=1)
         runtime = status_data(ctx.repo_root, ctx.values)
-        for row in rows:
-            progress.complete_item(row)
-        progress.finish(completed)
-    return result, runtime
+        pending_error = outcome.get("error")
+        if pending_error is None:
+            for row in rows:
+                if row not in settled:
+                    progress.complete_item(row)
+                    settled.add(row)
+            progress.finish(completed)
+    if pending_error is not None:
+        raise pending_error
+    return outcome["result"], runtime
 
 
 def _render_lifecycle_result(
