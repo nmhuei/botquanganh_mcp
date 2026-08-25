@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -10,13 +11,30 @@ from app.cli.client import RESTClient
 from app.cli.config_view import bool_value, resolve_config_path, validate_config
 from app.cli.context import CLIContext, normalize_base_url
 from app.cli.lifecycle import canonical_tunnel_base, status_data
-from app.cli.output import emit_json, emit_quiet, renderer_for
+from app.cli.output import (
+    COMPACT_WIDTH,
+    CONTINUATION_INDENT,
+    INDENT,
+    LABEL_GAP,
+    emit_json,
+    emit_quiet,
+    renderer_for,
+    style,
+    visible_width,
+)
 from app.cli.progress import progress_for
 from app.dependency_check import check_project_dependencies
 
 
 def _check(name: str, status: str, message: str) -> dict[str, str]:
     return {"name": name, "status": status, "message": message}
+
+
+def _process_message(process: dict) -> str:
+    if process.get("running"):
+        pid = process.get("pid")
+        return f"running · pid {pid}" if pid else "running"
+    return "stopped"
 
 
 def _request_check(
@@ -80,6 +98,43 @@ def _package_check() -> dict[str, str]:
     return _check("editable_package", "pass", installed)
 
 
+_URL_RE = re.compile(r"https?://\S+")
+
+
+def _split_copyable_rows(
+    renderer: Any,
+    checks: list[dict[str, str]],
+) -> tuple[list[dict[str, str]], list[tuple[str, str]]]:
+    """Split diagnostics into table rows and own-line copyable entries.
+
+    Messages that embed a URL (for example connection failures carrying the
+    connector URL) or that exceed the inline value width are lifted out of
+    the STATE/CHECK/DETAIL grid: the table row shows a short pointer while
+    the full message is emitted below through ``Renderer.copyable_value``,
+    so the connector URL stays untruncated and unsplit at every width.
+    """
+    columns = renderer.columns
+    if columns < COMPACT_WIDTH:
+        inline_limit = max(10, columns - CONTINUATION_INDENT)
+    else:
+        label_width = max(
+            (visible_width(str(item.get("name", ""))) for item in checks),
+            default=0,
+        )
+        inline_limit = max(10, columns - INDENT - label_width - LABEL_GAP)
+    table_rows: list[dict[str, str]] = []
+    copyable_rows: list[tuple[str, str]] = []
+    for check in checks:
+        message = str(check.get("message", ""))
+        over_budget = visible_width(message) > inline_limit
+        if _URL_RE.search(message) or over_budget:
+            copyable_rows.append((str(check.get("name", "")), message))
+            table_rows.append({**check, "message": "see below"})
+        else:
+            table_rows.append(check)
+    return table_rows, copyable_rows
+
+
 def handle_doctor(ctx: CLIContext, args) -> int:
     checks: list[dict[str, str]] = []
     strict = bool(getattr(args, "strict", False))
@@ -136,9 +191,9 @@ def handle_doctor(ctx: CLIContext, args) -> int:
                 "project_dependencies",
                 dependency_status,
                 (
-                    f"closure={dependency_result['closure_count']}; "
-                    f"errors={len(dependency_result['errors'])}; "
-                    f"foreign={dependency_result['foreign_package_count']}"
+                    f"closure of {dependency_result['closure_count']} packages · "
+                    f"{len(dependency_result['errors'])} errors · "
+                    f"{dependency_result['foreign_package_count']} foreign"
                 ),
             )
         )
@@ -177,7 +232,9 @@ def handle_doctor(ctx: CLIContext, args) -> int:
             if any(item["status"] == "warn" for item in config_checks)
             else "pass"
         )
-        checks.append(_check("config", config_status, f"{len(config_checks)} checks"))
+        checks.append(
+            _check("config", config_status, f"{len(config_checks)} configuration checks")
+        )
         progress.complete_item("configuration")
 
         log_file = resolve_config_path(
@@ -192,7 +249,7 @@ def handle_doctor(ctx: CLIContext, args) -> int:
                 _check(
                     "audit_storage",
                     "warn" if size > rotate_at else "pass",
-                    f"size={size}; rotate_at={rotate_at}; backups={backups}",
+                    f"log size {size} bytes · rotates at {rotate_at} · {backups} backups",
                 )
             )
         except (OSError, ValueError) as exc:
@@ -204,21 +261,21 @@ def handle_doctor(ctx: CLIContext, args) -> int:
             _check(
                 "supervisor",
                 "pass" if runtime["supervisor"]["running"] else "warn",
-                str(runtime["supervisor"]),
+                _process_message(runtime["supervisor"]),
             )
         )
         checks.append(
             _check(
                 "server_process",
                 "pass" if runtime["server"]["running"] else "fail",
-                str(runtime["server"]),
+                _process_message(runtime["server"]),
             )
         )
         checks.append(
             _check(
                 "tunnel_process",
                 "pass" if runtime["tunnel"]["running"] else "warn",
-                str(runtime["tunnel"]),
+                _process_message(runtime["tunnel"]),
             )
         )
         checks.append(
@@ -312,10 +369,36 @@ def handle_doctor(ctx: CLIContext, args) -> int:
         renderer.blank()
         renderer.status(state)
         renderer.blank()
-        renderer.checks(checks)
+        table_checks, copyable_rows = _split_copyable_rows(renderer, checks)
+        renderer.checks(table_checks)
+        if copyable_rows:
+            renderer.blank()
+            for row_name, row_message in copyable_rows:
+                renderer.copyable_value(row_name, row_message)
         renderer.blank()
         renderer.summary(
-            f"{len(checks) - warning_count - failure_count} passed   {warning_count} warnings   {failure_count} failed",
+            "   ".join(
+                (
+                    style(
+                        f"{len(checks) - warning_count - failure_count} passed",
+                        "green",
+                        color_mode=renderer.color_mode,
+                        stream=renderer.stream,
+                    ),
+                    style(
+                        f"{warning_count} warnings",
+                        "yellow",
+                        color_mode=renderer.color_mode,
+                        stream=renderer.stream,
+                    ),
+                    style(
+                        f"{failure_count} failed",
+                        "red",
+                        color_mode=renderer.color_mode,
+                        stream=renderer.stream,
+                    ),
+                )
+            ),
             "success"
             if state == "healthy"
             else "warn"

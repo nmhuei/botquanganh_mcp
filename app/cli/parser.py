@@ -203,7 +203,9 @@ Output modes:
 """,
     )
     _add_global_options(parser)
-    commands = parser.add_subparsers(dest="command", required=True)
+    commands = parser.add_subparsers(
+        dest="command", required=True, metavar="<command>"
+    )
 
     commands.add_parser(
         "start", help="Start/adopt the MCP server and tunnel supervisor"
