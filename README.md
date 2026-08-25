@@ -18,6 +18,14 @@ Lệnh trên khởi động MCP server và in URL để kết nối (URL chỉ �
 https://<random>.trycloudflare.com/mcp
 ```
 
+## Giao diện CLI
+
+- Tiến trình theo mốc: các lệnh vòng đời (`start`, `restart`, `stop`) đánh dấu từng thành phần khi thực sự sẵn sàng, lần lượt qua server → tunnel → bridge → URL connector; chờ lâu sẽ hiển thị thời gian đã trôi.
+- Render không nhấp nháy: chỉ vẽ lại những dòng thực sự thay đổi.
+- Copy an toàn: URL connector và đường dẫn tuyệt đối luôn là một chuỗi liền ở mọi độ rộng terminal.
+- Help gom nhóm theo chủ đề; lỗi kèm gợi ý lệnh kế tiếp được chọn theo exit code.
+- Khởi động nhanh: mỗi lệnh vẽ khung đầu tiên trong ~45–70ms.
+
 ## Các lệnh khác
 
 ```bash
