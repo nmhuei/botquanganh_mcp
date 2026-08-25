@@ -120,3 +120,30 @@ def test_existing_environ_not_overridden(tmp_path):
         assert os.environ[key] == "from_file"
     finally:
         os.environ.pop(key, None)
+
+
+def test_cli_load_env_precedence(tmp_path, monkeypatch):
+    """config_view.load_env: DEFAULTS < .env file < os.environ.
+
+    Exercises the deferred ``from dotenv import dotenv_values`` branch
+    (repo .env present) so the lazy import stays covered.
+    """
+    from app.cli.config_view import DEFAULTS, load_env
+
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        f"{P}FROM_FILE=file_value\nMCP_PORT=19999\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv(f"{P}FROM_ENVIRON", "env_value")
+    monkeypatch.setenv("MCP_PORT", "18888")
+
+    values = load_env(tmp_path)
+
+    assert values[f"{P}FROM_FILE"] == "file_value"
+    assert values["MCP_PORT"] == "18888"  # environ beats .env file
+    # Unset here -> falls through to DEFAULTS unless ambient env carries it
+    # (app.config import above loads the repo .env into os.environ).
+    assert values["MAX_TIMEOUT_SECONDS"] == os.environ.get(
+        "MAX_TIMEOUT_SECONDS", DEFAULTS["MAX_TIMEOUT_SECONDS"]
+    )

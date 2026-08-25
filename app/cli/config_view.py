@@ -6,8 +6,6 @@ import stat
 from pathlib import Path
 from typing import Any, Mapping
 
-from dotenv import dotenv_values
-
 
 SECRET_MARKERS = ("TOKEN", "SECRET", "PASSWORD", "PASSWD", "API_KEY", "PRIVATE_KEY")
 DEFAULTS: dict[str, str] = {
@@ -80,6 +78,8 @@ def load_env(repo_root: Path) -> dict[str, str]:
     values: dict[str, str] = dict(DEFAULTS)
     env_file = repo_root / ".env"
     if env_file.exists():
+        from dotenv import dotenv_values  # local: keep python-dotenv off the CLI import path
+
         for key, value in dotenv_values(env_file).items():
             if value is not None:
                 values[str(key)] = str(value)
