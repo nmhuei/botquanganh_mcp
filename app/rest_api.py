@@ -53,6 +53,21 @@ async def _call(function: Callable[..., Any], *args: Any, **kwargs: Any) -> JSON
         return JSONResponse(format_error_response(exc), status_code=_error_status(exc))
 
 
+async def _call_nowait(
+    function: Callable[..., Any], *args: Any, **kwargs: Any
+) -> JSONResponse:
+    # For handlers that perform no I/O -- only cheap in-memory reads (health,
+    # capabilities). They must not queue behind _REST_BLOCKING_POOL during a
+    # command-run storm, so they run inline on the event loop. The shared
+    # default anyio pool is deliberately avoided too: it is contended by
+    # fastmcp tool dispatch and could starve these routes under the same load.
+    try:
+        result = function(*args, **kwargs)
+        return JSONResponse(result, status_code=_result_status(result))
+    except Exception as exc:
+        return JSONResponse(format_error_response(exc), status_code=_error_status(exc))
+
+
 async def _json_body(request: Request) -> dict[str, Any]:
     try:
         payload = await request.json()
@@ -113,13 +128,13 @@ async def api_index(_request: Request) -> JSONResponse:
 async def api_health(_request: Request) -> JSONResponse:
     from app.tools.health import health_check
 
-    return await _call(health_check)
+    return await _call_nowait(health_check)
 
 
 async def api_capabilities(_request: Request) -> JSONResponse:
     from app.tools.health import get_capabilities
 
-    return await _call(get_capabilities)
+    return await _call_nowait(get_capabilities)
 
 
 async def api_list_files(request: Request) -> JSONResponse:

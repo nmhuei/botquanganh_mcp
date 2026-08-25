@@ -5,11 +5,12 @@ default threadpool onto ``app.rest_api._REST_BLOCKING_POOL``
 (an ``anyio.CapacityLimiter(16)`` consumed via ``anyio.to_thread.run_sync``):
 
 1. A burst of slow POST /api/v1/commands/run calls must cap concurrent
-   blocking work at exactly 16 while GET /healthz -- which answers straight
-   from the ASGI stack without touching any worker pool -- keeps answering
-   under a strict deadline. (/api/v1/health is deliberately not probed here:
-   it dispatches through the same blocking limiter, so queueing there during
-   saturation is by design.)
+   blocking work at exactly 16 while both pool-free routes keep answering
+   under a strict deadline: GET /healthz answers straight from the ASGI
+   stack, and GET /api/v1/health dispatches its handler inline via
+   ``app.rest_api._call_nowait`` (the handler only reads in-memory metrics,
+   no I/O), so neither touches any worker pool. Previously /api/v1/health
+   went through the same blocking limiter and queued behind the storm.
 2. CommandCapacity must still bound the real executor underneath the pool:
    overflow requests surface SERVICE_BUSY once the queue timeout expires and
    the active count drains back to zero afterwards.
@@ -29,7 +30,8 @@ from app.mcp_server import mcp
 
 pytestmark = pytest.mark.strength
 
-_HEALTHZ_DEADLINE_SECONDS = 0.2
+_POOL_FREE_DEADLINE_SECONDS = 0.2
+_POOL_FREE_PROBE_PATHS = ("/healthz", "/api/v1/health")
 
 
 @pytest.fixture()
@@ -43,7 +45,7 @@ def rest_client():
         yield client
 
 
-def test_blocking_pool_saturates_at_16_and_lightweight_route_stays_live(
+def test_blocking_pool_saturates_at_16_and_lightweight_routes_stay_live(
     rest_client, monkeypatch
 ):
     pool_width = 16
@@ -96,14 +98,15 @@ def test_blocking_pool_saturates_at_16_and_lightweight_route_stays_live(
     probes = 0
     while any(thread.is_alive() for thread in threads):
         assert time.monotonic() < drain_deadline, "command storm did not drain"
-        started = time.monotonic()
-        response = rest_client.get("/healthz")
-        elapsed = time.monotonic() - started
-        assert response.status_code == 200, response.text
-        assert elapsed < _HEALTHZ_DEADLINE_SECONDS, (
-            f"/healthz answered in {elapsed * 1000:.0f}ms while the blocking "
-            f"pool was saturated"
-        )
+        for path in _POOL_FREE_PROBE_PATHS:
+            started = time.monotonic()
+            response = rest_client.get(path)
+            elapsed = time.monotonic() - started
+            assert response.status_code == 200, response.text
+            assert elapsed < _POOL_FREE_DEADLINE_SECONDS, (
+                f"{path} answered in {elapsed * 1000:.0f}ms while the blocking "
+                f"pool was saturated"
+            )
         probes += 1
         time.sleep(0.05)
 
