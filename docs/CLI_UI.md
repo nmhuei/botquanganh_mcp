@@ -154,10 +154,16 @@ No progress for instant display/streaming operations:
 - config show/get/path
 - log output/follow
 
+Interactive interfaces (own full screens; no uv progress region):
+
+- `bqa ui` — desktop control center (native Tkinter window); `--detach` starts it through the background launcher and reports the PID (`bqa logs launcher -n 100` to follow it)
+- `bqa tui` — keyboard-driven terminal control center
+
 ## Help screens
 
-Top-level help lists subcommands in grouped sections (Lifecycle, Inspection,
-Files & commands, Diagnostics, Config & help) with the subcommand metavar
+Top-level help lists subcommands in grouped sections (Lifecycle, Interface,
+Inspection, Files & commands, Diagnostics, Config & help) with the subcommand
+metavar
 rendered as `<command>`. On Python 3.14+ the parser disables argparse's own
 color palette unconditionally, so all help styling stays owned by the shared
 output layer.
