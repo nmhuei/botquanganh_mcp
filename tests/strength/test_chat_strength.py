@@ -181,9 +181,10 @@ def test_pending_op_spanning_rotation_boundary_still_resolves(
     manager.create_or_bind(chat_id)
     journal = tmp_path / "chat-root" / chat_id / "journal.jsonl"
     manager.append_op_started(chat_id, "long-op", "host.search", {"q": "x"})
-    # Append resolved noise pairs until exactly one rotation has relocated
-    # long-op's start record into .1, then stop: a single generation keeps it
-    # visible to merged replay.
+    # Append resolved noise pairs until one rotation has relocated long-op's
+    # start record into .1, then stop. Visibility no longer depends on the
+    # archive generation: unresolved starts are carried forward into the fresh
+    # journal at each rotation (two-rotation survival has its own test below).
     rotated = False
     for index in range(50):
         pre_ino = journal.stat().st_ino
@@ -201,6 +202,45 @@ def test_pending_op_spanning_rotation_boundary_still_resolves(
     assert manager.pending_ops(chat_id) == [], (
         "started-in-archive must be matched by result-in-active via merged replay"
     )
+
+
+def test_pending_op_survives_two_consecutive_rotations_via_carry_forward(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(app.config, "HOST_CHAT_JOURNAL_MAX_BYTES", 1024, raising=False)
+    manager = _make_manager(tmp_path)
+    chat_id = "tworota"
+    manager.create_or_bind(chat_id)
+    journal = tmp_path / "chat-root" / chat_id / "journal.jsonl"
+    started = manager.append_op_started(chat_id, "long-op", "host.search", {"q": "x"})
+    rotations = 0
+    for index in range(60):
+        pre_ino = journal.stat().st_ino
+        manager.append_op_started(chat_id, f"noise-{index}", "kind", {"blob": "y" * 200})
+        if journal.stat().st_ino != pre_ino:
+            rotations += 1
+        manager.append_op_result(chat_id, f"noise-{index}", True)
+        if rotations >= 2:
+            break
+    assert rotations >= 2, "scenario must produce two consecutive rotations"
+
+    # The second rotation replaced the archive generation that held the
+    # original start record: survival is only possible via carry-forward.
+    replay = manager.read_events(chat_id)
+    assert any(
+        record["type"] == "op_started" and record["op"] == "long-op"
+        for record in replay
+    )
+    pending = manager.pending_ops(chat_id)
+    assert [item["op"] for item in pending] == ["long-op"]
+    # Carried copies preserve the original record's seq/ts/kind/payload.
+    assert pending[0]["seq"] == started["seq"]
+    assert pending[0]["ts"] == started["ts"]
+    assert pending[0]["kind"] == "host.search"
+    assert pending[0]["payload"] == {"q": "x"}
+
+    manager.append_op_result(chat_id, "long-op", True, {"hits": 3})
+    assert manager.pending_ops(chat_id) == []
 
 
 # ---------------------------------------------------------------------------
@@ -501,6 +541,14 @@ def test_apply_actions_refuses_escape_targets_and_unknown_kinds(tmp_path):
 # 5. Error catalog fuzz.
 # ---------------------------------------------------------------------------
 
+class _Unrenderable:
+    def __str__(self) -> str:
+        raise ValueError("unrenderable")
+
+    def __format__(self, spec: str) -> str:
+        raise ValueError("unrenderable")
+
+
 _FUZZ_VALUES = [
     None,
     b"\xff\xfe garbage",
@@ -519,6 +567,7 @@ _FUZZ_VALUES = [
     [("tuple", 1)],
     object(),
     Ellipsis,
+    _Unrenderable(),
 ]
 
 
@@ -598,10 +647,29 @@ def test_to_tool_error_fuzz_random_exceptions_returns_envelope():
     assert tool_success("hi")["ok"] is True
 
 
-# NOTE (known gap, kept out of the green suite): a value whose __format__ or
-# __str__ raises (e.g. used_bytes=BrokenFormat()) makes chat_error_payload --
-# and therefore to_tool_error for domain exceptions carrying such attrs --
-# propagate the exception instead of returning an envelope. Recorded in GAPS.
+def test_to_tool_error_field_whose_str_raises_still_yields_envelope():
+    class BrokenStr:
+        def __str__(self) -> str:
+            raise RuntimeError("no rendering")
+
+        def __format__(self, spec: str) -> str:
+            raise RuntimeError("no rendering")
+
+    class QuotaExceededError(Exception):
+        pass
+
+    exc = QuotaExceededError("over quota")
+    exc.chat_id = "abc123"
+    exc.used_bytes = BrokenStr()
+    payload = to_tool_error(exc)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "E3"
+    assert "?" in payload["error"]["message"]
+    json.dumps(payload, allow_nan=True)
+
+    catalogued = to_tool_error(ChatCatalogError("E3", used_bytes=BrokenStr()))
+    assert catalogued["error"]["code"] == "E3"
+    assert catalogued["error"]["message"].endswith("of ? bytes used.")
 
 
 # ---------------------------------------------------------------------------

@@ -104,6 +104,26 @@ class _MissingFields(dict):
         return "?"
 
 
+class _SafeField:
+    """Render guard for catalog fields: a value whose __format__ or __str__
+    raises must degrade to "?" instead of escaping format_map."""
+
+    __slots__ = ("_value",)
+
+    def __init__(self, value: Any) -> None:
+        self._value = value
+
+    def __format__(self, spec: str) -> str:
+        try:
+            return format(self._value, spec)
+        except Exception:
+            pass
+        try:
+            return str(self._value)
+        except Exception:
+            return "?"
+
+
 class ChatCatalogError(Exception):
     """Domain error carrying a catalog code plus validated format fields."""
 
@@ -124,7 +144,9 @@ def chat_error_payload(code: str, **fields: Any) -> dict[str, Any]:
     entry = CHAT_ERROR_CATALOG.get(code)
     if entry is None:
         return dict(_INTERNAL_ERROR_PAYLOAD)
-    message = entry.template.format_map(_MissingFields(fields))
+    message = entry.template.format_map(
+        _MissingFields({name: _SafeField(value) for name, value in fields.items()})
+    )
     return {
         "ok": False,
         "error": {

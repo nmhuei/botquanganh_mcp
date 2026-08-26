@@ -577,17 +577,35 @@ class WorkspaceManager:
             record = {"seq": int(meta["next_seq"]), "ts": _utc_now_iso(), **base}
             encoded = _json_line_bytes(record)
             # Gate before rotation: rotation only relocates bytes, the append
-            # is what would grow the footprint past the quota.
+            # is what would grow the footprint past the quota. The gate must
+            # also stay ahead of the next_seq bump so a refusal burns no seq.
             self._enforce_quota(ws, validated, len(encoded))
             if rotates and self._needs_rotation(journal, len(encoded)):
+                unresolved = pending_operations(read_journal_records(ws))
                 os.replace(journal, ws / JOURNAL_ARCHIVE_NAME)
+                # The replace destroys the previous archive generation, taking
+                # any still-unresolved op_started record with it: re-append
+                # them verbatim (original seq/ts/kind/payload) into the fresh
+                # journal so pending tracking survives unlimited rotations.
+                if unresolved:
+                    descriptor = os.open(
+                        journal, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600
+                    )
+                    try:
+                        for pending_record in unresolved:
+                            os.write(descriptor, _json_line_bytes(pending_record))
+                    finally:
+                        os.close(descriptor)
+            # Bump next_seq before the journal write: a kill in between then
+            # skips a seq (visible gap) instead of letting the next append
+            # reuse one already on disk.
+            meta["next_seq"] = int(meta["next_seq"]) + 1
+            _atomic_write(ws / META_NAME, _json_line_bytes(meta))
             descriptor = os.open(journal, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
             try:
                 os.write(descriptor, encoded)
             finally:
                 os.close(descriptor)
-            meta["next_seq"] = int(meta["next_seq"]) + 1
-            _atomic_write(ws / META_NAME, _json_line_bytes(meta))
             return record
 
     def _needs_rotation(self, journal: Path, incoming_bytes: int) -> bool:

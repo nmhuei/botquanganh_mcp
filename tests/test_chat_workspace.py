@@ -324,6 +324,41 @@ def test_torn_tail_repair_keeps_complete_lines(manager, tmp_path):
     assert b'"op_star"' not in journal.read_bytes()
 
 
+def test_kill_between_seq_bump_and_journal_append_skips_not_duplicates(
+    monkeypatch, manager, tmp_path
+):
+    manager.create_or_bind("kill01")
+    manager.append_op_started("kill01", "op1", "run", {})
+    real_write = os.write
+    seen = {"writes": 0}
+
+    def die_on_second_write(fd, data):
+        # Per append the first os.write is the atomic meta bump, the second
+        # would be the journal line: simulate a kill exactly between them.
+        seen["writes"] += 1
+        if seen["writes"] == 2:
+            raise RuntimeError("simulated kill after the meta bump")
+        return real_write(fd, data)
+
+    monkeypatch.setattr(cw.os, "write", die_on_second_write)
+    with pytest.raises(RuntimeError):
+        manager.append_op_started("kill01", "op2", "run", {})
+    monkeypatch.undo()
+
+    meta = json.loads((tmp_path / "chats" / "kill01" / "meta.json").read_text())
+    assert meta["next_seq"] == 3, "the bump must land before the fatal write"
+    # op2's line never made it to disk: replay shows a skipped seq.
+    assert [event["seq"] for event in manager.read_events("kill01")] == [1]
+
+    third = manager.append_op_result("kill01", "op1", True, {})
+    assert third["seq"] == 3, "the next append must not reuse the lost seq"
+    replayed = [event["seq"] for event in manager.read_events("kill01")]
+    assert replayed == [1, 3]
+    assert len(replayed) == len(set(replayed)), (
+        "post-kill replays must never contain a duplicate seq"
+    )
+
+
 def test_large_string_payload_excerpted_not_dropped(manager):
     manager.create_or_bind("bigp01")
     record = manager.append_op_started(
@@ -424,25 +459,38 @@ def test_rotation_preserves_monotonic_seq(monkeypatch, tmp_path):
     monkeypatch.setattr(app.config, "HOST_CHAT_JOURNAL_MAX_BYTES", 512, raising=False)
     mgr = cw.WorkspaceManager(tmp_path / "chats", bind_wait_seconds=0.25)
     mgr.create_or_bind("rot001")
+    appended = []
     for index in range(6):
-        mgr.append_op_started("rot001", f"op{index}", "run", {"blob": "b" * 120})
+        appended.append(
+            mgr.append_op_started("rot001", f"op{index}", "run", {"blob": "b" * 120})
+        )
 
     ws = tmp_path / "chats" / "rot001"
     archive_path = ws / "journal.jsonl.1"
     active_path = ws / "journal.jsonl"
     assert archive_path.exists()
 
-    # Single-slot rotation replaces the previous .1; surviving records must
-    # still be strictly increasing and continue into the active journal.
+    # Single-slot rotation replaces the previous .1; unresolved starts are
+    # carried into the fresh journal with their original seq/ts, so the
+    # active file may lead with seqs older than the archive's maximum.
     archive = [json.loads(line) for line in archive_path.read_text(encoding="utf-8").splitlines()]
     active = [json.loads(line) for line in active_path.read_text(encoding="utf-8").splitlines()]
     assert archive and active
-    assert max(event["seq"] for event in archive) < min(event["seq"] for event in active)
 
     events = mgr.read_events("rot001")
-    seqs = [event["seq"] for event in events]
-    assert seqs == sorted(set(seqs))
-    assert seqs[-1] == 6
+    assert all(1 <= event["seq"] <= 6 for event in events)
+    assert {event["op"] for event in events} == {f"op{index}" for index in range(6)}
+    # Per-append allocation stayed monotonic: returned seqs are exactly 1..6.
+    assert [record["seq"] for record in appended] == [1, 2, 3, 4, 5, 6]
+    # Every start is still pending, carrying its original seq and timestamp.
+    pending = mgr.pending_ops("rot001")
+    assert {item["op"] for item in pending} == {f"op{index}" for index in range(6)}
+    by_op = {item["op"]: item for item in pending}
+    for index, record in enumerate(appended):
+        item = by_op[f"op{index}"]
+        assert item["seq"] == record["seq"]
+        assert item["ts"] == record["ts"]
+        assert item["kind"] == "run"
 
     meta = json.loads((ws / "meta.json").read_text(encoding="utf-8"))
     assert meta["next_seq"] == 7
