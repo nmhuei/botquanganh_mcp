@@ -392,18 +392,42 @@ def _dispatch(ctx: CLIContext, args) -> int:
 
         return handle_completion(ctx, args)
     if command == "ui":
+        import os
+
         from app.cli.dashboard import interactive_terminal, run_dashboard
         from app.cli.desktop_ui import (
+            BQA_UI_DAEMON_ENV,
+            DesktopUIAlreadyRunning,
             DesktopUIUnavailable,
             graphical_session_available,
             launch_desktop_ui_detached,
+            register_desktop_ui_pid,
+            release_desktop_ui_pid,
             run_desktop_ui,
         )
 
-        if args.detach:
+        if not getattr(args, "foreground", False):
+            # Detached by default; `--detach` remains an explicit legacy alias.
             if not graphical_session_available():
                 raise CLIError("Không có graphical display để mở BQA Control Center.")
-            pid = launch_desktop_ui_detached(ctx)
+            try:
+                pid = launch_desktop_ui_detached(ctx)
+            except DesktopUIAlreadyRunning as running:
+                if ctx.json_output:
+                    emit_json(
+                        {"ok": True, "status": "already_running", "pid": running.pid}
+                    )
+                elif ctx.quiet:
+                    emit_quiet(running.pid)
+                else:
+                    renderer = renderer_for(ctx)
+                    renderer.header("BQA Control Center", "Đã có cửa sổ nền đang chạy")
+                    renderer.blank()
+                    renderer.status(
+                        "success", f"BQA Control Center đã chạy nền (PID {running.pid})"
+                    )
+                    renderer.hint("bqa ui --foreground", "Mở cửa sổ trong phiên này")
+                return 0
             if ctx.json_output:
                 emit_json({"ok": True, "status": "started", "pid": pid})
             elif ctx.quiet:
@@ -417,6 +441,14 @@ def _dispatch(ctx: CLIContext, args) -> int:
                 renderer.hint("bqa logs launcher -n 100", "Theo dõi service với")
             return 0
         try:
+            # Detached children announce themselves through the env marker so
+            # they open the window directly and own the pid file.
+            if os.environ.get(BQA_UI_DAEMON_ENV) == "1":
+                register_desktop_ui_pid(ctx.repo_root, os.getpid())
+                try:
+                    return run_desktop_ui(ctx)
+                finally:
+                    release_desktop_ui_pid(ctx.repo_root, os.getpid())
             return run_desktop_ui(ctx)
         except DesktopUIUnavailable:
             if interactive_terminal():

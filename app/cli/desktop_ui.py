@@ -2,21 +2,33 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import subprocess
 import sys
 import threading
+import time
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from app.activity_log import read_mcp_command_activity
 from app.cli.config_view import set_workspace_config
 from app.cli.context import CLIContext
+from app.cli.lifecycle import process_command_line, read_pid
 from app.cli.lifecycle import restart, start, status_data
 
 StatusReader = Callable[[Any, dict[str, str]], dict[str, Any]]
 LifecycleAction = Callable[..., dict[str, Any]]
 ActivityReader = Callable[[int], list[dict[str, Any]]]
+
+BQA_UI_DAEMON_ENV = "BQA_UI_DAEMON"
+DESKTOP_UI_PID_FILENAME = "desktop-ui.pid"
+BACKEND_ALIVE_BADGE = ("backend: ● alive", "#147a45")
+BACKEND_DOWN_BADGE = ("backend: ○ down", "#64748b")
+MIN_COMPLETION_TOAST_SECONDS = 10.0
+COMPLETION_TOAST_LIFETIME_MS = 6000
 
 
 class DesktopUIUnavailable(RuntimeError):
@@ -25,6 +37,91 @@ class DesktopUIUnavailable(RuntimeError):
 
 class DesktopUILaunchError(RuntimeError):
     """Raised when a detached desktop window cannot be started."""
+
+
+class DesktopUIAlreadyRunning(RuntimeError):
+    """Raised when a live detached desktop window already owns the session."""
+
+    def __init__(self, pid: int) -> None:
+        super().__init__(f"BQA Control Center đã chạy nền (PID {pid}).")
+        self.pid = pid
+
+
+def backend_badge(data: dict[str, Any]) -> tuple[str, str]:
+    """Derive the backend liveness badge from the same data as `bqa status`."""
+    if (data.get("server") or {}).get("running"):
+        return BACKEND_ALIVE_BADGE
+    return BACKEND_DOWN_BADGE
+
+
+def completion_fingerprint(data: dict[str, Any]) -> str:
+    """Hash the runtime-relevant status fields used for done-transition diffing."""
+    server = data.get("server") or {}
+    tunnel = data.get("tunnel") or {}
+    payload = {
+        "ok": bool(data.get("ok")),
+        "bridge": str(data.get("bridge", "")),
+        "server_running": bool(server.get("running")),
+        "server_pid": server.get("pid"),
+        "tunnel_running": bool(tunnel.get("running")),
+        "url_state": str(data.get("url_state", "")),
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def completion_toast_due(
+    elapsed_seconds: float,
+    start_fingerprint: str | None,
+    current_fingerprint: str,
+    last_fired_fingerprint: str | None,
+) -> bool:
+    """One-shot gate for the completion toast.
+
+    Fires only when the tracked operation ran at least
+    ``MIN_COMPLETION_TOAST_SECONDS``, the runtime fingerprint changed since
+    the operation started (running -> done), and this exact completion has
+    not been toasted before.
+    """
+    if elapsed_seconds < MIN_COMPLETION_TOAST_SECONDS:
+        return False
+    if start_fingerprint is not None and current_fingerprint == start_fingerprint:
+        return False
+    return current_fingerprint != last_fired_fingerprint
+
+
+def desktop_ui_pid_path(repo_root: Path) -> Path:
+    """Return the pid file used to track detached desktop windows."""
+    return Path(repo_root) / "logs" / DESKTOP_UI_PID_FILENAME
+
+
+def live_desktop_ui_pid(repo_root: Path) -> int | None:
+    """Return the pid of a live detached desktop window, if any."""
+    pid = read_pid(desktop_ui_pid_path(repo_root))
+    if pid is None or pid == os.getpid():
+        return None
+    parts = process_command_line(pid).split()
+    if "app.cli.main" in parts and "ui" in parts:
+        return pid
+    return None
+
+
+def register_desktop_ui_pid(repo_root: Path, pid: int) -> None:
+    """Record ``pid`` as the detached desktop window instance."""
+    path = desktop_ui_pid_path(repo_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"{pid}\n", encoding="utf-8")
+
+
+def release_desktop_ui_pid(repo_root: Path, pid: int) -> None:
+    """Remove the pid file when it still belongs to ``pid``."""
+    path = desktop_ui_pid_path(repo_root)
+    if read_pid(path) != pid:
+        return
+    try:
+        path.unlink()
+    except OSError:
+        pass
 
 
 def graphical_session_available(environ: dict[str, str] | None = None) -> bool:
@@ -37,10 +134,15 @@ def graphical_session_available(environ: dict[str, str] | None = None) -> bool:
 
 def launch_desktop_ui_detached(ctx: CLIContext) -> int:
     """Start the desktop UI independently from the invoking terminal session."""
+    existing = live_desktop_ui_pid(ctx.repo_root)
+    if existing is not None:
+        raise DesktopUIAlreadyRunning(existing)
     log_dir = ctx.repo_root / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / "desktop-ui.log"
     command = [sys.executable, "-m", "app.cli.main", "ui"]
+    child_env = dict(os.environ)
+    child_env[BQA_UI_DAEMON_ENV] = "1"
     try:
         with log_path.open("ab", buffering=0) as log_file:
             process = subprocess.Popen(  # nosec B603 - fixed local CLI invocation
@@ -51,11 +153,13 @@ def launch_desktop_ui_detached(ctx: CLIContext) -> int:
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
                 close_fds=True,
+                env=child_env,
             )
     except OSError as exc:
         raise DesktopUILaunchError(
             f"Không thể khởi động BQA Control Center nền: {exc}"
         ) from exc
+    register_desktop_ui_pid(ctx.repo_root, process.pid)
     return process.pid
 
 
@@ -95,6 +199,11 @@ class _DesktopDashboard:
         self.closed = False
         self.refresh_job: Any = None
         self.workspace_selection_dirty = False
+        self.latest_status_data: dict[str, Any] | None = None
+        self.action_started_at: float | None = None
+        self.action_start_fingerprint: str | None = None
+        self.last_toast_fingerprint: str | None = None
+        self.active_toast: Any = None
         self.values = {key: tk.StringVar(value="—") for key in (
             "bridge",
             "server",
@@ -106,8 +215,10 @@ class _DesktopDashboard:
             value=ctx.values.get("HOST_WORKSPACE_DIR", "")
         )
         self.status_var = tk.StringVar(value="Đang tải")
+        self.backend_var = tk.StringVar(value="backend: …")
         self.message_var = tk.StringVar(value=(initial_message or ("", ""))[1])
         self.status_label: Any = None
+        self.backend_label: Any = None
         self.action_buttons: list[Any] = []
         self.activity_records: list[dict[str, Any]] = []
         self.activity_tree: Any = None
@@ -150,6 +261,10 @@ class _DesktopDashboard:
         ).grid(row=1, column=0, sticky="w", pady=(3, 0))
         self.status_label = self.ttk.Label(header, textvariable=self.status_var, style="Status.TLabel")
         self.status_label.grid(row=0, column=1, rowspan=2, sticky="e")
+        self.backend_label = self.ttk.Label(
+            header, textvariable=self.backend_var, style="Subtle.TLabel"
+        )
+        self.backend_label.grid(row=0, column=2, rowspan=2, sticky="e", padx=(14, 0))
 
         summary = self.ttk.Label(container, textvariable=self.message_var, style="Subtle.TLabel", wraplength=820)
         summary.grid(row=1, column=0, sticky="ew", pady=(18, 12))
@@ -262,8 +377,13 @@ class _DesktopDashboard:
         try:
             data = self.status_reader(self.ctx.repo_root, self.ctx.values)
             state, color, summary = _runtime_summary(data)
+            self.latest_status_data = data
             self.status_var.set(state)
             self.status_label.configure(foreground=color)
+            badge_text, badge_color = backend_badge(data)
+            self.backend_var.set(badge_text)
+            if self.backend_label is not None:
+                self.backend_label.configure(foreground=badge_color)
             if not self.busy:
                 self.message_var.set(summary)
             self.values["bridge"].set(str(data.get("bridge", "unknown")))
@@ -276,6 +396,9 @@ class _DesktopDashboard:
         except Exception as exc:
             self.status_var.set("Lỗi trạng thái")
             self.status_label.configure(foreground="#b91c1c")
+            self.backend_var.set(BACKEND_DOWN_BADGE[0])
+            if self.backend_label is not None:
+                self.backend_label.configure(foreground=BACKEND_DOWN_BADGE[1])
             self.message_var.set(f"Không đọc được trạng thái runtime: {exc}")
         finally:
             if not self.closed:
@@ -362,6 +485,12 @@ class _DesktopDashboard:
         if self.busy:
             return
         self.busy = True
+        self.action_started_at = time.monotonic()
+        self.action_start_fingerprint = (
+            completion_fingerprint(self.latest_status_data)
+            if isinstance(self.latest_status_data, dict)
+            else None
+        )
         self.message_var.set(f"Đang chạy: {label}…")
         for button in self.action_buttons:
             button.state(["disabled"])
@@ -375,12 +504,13 @@ class _DesktopDashboard:
                     outcome = ("error", str(result.get("message") or f"Không hoàn tất: {label}."))
             except Exception as exc:  # Lifecycle errors should stay inside the GUI.
                 outcome = ("error", f"Không thể {label.lower()}: {exc}")
+            elapsed = time.monotonic() - (self.action_started_at or time.monotonic())
             if not self.closed:
-                self.root.after(0, lambda: self._finish_action(*outcome))
+                self.root.after(0, lambda: self._finish_action(*outcome, elapsed_seconds=elapsed))
 
         threading.Thread(target=worker, name="bqa-desktop-action", daemon=True).start()
 
-    def _finish_action(self, kind: str, text: str) -> None:
+    def _finish_action(self, kind: str, text: str, elapsed_seconds: float = 0.0) -> None:
         if self.closed:
             return
         self.busy = False
@@ -388,6 +518,68 @@ class _DesktopDashboard:
             button.state(["!disabled"])
         self._set_message(kind, text)
         self.refresh()
+        self._maybe_show_completion_toast(text, elapsed_seconds)
+
+    def _maybe_show_completion_toast(self, text: str, elapsed_seconds: float) -> None:
+        """Fire the one-shot completion toast for long tracked operations."""
+        if not isinstance(self.latest_status_data, dict):
+            return
+        current = completion_fingerprint(self.latest_status_data)
+        due = completion_toast_due(
+            elapsed_seconds,
+            self.action_start_fingerprint,
+            current,
+            self.last_toast_fingerprint,
+        )
+        if not due:
+            return
+        self.last_toast_fingerprint = current
+        self.show_completion_toast(
+            "Hoàn tất sau " + f"{elapsed_seconds:.0f}s",
+            text,
+        )
+
+    def show_completion_toast(self, title: str, message: str) -> None:
+        """Pop a transient bottom-right notification window."""
+        try:
+            if self.active_toast is not None:
+                self.active_toast.destroy()
+        except self.tk.TclError:
+            pass
+        try:
+            toast = self.tk.Toplevel(self.root)
+            toast.title("BQA Control Center")
+            toast.resizable(False, False)
+            toast.configure(bg="#f5f7fb", padx=16, pady=12)
+            try:
+                toast.attributes("-topmost", True)
+            except self.tk.TclError:
+                pass
+            self.tk.Label(
+                toast,
+                text=title,
+                font=("TkDefaultFont", 10, "bold"),
+                fg="#147a45",
+                bg="#f5f7fb",
+            ).pack(anchor="w")
+            self.tk.Label(
+                toast,
+                text=message,
+                wraplength=320,
+                justify="left",
+                fg="#0f172a",
+                bg="#f5f7fb",
+            ).pack(anchor="w", pady=(4, 0))
+            toast.update_idletasks()
+            width = toast.winfo_reqwidth()
+            height = toast.winfo_reqheight()
+            x = max(0, toast.winfo_screenwidth() - width - 24)
+            y = max(0, toast.winfo_screenheight() - height - 56)
+            toast.geometry(f"+{x}+{y}")
+            toast.after(COMPLETION_TOAST_LIFETIME_MS, toast.destroy)
+            self.active_toast = toast
+        except self.tk.TclError:
+            return
 
     def start_service(self) -> None:
         self._run_action("start/adopt service", lambda: self.start_action(self.ctx.repo_root))
