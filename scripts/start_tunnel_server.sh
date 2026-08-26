@@ -45,6 +45,8 @@ SERVER_LOG="logs/server.log"
 CLOUDFLARED_LOG="logs/cloudflared.log"
 
 SERVER_STARTED_AT=0
+MANAGED_SERVER_PID=""
+MANAGED_TUNNEL_PID=""
 PUBLISHED_TUNNEL_PID=""
 TUNNEL_LOG_OFFSET=0
 TUNNEL_LOST_REPORTED=0
@@ -74,8 +76,11 @@ shutdown() {
     trap - TERM INT
 
     # Child processes must stop only after the supervisor is no longer able to recreate them.
-    stop_pid_file "$TUNNEL_PID_FILE" tunnel "Cloudflare Tunnel"
-    stop_pid_file "$SERVER_PID_FILE" server "MCP Server"
+    # Keep the PIDs in memory as well as in runtime files: an interrupted or
+    # external cleanup can remove a PID file before this trap gets to run.
+    stop_managed_pid "$MANAGED_TUNNEL_PID" tunnel "Cloudflare Tunnel"
+    stop_managed_pid "$MANAGED_SERVER_PID" server "MCP Server"
+    rm -f "$TUNNEL_PID_FILE" "$SERVER_PID_FILE"
     rm -f "$TUNNEL_URL_FILE"
     remove_own_pid_file "$SUPERVISOR_PID_FILE"
     remove_own_pid_file "$LAUNCHER_PID_FILE"
@@ -121,6 +126,7 @@ start_server() {
     local existing=""
     existing=$(read_pid "$SERVER_PID_FILE")
     if pid_matches_kind "$existing" server; then
+        MANAGED_SERVER_PID="$existing"
         [ "$SERVER_STARTED_AT" -gt 0 ] || SERVER_STARTED_AT=$(date +%s)
         return 0
     fi
@@ -135,6 +141,7 @@ start_server() {
         --path "$MCP_PATH" \
         > "$SERVER_LOG" 2>&1 &
     local pid=$!
+    MANAGED_SERVER_PID="$pid"
     atomic_write "$SERVER_PID_FILE" "$pid"
     SERVER_STARTED_AT=$(date +%s)
     echo "[+] MCP server process started (PID $pid)."
@@ -144,6 +151,7 @@ start_tunnel() {
     local existing=""
     existing=$(read_pid "$TUNNEL_PID_FILE")
     if pid_matches_kind "$existing" tunnel; then
+        MANAGED_TUNNEL_PID="$existing"
         return 0
     fi
 
@@ -156,6 +164,7 @@ start_tunnel() {
     nohup cloudflared tunnel --url "http://${MCP_CONNECT_HOST}:${MCP_PORT}" \
         >> "$CLOUDFLARED_LOG" 2>&1 &
     local pid=$!
+    MANAGED_TUNNEL_PID="$pid"
     atomic_write "$TUNNEL_PID_FILE" "$pid"
     PUBLISHED_TUNNEL_PID=""
     TUNNEL_LOST_REPORTED=0
@@ -227,18 +236,24 @@ while true; do
     server_pid=$(read_pid "$SERVER_PID_FILE")
     if ! pid_matches_kind "$server_pid" server; then
         now=$(date +%s)
-        # A freshly spawned script/interpreter may not have exec'd FastMCP yet.
-        # Treat its owned PID as starting during the grace period instead of
-        # overwriting server.pid and creating a duplicate-spawn storm.
-        if ! pid_is_alive "$server_pid" || [ $((now - SERVER_STARTED_AT)) -ge 20 ]; then
-            start_server
-            health_failures=0
+        if pid_matches_kind "$MANAGED_SERVER_PID" server || { pid_is_alive "$MANAGED_SERVER_PID" && [ $((now - SERVER_STARTED_AT)) -lt 20 ]; }; then
+            atomic_write "$SERVER_PID_FILE" "$MANAGED_SERVER_PID"
+        else
+            # A freshly spawned script/interpreter may not have exec'd FastMCP yet.
+            # Treat its owned PID as starting during the grace period instead of
+            # overwriting server.pid and creating a duplicate-spawn storm.
+            if ! pid_is_alive "$server_pid" || [ $((now - SERVER_STARTED_AT)) -ge 20 ]; then
+                start_server
+                health_failures=0
+            fi
         fi
     fi
 
     tunnel_pid=$(read_pid "$TUNNEL_PID_FILE")
     if ! pid_matches_kind "$tunnel_pid" tunnel; then
-        if [ "$TUNNEL_LOST_REPORTED" -eq 0 ]; then
+        if pid_matches_kind "$MANAGED_TUNNEL_PID" tunnel; then
+            atomic_write "$TUNNEL_PID_FILE" "$MANAGED_TUNNEL_PID"
+        elif [ "$TUNNEL_LOST_REPORTED" -eq 0 ]; then
             echo "[!] QUICK_TUNNEL_LOST: automatic recreation disabled; existing connector URL is no longer recoverable; manual reprovisioning required."
             TUNNEL_LOST_REPORTED=1
         fi

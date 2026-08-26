@@ -91,9 +91,8 @@ listening_pids_on_port() {
     return 127
 }
 
-stop_managed_pid_file() {
-    local file="$1" kind="$2" label="$3" pid=""
-    pid=$(read_pid_file "$file")
+stop_managed_pid() {
+    local pid="$1" kind="$2" label="$3"
     if pid_matches_kind "$pid" "$kind"; then
         echo "[*] Stopping $label (PID $pid)..."
         kill "$pid" 2>/dev/null || true
@@ -103,7 +102,13 @@ stop_managed_pid_file() {
         done
         kill -9 "$pid" 2>/dev/null || true
     elif pid_is_alive "$pid"; then
-        echo "[!] Refusing to stop unrelated process referenced by $file (PID $pid)." >&2
+        echo "[!] Refusing to stop unrelated process (PID $pid)." >&2
     fi
+}
+
+stop_managed_pid_file() {
+    local file="$1" kind="$2" label="$3" pid=""
+    pid=$(read_pid_file "$file")
+    stop_managed_pid "$pid" "$kind" "$label"
     rm -f "$file"
 }

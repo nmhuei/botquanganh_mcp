@@ -391,6 +391,44 @@ def _dispatch(ctx: CLIContext, args) -> int:
         from app.cli.commands.completion import handle_completion
 
         return handle_completion(ctx, args)
+    if command == "ui":
+        from app.cli.dashboard import interactive_terminal, run_dashboard
+        from app.cli.desktop_ui import (
+            DesktopUIUnavailable,
+            graphical_session_available,
+            launch_desktop_ui_detached,
+            run_desktop_ui,
+        )
+
+        if args.detach:
+            if not graphical_session_available():
+                raise CLIError("Không có graphical display để mở BQA Control Center.")
+            pid = launch_desktop_ui_detached(ctx)
+            if ctx.json_output:
+                emit_json({"ok": True, "status": "started", "pid": pid})
+            elif ctx.quiet:
+                emit_quiet(pid)
+            else:
+                renderer = renderer_for(ctx)
+                renderer.header("BQA Control Center", "Detached desktop window")
+                renderer.blank()
+                renderer.status("success", f"Đã mở nền (PID {pid})")
+                renderer.blank()
+                renderer.hint("bqa logs launcher -n 100", "Theo dõi service với")
+            return 0
+        try:
+            return run_desktop_ui(ctx)
+        except DesktopUIUnavailable:
+            if interactive_terminal():
+                return run_dashboard(
+                    ctx,
+                    initial_message=("warn", "Không thể mở cửa sổ desktop; đang dùng TUI."),
+                )
+            raise CLIError("Không có graphical display. Dùng `bqa tui` trong terminal.")
+    if command == "tui":
+        from app.cli.dashboard import run_dashboard
+
+        return run_dashboard(ctx)
     if command == "version":
         payload = {
             "ok": True,

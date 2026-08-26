@@ -30,6 +30,8 @@ HOST_TOOLS = [
     "host_search_text",
     "host_check_command",
     "host_run_command",
+    "ctf_fetch_url",
+    "ctf_render_fetch_result",
     "host_knowledge",
 ]
 
@@ -112,6 +114,7 @@ def get_capabilities() -> dict:
                 "host_filesystem": True,
                 "host_command_execution": True,
                 "host_knowledge": True,
+                "ctf_fetch_result_ui": True,
                 "installed_tool_inventory": True,
             },
         }

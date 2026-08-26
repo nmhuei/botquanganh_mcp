@@ -143,6 +143,17 @@ def test_supervisor_has_process_identity_startup_grace():
     assert 'now - SERVER_STARTED_AT' in source
 
 
+def test_supervisor_restores_missing_runtime_pid_files_and_tracks_children():
+    repo_root = Path(__file__).resolve().parents[1]
+    source = (repo_root / "scripts/start_tunnel_server.sh").read_text(encoding="utf-8")
+    assert 'MANAGED_SERVER_PID=""' in source
+    assert 'MANAGED_TUNNEL_PID=""' in source
+    assert 'atomic_write "$SERVER_PID_FILE" "$MANAGED_SERVER_PID"' in source
+    assert 'atomic_write "$TUNNEL_PID_FILE" "$MANAGED_TUNNEL_PID"' in source
+    assert 'stop_managed_pid "$MANAGED_SERVER_PID" server "MCP Server"' in source
+    assert 'stop_managed_pid "$MANAGED_TUNNEL_PID" tunnel "Cloudflare Tunnel"' in source
+
+
 def test_server_restart_requires_the_replacement_to_own_the_listener():
     repo_root = Path(__file__).resolve().parents[1]
     source = (repo_root / "scripts/restart_server_only.sh").read_text(encoding="utf-8")

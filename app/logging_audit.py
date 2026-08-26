@@ -19,12 +19,21 @@ from app.config import (
 )
 
 
+class AuditConsoleHandler(logging.StreamHandler):
+    """Avoid a shutdown traceback when a test runner has already closed stderr."""
+
+    def handleError(self, record: logging.LogRecord) -> None:  # noqa: N802
+        if getattr(self.stream, "closed", False):
+            return
+        super().handleError(record)
+
+
 logger = logging.getLogger("botquanganh_audit")
 logger.setLevel(logging.INFO)
 logger.propagate = False
 
 if not logger.handlers:
-    console_handler = logging.StreamHandler()
+    console_handler = AuditConsoleHandler()
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(
         logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")

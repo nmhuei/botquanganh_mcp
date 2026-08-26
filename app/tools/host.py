@@ -187,6 +187,7 @@ def host_run_command(
             command,
             cwd=cwd,
             timeout_seconds=timeout_seconds,
+            activity_source="mcp",
         )
     except Exception as exc:
         return format_error_response(exc)

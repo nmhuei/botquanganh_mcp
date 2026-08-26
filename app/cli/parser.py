@@ -36,6 +36,7 @@ class GroupedHelpFormatter(argparse.RawDescriptionHelpFormatter):
 
     COMMAND_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ("Lifecycle", ("start", "stop", "restart", "server", "url")),
+        ("Interface", ("ui", "tui")),
         ("Inspection", ("status", "health", "capabilities", "knowledge", "logs")),
         ("Files & commands", ("fs", "cmd")),
         ("Diagnostics", ("doctor",)),
@@ -219,6 +220,13 @@ Output modes:
     )
     commands.add_parser("status", help="Show runtime status")
     commands.add_parser("url", help="Print the current connector URL")
+    ui = commands.add_parser("ui", help="Open the native Python desktop control center")
+    ui.add_argument(
+        "--detach",
+        action="store_true",
+        help="Launch the desktop window independently from the terminal",
+    )
+    commands.add_parser("tui", help="Open the terminal control center")
     help_parser = commands.add_parser("help", help="Show help information")
     help_parser.add_argument("topic", nargs="?", help="Subcommand to get help for")
 

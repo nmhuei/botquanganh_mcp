@@ -18,8 +18,9 @@ def test_capabilities_expose_host_core_features_only():
         "host_filesystem": True,
         "host_command_execution": True,
         "host_knowledge": True,
+        "ctf_fetch_result_ui": True,
         "installed_tool_inventory": True,
     }
     assert result["host"]["caller_approval_parameter"] is False
-    assert len(result["tools"]) == 12
+    assert len(result["tools"]) == 14
     assert all(not name.startswith("agent_") for name in result["tools"])

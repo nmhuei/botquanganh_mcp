@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import stat
+import tempfile
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -101,6 +103,78 @@ def resolve_config_path(repo_root: Path, raw: str) -> Path:
     if not path.is_absolute():
         path = repo_root / path
     return path.resolve(strict=False)
+
+
+def _dotenv_quote(value: str) -> str:
+    if "\n" in value or "\r" in value:
+        raise ValueError("Configuration values must not contain a line break.")
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def set_workspace_config(repo_root: Path, raw_workspace: str) -> dict[str, str]:
+    """Persist a selected existing directory as the restricted host workspace.
+
+    The desktop UI intentionally updates both workspace and default directory so
+    the server's directory policy remains internally consistent after restart.
+    Explicit environment variables take priority over ``.env`` at runtime, so
+    refuse a misleading update when an operator exported either setting.
+    """
+    if any(key in os.environ for key in ("HOST_WORKSPACE_DIR", "HOST_DEFAULT_DIR")):
+        raise ValueError(
+            "HOST_WORKSPACE_DIR or HOST_DEFAULT_DIR is set in the current environment; "
+            "unset it before changing the workspace through the UI."
+        )
+
+    if not isinstance(raw_workspace, str) or not raw_workspace.strip():
+        raise ValueError("Selected workspace must be an existing directory.")
+    selected = Path(raw_workspace).expanduser().resolve(strict=False)
+    if not selected.is_dir():
+        raise ValueError("Selected workspace must be an existing directory.")
+
+    updates = {
+        "HOST_WORKSPACE_DIR": str(selected),
+        "HOST_DEFAULT_DIR": str(selected),
+    }
+    env_path = repo_root / ".env"
+    try:
+        existing = env_path.read_text(encoding="utf-8") if env_path.exists() else ""
+        source_mode = stat.S_IMODE(env_path.stat().st_mode) if env_path.exists() else 0o600
+    except OSError as exc:
+        raise ValueError(f"Unable to read configuration file: {exc}") from exc
+
+    pattern = re.compile(r"^(?P<prefix>\s*)(?P<key>HOST_WORKSPACE_DIR|HOST_DEFAULT_DIR)\s*=.*$")
+    found: set[str] = set()
+    rendered: list[str] = []
+    for line in existing.splitlines():
+        match = pattern.match(line)
+        if match:
+            key = match.group("key")
+            rendered.append(f"{match.group('prefix')}{key}={_dotenv_quote(updates[key])}")
+            found.add(key)
+        else:
+            rendered.append(line)
+    for key in updates:
+        if key not in found:
+            rendered.append(f"{key}={_dotenv_quote(updates[key])}")
+    content = "\n".join(rendered).rstrip("\n") + "\n"
+
+    try:
+        descriptor, temporary = tempfile.mkstemp(prefix=".env.", dir=repo_root, text=True)
+        temporary_path = Path(temporary)
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                handle.write(content)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.chmod(temporary_path, source_mode)
+            os.replace(temporary_path, env_path)
+        except Exception:
+            temporary_path.unlink(missing_ok=True)
+            raise
+    except OSError as exc:
+        raise ValueError(f"Unable to save configuration file: {exc}") from exc
+
+    return updates
 
 
 def safe_config(values: Mapping[str, str]) -> dict[str, str]:

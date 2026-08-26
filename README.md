@@ -18,6 +18,36 @@ Lệnh trên khởi động MCP server và in URL để kết nối (URL chỉ �
 https://<random>.trycloudflare.com/mcp
 ```
 
+Trên máy có graphical desktop, có thể mở thêm cửa sổ Python **BQA Control Center**
+để theo dõi và điều khiển service:
+
+- xem trạng thái MCP bridge, Cloudflare tunnel, endpoint và workspace;
+- nút Start/Adopt, Restart bridge, Refresh và Copy endpoint;
+- nút **Chọn thư mục…** để duyệt workspace và **Áp dụng workspace** để lưu cấu hình,
+  restart riêng MCP bridge và giữ nguyên tunnel. Không cần sửa `.env` thủ công;
+- tab **Hoạt động ChatGPT** hiển thị các lần `host_run_command` gần nhất qua MCP,
+  gồm command, exit code, `stdout` và `stderr` đã giới hạn/redact;
+- tự cập nhật trạng thái mỗi 2 giây mà không tạo request CTF mới.
+
+Mở giao diện bất kỳ lúc nào:
+
+```bash
+bqa ui
+```
+
+Không cần giữ terminal: sau cài đặt, mở **BQA Control Center** từ menu ứng dụng.
+Launcher không mở terminal và tách cửa sổ khỏi phiên shell. Có thể làm tương tự từ dòng lệnh:
+
+```bash
+bqa ui --detach
+```
+
+Nếu đang SSH/headless không có graphical display, dùng bản TUI trong terminal:
+
+```bash
+bqa tui
+```
+
 ## Giao diện CLI
 
 - Tiến trình theo mốc: các lệnh vòng đời (`start`, `restart`, `stop`) đánh dấu từng thành phần khi thực sự sẵn sàng, lần lượt qua server → tunnel → bridge → URL connector; chờ lâu sẽ hiển thị thời gian đã trôi.
@@ -58,6 +88,17 @@ Sau khi sửa cấu hình:
 ```bash
 bqa restart
 ```
+
+## Thẻ kết quả CTF trong ChatGPT
+
+Khi người dùng xác nhận một URL HTTPS CTF được phép truy cập và yêu cầu lấy trang cơ bản,
+ChatGPT có thể gọi `ctf_fetch_url`. Tool này chỉ thực hiện một `GET` có giới hạn, không
+quét, crawl hoặc fuzz. Sau đó `ctf_render_fetch_result` hiển thị thẻ inline gồm URL cuối,
+HTTP status, redirects, content type và phần body đã giới hạn.
+
+Sau khi cập nhật server, chạy `bqa restart`, rồi **Refresh** kết nối MCP trong ChatGPT
+Developer Mode để ChatGPT nhận resource UI và tool mới. Thẻ UI chỉ hiển thị kết quả được
+truyền vào; nó không tự tạo request HTTP nào.
 
 ## Tài liệu
 
