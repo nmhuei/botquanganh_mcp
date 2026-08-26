@@ -11,5 +11,6 @@ This directory holds the project's architecture decision records in MADR-lite st
 | 0005 | uv pip replaces pip in install.sh                                            | Accepted | 2026-08-20 | `install.sh` installs into `.venv` via `uv pip` with pinned deps for faster, deterministic setup.                       |
 | 0006 | Hardening round 2 — bounded drains, honest readiness, serialized replace     | Accepted | 2026-08-25 | Bounded drain joins with `output_incomplete`, honest connector-ready reporting, flock-serialized file writes, REST capacity limiter, supervisor lock, per-variant cache TTLs. |
 | 0007 | CLI UX overhaul — milestone rows, diff rendering, copy-safe output, fast paint | Accepted | 2026-08-25 | Milestone-driven progress rows, diff-based rendering, wrap-proof URL output, grouped help, lazy imports for fast first paint. |
+| 0008 | Dependency-bump PRs merge only after a local pytest rehearsal | Accepted | 2026-08-26 | Throwaway uv venv rehearsal gates every bump; only the two pin-guard failures may stay red, dotenv needs oracle parity, manifests bump in lockstep. |
 
 New ADRs use the next sequential number (`0008`, `0009`, ...). For the most recent decision waves, see [0006](0006-hardening-round-2.md) and [0007](0007-cli-ux-overhaul.md).
