@@ -44,7 +44,7 @@ ChatGPT / bqa / REST client
 
 ## Tool surface
 
-The server exposes exactly 12 MCP tools:
+The server exposes exactly 14 MCP tools:
 
 ```text
 health_check
@@ -58,6 +58,8 @@ host_make_directory
 host_search_text
 host_check_command
 host_run_command
+ctf_fetch_url
+ctf_render_fetch_result
 host_knowledge
 ```
 
