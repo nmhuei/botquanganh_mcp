@@ -12,7 +12,11 @@ def test_github_quality_workflow_uses_pinned_actions_and_least_privilege():
     for reference in action_refs:
         owner_repo, revision = reference.rsplit("@", 1)
         assert re.fullmatch(r"[0-9a-f]{40}", revision), reference
-        assert owner_repo in {"actions/checkout", "actions/setup-python"}
+        assert owner_repo in {
+            "actions/checkout",
+            "actions/setup-python",
+            "astral-sh/setup-uv",
+        }
     assert "permissions:\n  contents: read" in workflow
     assert "persist-credentials: false" in workflow
     assert "timeout-minutes: 20" in workflow

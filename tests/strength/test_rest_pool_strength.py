@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import threading
 import time
+import warnings
 
 import pytest
 
@@ -27,6 +28,21 @@ import app.host.executor as executor_module
 import app.rest_api
 from app.host.executor import CommandCapacity
 from app.mcp_server import mcp
+from starlette.exceptions import StarletteDeprecationWarning
+
+# starlette >= 1.x prefers the ``httpx2`` package for TestClient and emits a
+# StarletteDeprecationWarning whenever it falls back to legacy ``httpx``
+# (what this venv currently installs). The fallback is supported; the notice
+# fires once at import time with stacklevel pointing at whoever first imports
+# ``starlette.testclient``, so silence exactly that message at the import seam.
+# Migrating the venv to ``httpx2`` (pyproject.toml) is a maintainer decision.
+with warnings.catch_warnings():
+    warnings.filterwarnings(
+        "ignore",
+        message="Using `httpx` with `starlette.testclient` is deprecated",
+        category=StarletteDeprecationWarning,
+    )
+    from starlette.testclient import TestClient
 
 pytestmark = pytest.mark.strength
 
@@ -36,8 +52,6 @@ _POOL_FREE_PROBE_PATHS = ("/healthz", "/api/v1/health")
 
 @pytest.fixture()
 def rest_client():
-    from starlette.testclient import TestClient
-
     application = mcp.http_app(path="/mcp", transport="streamable-http")
     # One entered client shares a single blocking portal; anyio portals accept
     # concurrent calls from many threads, which is what the storms below rely on.

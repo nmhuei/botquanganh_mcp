@@ -3,7 +3,7 @@ from __future__ import annotations
 from app.cli.context import CLIContext
 
 
-_COMMANDS = "start stop restart status url server health capabilities fs cmd knowledge logs config doctor completion version"
+_COMMANDS = "start stop restart status url help server health capabilities fs cmd knowledge logs config doctor completion version"
 
 
 def generate(shell: str) -> str:

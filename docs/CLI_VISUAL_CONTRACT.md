@@ -53,6 +53,7 @@ Default mode for direct terminal use.
 - Header and semantic status symbols are allowed.
 - Color follows `--color auto|always|never`.
 - `NO_COLOR`, `TERM=dumb`, non-TTY output, and CI disable automatic color.
+- Transient progress blocks (spinner + rows + cursor choreography) are suppressed entirely under `NO_COLOR` and `--no-color`, exactly like under `TERM=dumb`: suppression means ZERO escape bytes, not uncolored animation.
 - Long values wrap or truncate according to terminal width, except copy-safe values (below).
 - Copy-critical values such as the connector URL use `Renderer.copyable_value`: the terminal may soft-wrap visually, but the CLI never inserts a hard newline inside the value.
 - `Renderer.facts` accepts `no_wrap` protected labels (`Endpoint` in `status`): a protected value that cannot fit beside its label moves below it as one unwrapped line.
@@ -250,4 +251,5 @@ Manual verification must use only read-only commands unless lifecycle behavior i
 [x] Doctor lifts URL-bearing check messages into own-line copyable blocks
 [x] Error hints map from the exit code instead of always suggesting doctor
 [x] Help groups commands into themed sections with a `<command>` metavar
+[x] Progress animation is fully suppressed under NO_COLOR, --no-color, and TERM=dumb (zero escape bytes)
 ```

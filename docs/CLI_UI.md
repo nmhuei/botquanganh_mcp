@@ -105,6 +105,8 @@ Live progress is suppressed for:
 - `TERM=dumb`
 - `--verbose` (matching uv's behavior of hiding progress to avoid interleaving
   with debug output)
+- Animation follows the same suppression matrix as color: pipe | `NO_COLOR` |
+  `TERM=dumb` => no animation, no escape bytes (not an uncolored spinner).
 
 `--no-progress` suppresses the transient region but keeps the normal persistent
 completion/result output.
