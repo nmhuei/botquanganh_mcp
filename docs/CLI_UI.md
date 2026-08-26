@@ -156,7 +156,10 @@ No progress for instant display/streaming operations:
 
 Interactive interfaces (own full screens; no uv progress region):
 
-- `bqa ui` — desktop control center (native Tkinter window); `--detach` starts it through the background launcher and reports the PID (`bqa logs launcher -n 100` to follow it)
+- `bqa ui` — desktop control center (native Tkinter window); detaches from the
+  terminal by default via the background launcher (PID in `logs/desktop-ui.pid`,
+  follow with `bqa logs launcher -n 100`); `--foreground` runs it inline;
+  `--detach` remains as a legacy alias
 - `bqa tui` — keyboard-driven terminal control center
 
 ## Help screens
