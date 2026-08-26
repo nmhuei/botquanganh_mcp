@@ -73,7 +73,7 @@ UV_BIN="$(command -v uv || true)"
 
 if [ ! -d .venv ]; then
     echo "[*] Creating Python virtual environment in .venv..."
-    "$UV_BIN" venv .venv --python "$PYTHON_BIN"
+    "$UV_BIN" venv .venv --seed --python "$PYTHON_BIN"
 fi
 
 VENV_PYTHON="$ROOT_DIR/.venv/bin/python"
