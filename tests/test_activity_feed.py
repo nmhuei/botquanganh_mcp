@@ -54,6 +54,9 @@ def _run_probe(code: str, extra_env: dict[str, str]) -> dict[str, Any]:
         "REQUIRE_AUTH": "false",
         "MCP_JSON_RESPONSE": "true",
         "MCP_STATELESS_HTTP": "true",
+        # The operator's real .env may enable chat workspaces; legacy-shape
+        # probes must pin the flag off instead of inheriting it.
+        "HOST_CHAT_WORKSPACES": "false",
         **extra_env,
     }
     proc = subprocess.run(
