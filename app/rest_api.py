@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import functools
-from typing import Any, Callable
+import json
+from pathlib import Path
+from typing import Any, Callable, Mapping
 
 import anyio
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
+import app.config
 from app.error_contract import (
     http_status_for_exception,
     http_status_for_result,
@@ -31,6 +34,15 @@ API_PREFIX = "/api/v1"
 
 # Recent-activity feed window served from the jobs registry today.
 _ACTIVITY_EVENT_LIMIT = 50
+
+# Journal-feed caps: a single chat serves its newest 100 valid records while
+# the cross-workspace aggregate stops at 200 so large installs stay bounded.
+_JOURNAL_SINGLE_CHAT_LIMIT = 100
+_JOURNAL_AGGREGATE_LIMIT = 200
+_ACTIVITY_INCLUDE_CHOICES = ("journals", "jobs", "all")
+_ARCHIVE_DIR_NAME = ".archive"
+_JOURNAL_PREVIOUS_NAME = "journal.jsonl.1"
+_JOURNAL_CURRENT_NAME = "journal.jsonl"
 
 # Dedicated worker budget for blocking REST handlers. Without it, a burst of
 # concurrent command runs can occupy the shared default pool and freeze every
@@ -125,14 +137,130 @@ def _jobs_response(
     }
 
 
-def _activity_response(*, chat_id: str | None) -> dict[str, Any]:
-    # Served from the jobs registry today; the journal feed plugs in here later.
-    records = get_jobs_registry().list(chat_id=chat_id, limit=_ACTIVITY_EVENT_LIMIT)
+def _journal_feed_root() -> Path | None:
+    # Feature gate: never touch the disk unless chat workspaces are enabled
+    # and a root actually resolves; anything else degrades to registry-only.
+    if not getattr(app.config, "HOST_CHAT_WORKSPACES", False):
+        return None
+    root = getattr(app.config, "HOST_CHAT_ROOT", None)
+    if isinstance(root, str):
+        root = Path(root).expanduser()
+    if not isinstance(root, Path):
+        return None
+    return root
+
+
+def _read_journal_events(ws_dir: Path) -> list[dict[str, Any]]:
+    """Oldest-first valid records from the rotation archive plus active
+    journal; unreadable files and malformed/torn lines contribute nothing."""
+    events: list[dict[str, Any]] = []
+    for name in (_JOURNAL_PREVIOUS_NAME, _JOURNAL_CURRENT_NAME):
+        try:
+            raw = (ws_dir / name).read_bytes()
+        except OSError:
+            continue
+        for line in raw.splitlines():
+            if not line.strip():
+                continue
+            try:
+                item = json.loads(line.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                continue
+            if isinstance(item, dict):
+                events.append(item)
+    return events
+
+
+def _workspace_dirs(root: Path) -> list[Path]:
+    """Active workspaces (sorted by chat id) then archived ones."""
+    active: list[Path] = []
+    archived: list[Path] = []
+    try:
+        children = sorted(root.iterdir(), key=lambda item: item.name)
+    except OSError:
+        return active
+    for child in children:
+        try:
+            if not child.is_dir():
+                continue
+        except OSError:
+            continue
+        if child.name == _ARCHIVE_DIR_NAME:
+            try:
+                archived = sorted(
+                    (item for item in child.iterdir() if item.is_dir()),
+                    key=lambda item: item.name,
+                )
+            except OSError:
+                archived = []
+            continue
+        active.append(child)
+    return active + archived
+
+
+def _event_sort_key(event: Mapping[str, Any]) -> tuple[Any, ...]:
+    # ts values are ISO strings from the writer, so lexicographic order is
+    # chronological; garbage or missing fields fall into stable tail buckets.
+    ts = event.get("ts")
+    seq = event.get("seq")
+    ts_part = (0, ts) if isinstance(ts, str) else (1, "")
+    seq_part = (
+        (0, seq)
+        if isinstance(seq, int) and not isinstance(seq, bool)
+        else (1, 0)
+    )
+    return (ts_part, seq_part)
+
+
+def _journal_activity_records(*, chat_id: str | None) -> list[dict[str, Any]]:
+    root = _journal_feed_root()
+    if root is None:
+        return []
+    if chat_id is not None:
+        candidates = [
+            (chat_id, root / chat_id),
+            (chat_id, root / _ARCHIVE_DIR_NAME / chat_id),
+        ]
+        cap = _JOURNAL_SINGLE_CHAT_LIMIT
+    else:
+        candidates = [(ws_dir.name, ws_dir) for ws_dir in _workspace_dirs(root)]
+        cap = _JOURNAL_AGGREGATE_LIMIT
+    records: list[dict[str, Any]] = []
+    for record_chat_id, ws_dir in candidates:
+        for event in _read_journal_events(ws_dir):
+            entry = dict(event)
+            entry["source"] = "journal"
+            entry["chat_id"] = record_chat_id
+            records.append(entry)
+    records.sort(key=_event_sort_key)
+    return records[-cap:]
+
+
+def _activity_response(
+    *,
+    chat_id: str | None,
+    include: str = "all",
+) -> dict[str, Any]:
+    want_jobs = include in {"jobs", "all"}
+    want_journals = include in {"journals", "all"}
+    activity: list[dict[str, Any]] = []
+    sources: list[str] = []
+    if want_jobs:
+        records = get_jobs_registry().list(chat_id=chat_id, limit=_ACTIVITY_EVENT_LIMIT)
+        activity.extend(record.as_dict() for record in records)
+        sources.append("jobs_registry")
+    journal_records = _journal_activity_records(chat_id=chat_id) if want_journals else []
+    if journal_records:
+        # Job records carry no ts/seq, so they keep registry order as a stable
+        # block; journal records interleave by their own timestamps.
+        activity.extend(journal_records)
+        activity.sort(key=_event_sort_key)
+        sources.append("journal")
     return {
         "ok": True,
-        "source": "jobs_registry",
-        "count": len(records),
-        "activity": [record.as_dict() for record in records],
+        "source": "+".join(sources) or "journal",
+        "count": len(activity),
+        "activity": activity,
     }
 
 
@@ -359,7 +487,20 @@ async def api_jobs(request: Request) -> JSONResponse:
 async def api_activity(request: Request) -> JSONResponse:
     try:
         chat_id = request.query_params.get("chat_id", "").strip() or None
-        return await _call_nowait(_activity_response, chat_id=chat_id)
+        include = request.query_params.get("include", "").strip().lower() or "all"
+        if include not in _ACTIVITY_INCLUDE_CHOICES:
+            raise ValueError(
+                "Query parameter 'include' must be one of: "
+                + ", ".join(_ACTIVITY_INCLUDE_CHOICES)
+                + "."
+            )
+        # Journal reads are the only disk work here; without them the handler
+        # stays a cheap in-memory registry read and keeps the inline path.
+        touches_disk = include in {"journals", "all"} and (
+            _journal_feed_root() is not None
+        )
+        runner = _call if touches_disk else _call_nowait
+        return await runner(_activity_response, chat_id=chat_id, include=include)
     except Exception as exc:
         return JSONResponse(format_error_response(exc), status_code=_error_status(exc))
 
@@ -424,7 +565,7 @@ def openapi_document() -> dict[str, Any]:
             f"{API_PREFIX}/commands/run": {"post": {"summary": "Run a host command", "requestBody": {"required": True, "content": {"application/json": {"schema": json_object}}}, "responses": {"200": {"description": "Execution result"}, **error_responses}}},
             f"{API_PREFIX}/knowledge": {"get": {"summary": "Read host guides and tool inventory", "parameters": [{"name": "section", "in": "query", "schema": {"type": "string", "default": "overview"}}, {"name": "query", "in": "query", "schema": {"type": "string"}}], "responses": {"200": {"description": "Knowledge result"}, **error_responses}}},
             f"{API_PREFIX}/jobs": {"get": {"summary": "List tracked jobs", "parameters": [{"name": "job_id", "in": "query", "schema": {"type": "string"}}, {"name": "chat_id", "in": "query", "schema": {"type": "string"}}, {"name": "status", "in": "query", "schema": {"type": "string", "enum": ["queued", "running", "done", "error"]}}, {"name": "limit", "in": "query", "schema": {"type": "integer", "default": 50, "maximum": 200}}], "responses": {"200": {"description": "Job listing or single job"}, **error_responses}}},
-            f"{API_PREFIX}/activity": {"get": {"summary": "Recent activity feed", "parameters": [{"name": "chat_id", "in": "query", "schema": {"type": "string"}}], "responses": {"200": {"description": "Recent activity events"}, **error_responses}}},
+            f"{API_PREFIX}/activity": {"get": {"summary": "Recent activity feed", "parameters": [{"name": "chat_id", "in": "query", "schema": {"type": "string"}}, {"name": "include", "in": "query", "schema": {"type": "string", "enum": ["journals", "jobs", "all"], "default": "all"}}], "responses": {"200": {"description": "Recent activity events"}, **error_responses}}},
             f"{API_PREFIX}/openapi.json": {"get": {"summary": "OpenAPI document", "security": [], "responses": {"200": {"description": "OpenAPI 3.1 document"}}}},
         },
     }
