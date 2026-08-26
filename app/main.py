@@ -11,6 +11,7 @@ import app.tools.ctf_http  # noqa: E402,F401
 import app.tools.health  # noqa: E402,F401
 import app.tools.host  # noqa: E402,F401
 import app.tools.host_knowledge  # noqa: E402,F401
+import app.tools.workspace_tools  # noqa: E402,F401
 
 
 @atexit.register
