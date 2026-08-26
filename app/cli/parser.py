@@ -467,13 +467,15 @@ Output modes:
         epilog="""Examples:
   bqa logs server -n 50
   bqa logs audit --since 10m --grep error
+  bqa logs all -n 50
+  bqa logs all -f
   bqa logs follow --all""",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     logs.add_argument(
         "log_action",
-        choices=["server", "tunnel", "launcher", "audit", "follow"],
-        help="Log to read, or 'follow' to stream live",
+        choices=["server", "tunnel", "launcher", "audit", "follow", "all"],
+        help="Log to read, 'all' to merge every stream, or 'follow' to stream live",
     )
     logs.add_argument(
         "follow_target",
@@ -482,13 +484,17 @@ Output modes:
         help="Stream to follow when the action is 'follow'",
     )
     logs.add_argument(
-        "-n", "--lines", type=int, default=100, help="Lines to show (default: 100)"
+        "-n",
+        "--lines",
+        type=int,
+        default=100,
+        help="Lines shown PER SOURCE before merging (default: 100)",
     )
     logs.add_argument(
         "-f",
         "--follow",
         action="store_true",
-        help="Keep streaming new lines until interrupted",
+        help="Keep streaming new lines until interrupted (with 'all': every source)",
     )
     logs.add_argument(
         "--all", action="store_true", dest="all_logs", help="Read every log stream"

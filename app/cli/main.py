@@ -376,6 +376,10 @@ def _dispatch(ctx: CLIContext, args) -> int:
 
         return handle_knowledge(ctx, args)
     if command == "logs":
+        if getattr(args, "log_action", "") == "all":
+            from app.cli.logs_view import handle_logs_all
+
+            return handle_logs_all(ctx, args)
         from app.cli.commands.logs import handle_logs
 
         return handle_logs(ctx, args)
