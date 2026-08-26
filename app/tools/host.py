@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from pathlib import Path
 from typing import Any, Optional
 
 from app.chat_identity import InvalidChatId, validate_chat_id
@@ -171,9 +172,19 @@ def _guard_chat_id(
             )
         return None, None
     try:
-        return validate_chat_id(resolved), None
+        validated = validate_chat_id(resolved)
     except InvalidChatId:
         return None, _invalid_chat_id_payload()
+
+    if _is_enforcing_mode() and tool not in BIND_EXEMPT_TOOLS:
+        from app import config as config_module
+
+        if getattr(config_module, "HOST_CHAT_WORKSPACES", False):
+            root = Path(getattr(config_module, "HOST_CHAT_ROOT", ""))
+            if root and not (root / validated / "meta.json").is_file():
+                return None, _bind_required_payload(tool)
+
+    return validated, None
 
 
 def _stamp_chat_id(
@@ -210,6 +221,39 @@ def _record_tool_call(
         log_audit_event("HOST_TOOL_CALL", {"tool": tool, **payload})
 
 
+def _record_workspace_journal(
+    tool: str,
+    chat_id: Optional[str],
+    details: Optional[dict[str, Any]] = None,
+    ok: bool = True,
+) -> None:
+    """Record operation to session workspace journal and refresh STATE.md."""
+    if not chat_id:
+        return
+    from app import config as config_module
+
+    if not getattr(config_module, "HOST_CHAT_WORKSPACES", False):
+        return
+    root_val = getattr(config_module, "HOST_CHAT_ROOT", "")
+    if not root_val:
+        return
+    root = Path(root_val)
+    ws_dir = root / chat_id
+    if not (ws_dir / "meta.json").is_file():
+        return
+    try:
+        import uuid
+        from app.chat_workspace import WorkspaceManager, rebuild_state
+
+        mgr = WorkspaceManager(root)
+        op_id = f"op-{uuid.uuid4().hex[:8]}"
+        mgr.append_op_started(chat_id, op_id, tool, details or {})
+        mgr.append_op_result(chat_id, op_id, ok, details or {})
+        rebuild_state(ws_dir)
+    except Exception:
+        pass
+
+
 def _normalize_intent(intent: Optional[str]) -> Optional[str]:
     """Collapse an intent to a single stripped line capped at 200 characters."""
     if intent is None:
@@ -238,6 +282,12 @@ def host_list_directory(
     except Exception as exc:
         result = format_error_response(exc)
     _record_tool_call("host_list_directory", validated)
+    _record_workspace_journal(
+        "host_list_directory",
+        validated,
+        {"path": path},
+        ok=isinstance(result, dict) and bool(result.get("ok", False)),
+    )
     return result
 
 
@@ -269,6 +319,12 @@ def host_read_file(
     except Exception as exc:
         result = format_error_response(exc)
     _record_tool_call("host_read_file", validated)
+    _record_workspace_journal(
+        "host_read_file",
+        validated,
+        {"path": path},
+        ok=isinstance(result, dict) and bool(result.get("ok", False)),
+    )
     return result
 
 
@@ -300,6 +356,12 @@ def host_write_file(
     except Exception as exc:
         result = format_error_response(exc)
     _record_tool_call("host_write_file", validated)
+    _record_workspace_journal(
+        "host_write_file",
+        validated,
+        {"path": path, "size_bytes": len(content.encode("utf-8"))},
+        ok=isinstance(result, dict) and bool(result.get("ok", False)),
+    )
     return result
 
 
@@ -330,6 +392,12 @@ def host_replace_in_file(
     except Exception as exc:
         result = format_error_response(exc)
     _record_tool_call("host_replace_in_file", validated)
+    _record_workspace_journal(
+        "host_replace_in_file",
+        validated,
+        {"path": path},
+        ok=isinstance(result, dict) and bool(result.get("ok", False)),
+    )
     return result
 
 
@@ -350,6 +418,12 @@ def host_append_file(
     except Exception as exc:
         result = format_error_response(exc)
     _record_tool_call("host_append_file", validated)
+    _record_workspace_journal(
+        "host_append_file",
+        validated,
+        {"path": path},
+        ok=isinstance(result, dict) and bool(result.get("ok", False)),
+    )
     return result
 
 
@@ -374,6 +448,12 @@ def host_make_directory(
     except Exception as exc:
         result = format_error_response(exc)
     _record_tool_call("host_make_directory", validated)
+    _record_workspace_journal(
+        "host_make_directory",
+        validated,
+        {"path": path},
+        ok=isinstance(result, dict) and bool(result.get("ok", False)),
+    )
     return result
 
 
@@ -404,6 +484,12 @@ def host_search_text(
     except Exception as exc:
         result = format_error_response(exc)
     _record_tool_call("host_search_text", validated)
+    _record_workspace_journal(
+        "host_search_text",
+        validated,
+        {"query": query, "path": path},
+        ok=isinstance(result, dict) and bool(result.get("ok", False)),
+    )
     return result
 
 
@@ -426,6 +512,12 @@ def host_check_command(
     except Exception as exc:
         result = format_error_response(exc)
     _record_tool_call("host_check_command", validated)
+    _record_workspace_journal(
+        "host_check_command",
+        validated,
+        {"command": command},
+        ok=isinstance(result, dict) and bool(result.get("ok", False)),
+    )
     return result
 
 
@@ -467,4 +559,15 @@ def host_run_command(
             "command_sha256", hashlib.sha256(command.encode("utf-8")).hexdigest()
         )
         log_audit_event("HOST_TOOL_CALL", {"tool": "host_run_command", **attributed})
+    _record_workspace_journal(
+        "host_run_command",
+        validated,
+        {
+            "command": command,
+            "intent": cleaned_intent,
+            "cwd": cwd,
+            "exit_code": result.get("exit_code") if isinstance(result, dict) else None,
+        },
+        ok=isinstance(result, dict) and bool(result.get("ok", False)),
+    )
     return result

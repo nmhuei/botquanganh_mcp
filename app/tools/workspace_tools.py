@@ -74,14 +74,19 @@ def _workspace_path_from(result: Any) -> Path | None:
 @mcp.tool(
     name="host_workspace_bind",
     description=(
-        "Create or re-bind the per-chat host workspace for a chat id and return "
-        "its absolute path plus usage hints. Ids are 6-64 characters from "
-        "letters, digits, '.', '-' and '_', starting with a letter or digit."
+        "Initialize or re-bind a per-chat host workspace and receive a server-assigned "
+        "chat_id and secret session token. Always call this tool first before using other "
+        "host tools. To create a new workspace, pass an optional label. To resume an "
+        "existing workspace, pass resume_id and resume_token."
     ),
 )
-async def host_workspace_bind(chat_id: str) -> dict[str, Any]:
+async def host_workspace_bind(
+    label: str | None = None,
+    resume_id: str | None = None,
+    resume_token: str | None = None,
+    chat_id: str | None = None,
+) -> dict[str, Any]:
     try:
-        validated = validate_chat_id(chat_id)
         if not _workspaces_enabled():
             return tool_unavailable(
                 "host_workspace_bind", reason="Chat workspaces are disabled."
@@ -94,24 +99,45 @@ async def host_workspace_bind(chat_id: str) -> dict[str, Any]:
                 reason="Chat workspace infrastructure is not installed.",
             )
         manager = workspace_module.WorkspaceManager(_chat_root())
-        bound = manager.create_or_bind(validated)
+        target_id = resume_id if resume_id is not None else chat_id
+        if target_id is not None:
+            validate_chat_id(target_id)
+        bound = manager.create_or_bind(
+            target_id,
+            label=label,
+            resume_token=resume_token,
+            require_token=bool(target_id),
+        )
         workspace_dir = _workspace_path_from(bound)
         if workspace_dir is None:
             raise ValueError("create_or_bind returned no workspace path")
         resolved = str(workspace_dir.expanduser().resolve())
         hints = list(_NOTE_HINTS[:3])
-        created = getattr(bound, "created", None)
-        resumed_hint = getattr(bound, "resumed_hint", None)
+        created = getattr(bound, "created", None) if not isinstance(bound, dict) else bound.get("created")
+        resumed_hint = getattr(bound, "resumed_hint", None) if not isinstance(bound, dict) else bound.get("resumed_hint")
+        assigned_id = (
+            getattr(bound, "chat_id", "")
+            or (bound.get("chat_id") if isinstance(bound, dict) else "")
+            or target_id
+            or ""
+        )
+        session_token = getattr(bound, "session_token", None) if not isinstance(bound, dict) else bound.get("session_token")
+
         message = f"Workspace ready at {resolved}"
         if resumed_hint:
             message = f"{message} ({resumed_hint})"
+        extra_fields: dict[str, Any] = {
+            "chat_id": assigned_id,
+            "workspace": resolved,
+            "created": created,
+            "hints": hints,
+            "lines": [resolved, *hints],
+        }
+        if session_token:
+            extra_fields["session_token"] = session_token
         return tool_success(
             message,
-            chat_id=validated,
-            workspace=resolved,
-            created=created,
-            hints=hints,
-            lines=[resolved, *hints],
+            **extra_fields,
         )
     except Exception as exc:
         return to_tool_error(exc)

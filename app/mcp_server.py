@@ -38,10 +38,43 @@ if getattr(fastmcp, "__version__", "") != FASTMCP_COMPAT_VERSION:
 
 
 class TokenAuthMiddleware:
-    """Apply gateway-token authentication."""
+    """Apply gateway-token authentication and origin validation."""
 
     def __init__(self, app):
         self.app = app
+
+    @staticmethod
+    def _is_allowed_origin(origin: str, host: str) -> bool:
+        from app.config import ALLOWED_ORIGINS
+
+        if not origin:
+            return True
+        origin_clean = origin.strip().lower()
+        if ALLOWED_ORIGINS:
+            return any(
+                origin_clean == allowed.lower()
+                or origin_clean.endswith("." + allowed.lower())
+                for allowed in ALLOWED_ORIGINS
+            )
+        # Default allow list: loopback, trycloudflare.com, chatgpt.com, openai.com, or matching Host
+        if (
+            origin_clean.startswith("http://localhost:")
+            or origin_clean.startswith("https://localhost:")
+            or origin_clean.startswith("http://127.0.0.1:")
+            or origin_clean.startswith("https://127.0.0.1:")
+            or origin_clean in {"http://localhost", "https://localhost", "http://127.0.0.1", "https://127.0.0.1"}
+            or origin_clean.endswith(".trycloudflare.com")
+            or origin_clean in {"https://chatgpt.com", "https://chat.openai.com"}
+            or origin_clean.endswith(".chatgpt.com")
+            or origin_clean.endswith(".openai.com")
+        ):
+            return True
+        if host and (
+            origin_clean == f"http://{host.lower()}"
+            or origin_clean == f"https://{host.lower()}"
+        ):
+            return True
+        return False
 
     async def __call__(self, scope, receive, send):
         path = scope.get("path", "")
@@ -50,11 +83,23 @@ class TokenAuthMiddleware:
             return
 
         if scope.get("type") in {"http", "websocket"}:
-
             headers = {
                 key.decode("latin-1").lower(): value.decode("latin-1")
                 for key, value in scope.get("headers", [])
             }
+            origin = headers.get("origin", "")
+            host = headers.get("host", "")
+            if origin and not self._is_allowed_origin(origin, host):
+                response = JSONResponse(
+                    format_error_code(
+                        "FORBIDDEN_ORIGIN",
+                        message=f"Origin '{origin}' is not authorized.",
+                    ),
+                    status_code=403,
+                )
+                await response(scope, receive, send)
+                return
+
             auth_header = headers.get("authorization", "")
             token = (
                 auth_header[7:]

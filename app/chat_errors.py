@@ -95,6 +95,12 @@ CHAT_ERROR_CATALOG: dict[str, ChatErrorCode] = {
         "Invoke host_workspace_bind with a valid chat id first, then retry "
         "this tool.",
     ),
+    "E7": ChatErrorCode(
+        "E7",
+        "RESUME_UNAUTHORIZED",
+        "Chat '{chat_id}' resume unauthorized: valid resume_token required.",
+        "Provide the secret resume_token returned when this workspace was created, or bind a new workspace.",
+    ),
 }
 
 # Kept identical to app.chat_workspace.CHAT_ID_PATTERN so ids accepted by the
@@ -125,6 +131,7 @@ _DOMAIN_EXCEPTION_NAMES: dict[str, tuple[str, ...]] = {
     "E4": ("WorkspaceRootFullError", "RootFullError"),
     "E5": ("SquatError", "SquatDetectedError", "WorkspaceSquatDetectedError"),
     "E6": ("BindRequiredError", "WorkspaceBindRequiredError", "ChatBindRequiredError"),
+    "E7": ("ResumeUnauthorizedError", "UnauthorizedResumeError", "InvalidResumeTokenError"),
 }
 
 # Fallback when the module cannot be imported: match on class-name fragments.
@@ -141,6 +148,9 @@ _NAME_FRAGMENTS: tuple[tuple[str, str], ...] = (
     # "bind" alone would over-match; require the full "bindrequired" stem so
     # only bind-gating exceptions (BindRequiredError and friends) map to E6.
     ("bindrequired", "E6"),
+    ("resumeunauthorized", "E7"),
+    ("unauthorizedresume", "E7"),
+    ("invalidresumetoken", "E7"),
 )
 
 

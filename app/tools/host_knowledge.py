@@ -150,7 +150,11 @@ def host_knowledge(
                 )
             except Exception as exc:
                 return format_error_response(exc)
-    from app.tools.host import _guard_chat_id, _record_tool_call
+    from app.tools.host import (
+        _guard_chat_id,
+        _record_tool_call,
+        _record_workspace_journal,
+    )
 
     validated, rejection = _guard_chat_id("host_knowledge", chat_id)
     if rejection is not None:
@@ -168,4 +172,10 @@ def host_knowledge(
     except Exception as exc:
         result = format_error_response(exc)
     _record_tool_call("host_knowledge", validated)
+    _record_workspace_journal(
+        "host_knowledge",
+        validated,
+        {"section": section, "query": query},
+        ok=isinstance(result, dict) and bool(result.get("ok", False)),
+    )
     return result

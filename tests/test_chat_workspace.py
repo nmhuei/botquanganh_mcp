@@ -158,10 +158,11 @@ def test_create_layout_and_meta(manager, tmp_path):
     assert (ws / "STATE.md").exists()
     assert (ws / "notes").is_dir()
     meta = json.loads((ws / "meta.json").read_text(encoding="utf-8"))
-    assert set(meta) == {"chat_id", "created_at", "schema", "next_seq"}
+    assert set(meta) == {"chat_id", "created_at", "schema", "next_seq", "token_hash"}
     assert meta["chat_id"] == "abcdef"
     assert meta["schema"] == 1
     assert meta["next_seq"] == 1
+    assert isinstance(meta["token_hash"], str) and len(meta["token_hash"]) == 64
 
 
 def test_bind_existing_workspace(manager):

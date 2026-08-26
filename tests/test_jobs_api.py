@@ -151,6 +151,11 @@ def test_jobs_and_activity_endpoints():
     }
     code = r'''
 import json
+import os
+import tempfile
+
+os.environ["HOST_CHAT_ROOT"] = tempfile.mkdtemp(prefix="jobs-test-chats-")
+os.environ["HOST_CHAT_WORKSPACES"] = "false"
 
 from starlette.testclient import TestClient
 

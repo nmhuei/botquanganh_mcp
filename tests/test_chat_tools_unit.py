@@ -26,6 +26,7 @@ from app.tools.workspace_tools import host_save_note, host_workspace_bind
 @pytest.fixture
 def chat_root(tmp_path, monkeypatch):
     monkeypatch.setattr(app.config, "HOST_CHAT_ROOT", str(tmp_path), raising=False)
+    monkeypatch.setattr(app.config, "ATTRIBUTION_MODE", "off", raising=False)
     return tmp_path
 
 
@@ -49,12 +50,19 @@ def install_fake_workspace_module(monkeypatch, tmp_path, calls=None, shape="attr
             self.root = root
             roots.append(root)
 
-        def create_or_bind(self, chat_id):
-            recorded_calls.append(chat_id)
-            path = tmp_path / "chats" / chat_id
+        def create_or_bind(self, chat_id=None, **kwargs):
+            target = chat_id or kwargs.get("label") or "abcdef"
+            recorded_calls.append(target)
+            path = tmp_path / "chats" / target
             if shape == "dict":
-                return {"path": str(path)}
-            return types.SimpleNamespace(path=path, created=True, resumed_hint=None)
+                return {"path": str(path), "chat_id": target}
+            return types.SimpleNamespace(
+                path=path,
+                created=True,
+                resumed_hint=None,
+                chat_id=target,
+                session_token="sec_test_token_123",
+            )
 
     module = types.ModuleType("app.chat_workspace")
     module.WorkspaceManager = FakeWorkspaceManager
@@ -248,7 +256,7 @@ def test_bind_invalid_chat_id_returns_structured_e1(chat_root, monkeypatch):
     calls = []
     install_fake_workspace_module(monkeypatch, chat_root, calls=calls)
 
-    result = asyncio.run(host_workspace_bind("../escape"))
+    result = asyncio.run(host_workspace_bind(chat_id="../escape"))
 
     assert result["ok"] is False
     assert result["error"]["code"] == "E1"
@@ -265,14 +273,14 @@ def test_bind_wraps_unknown_manager_errors_as_internal(
         def __init__(self, root):
             self.root = root
 
-        def create_or_bind(self, chat_id):
-            calls.append(chat_id)
+        def create_or_bind(self, chat_id=None, **kwargs):
+            calls.append(chat_id or kwargs.get("label"))
             raise RuntimeError("workspace manager exploded")
 
     module.WorkspaceManager = ExplodingManager
     monkeypatch.setitem(sys.modules, "app.chat_workspace", module)
 
-    result = asyncio.run(host_workspace_bind("abcdef"))
+    result = asyncio.run(host_workspace_bind(chat_id="abcdef"))
 
     assert result["ok"] is False
     assert calls == ["abcdef"]
@@ -416,12 +424,13 @@ def _real_workspace_env(tmp_path, monkeypatch):
     pytest.importorskip("app.chat_workspace")
     monkeypatch.setattr(app.config, "HOST_CHAT_WORKSPACES", True, raising=False)
     monkeypatch.setattr(app.config, "HOST_CHAT_ROOT", str(tmp_path), raising=False)
+    monkeypatch.setattr(app.config, "ATTRIBUTION_MODE", "off", raising=False)
 
 
 def test_bind_against_real_infrastructure_creates_metadata(tmp_path, monkeypatch):
     _real_workspace_env(tmp_path, monkeypatch)
 
-    result = asyncio.run(host_workspace_bind("integration"))
+    result = asyncio.run(host_workspace_bind(chat_id="integration"))
 
     workspace_dir = tmp_path / "integration"
     assert result["ok"] is True
@@ -433,9 +442,9 @@ def test_bind_against_real_infrastructure_creates_metadata(tmp_path, monkeypatch
 def test_bind_capacity_error_maps_onto_e2(tmp_path, monkeypatch):
     _real_workspace_env(tmp_path, monkeypatch)
     monkeypatch.setattr(app.config, "HOST_CHAT_MAX_WORKSPACES", 1, raising=False)
-    asyncio.run(host_workspace_bind("first1"))
+    asyncio.run(host_workspace_bind(chat_id="first1"))
 
-    result = asyncio.run(host_workspace_bind("second"))
+    result = asyncio.run(host_workspace_bind(chat_id="second"))
 
     assert result["ok"] is False
     assert result["error"]["code"] == "E2"
@@ -459,7 +468,7 @@ def test_bind_foreign_owned_directory_maps_onto_e5(tmp_path, monkeypatch):
     }
     (foreign / "meta.json").write_text(json.dumps(meta) + "\n", encoding="utf-8")
 
-    result = asyncio.run(host_workspace_bind("foreign"))
+    result = asyncio.run(host_workspace_bind(chat_id="foreign"))
 
     assert result["ok"] is False
     assert result["error"]["code"] == "E5"
@@ -467,7 +476,7 @@ def test_bind_foreign_owned_directory_maps_onto_e5(tmp_path, monkeypatch):
 
 def test_save_note_lands_in_real_bound_workspace(tmp_path, monkeypatch):
     _real_workspace_env(tmp_path, monkeypatch)
-    asyncio.run(host_workspace_bind("integration"))
+    asyncio.run(host_workspace_bind(chat_id="integration"))
 
     note = asyncio.run(host_save_note("real note", chat_id="integration"))
     log_file = tmp_path / "integration" / "notes" / "log.txt"

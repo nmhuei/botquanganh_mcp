@@ -327,3 +327,176 @@ def run_sweep_once(
     actions = plan_actions(inventory, limits)
     results = apply_actions(actions, root, dry_run=dry_run)
     return {"inventory": inventory, "actions": actions, "results": results}
+
+
+# ---------------------------------------------------------------------------
+# Command-line entrypoint (additive; invoked by scripts/sweep_chat_workspaces.sh
+# and gated hourly by scripts/start_tunnel_server.sh).
+#
+#   python -m app.chat_sweeper [--apply] [--json] [--root PATH]
+#
+# Default mode is a dry run: one JSON object per planned action followed by a
+# final ``{"summary": ...}`` line. ``--json`` switches to a single
+# machine-parseable JSON document. Individual workspace failures never abort
+# the sweep: they surface as per-result statuses and are counted in the
+# summary. Thresholds come from app.config via getattr so the entrypoint keeps
+# working whether or not every HOST_CHAT_* key exists yet.
+# ---------------------------------------------------------------------------
+
+import argparse  # noqa: E402
+import importlib  # noqa: E402
+import sys  # noqa: E402
+from typing import TextIO  # noqa: E402
+
+_DEFAULT_ROOT = Path("~/Downloads/bqa-workspaces")
+
+
+def _limits_from_config(config: Any) -> SweepLimits:
+    """Map app.config attributes onto :class:`SweepLimits` with safe fallbacks.
+
+    The fallbacks mirror the :class:`SweepLimits` dataclass defaults, so a bare
+    namespace yields the same plan as calling the pure API directly.
+    """
+    return SweepLimits(
+        idle_archive_hours=max(
+            0.0, float(getattr(config, "HOST_CHAT_IDLE_ARCHIVE_HOURS", 24 * 7))
+        ),
+        retention_days=max(
+            0.0, float(getattr(config, "HOST_CHAT_RETENTION_DAYS", 30))
+        ),
+        max_workspaces=int(getattr(config, "HOST_CHAT_MAX_WORKSPACES", 64)),
+        root_max_gb=max(0.0, float(getattr(config, "HOST_CHAT_ROOT_MAX_GB", 10.0))),
+    )
+
+
+def decide_sweep(
+    *,
+    enabled: bool,
+    now_ts: float,
+    last_sweep_ts: float,
+    interval_minutes: float,
+    apply_requested: bool = False,
+) -> dict[str, Any]:
+    """Pure decision for the supervisor's periodic sweep gate.
+
+    scripts/start_tunnel_server.sh mirrors this logic in bash (timestamp
+    compare like its health-check second gate); this function is the testable
+    specification. Returns ``{"run": bool, "apply": bool, "reason": str}``.
+    """
+    if not enabled:
+        return {"run": False, "apply": False, "reason": "chat workspaces disabled"}
+    try:
+        interval_seconds = float(interval_minutes) * 60.0
+    except (TypeError, ValueError):
+        return {"run": False, "apply": False, "reason": "unparseable sweep interval"}
+    if interval_seconds <= 0:
+        return {"run": False, "apply": False, "reason": "sweep interval disabled"}
+    if float(now_ts) - float(last_sweep_ts) < interval_seconds:
+        return {"run": False, "apply": False, "reason": "interval not elapsed"}
+    return {"run": True, "apply": bool(apply_requested), "reason": "interval elapsed"}
+
+
+def _summarize(report: dict[str, Any], dry_run: bool) -> dict[str, Any]:
+    counts: dict[str, int] = {}
+    for item in report.get("results", []):
+        status = str(item.get("status", "unknown"))
+        counts[status] = counts.get(status, 0) + 1
+    return {
+        "scanned": len(report.get("inventory", [])),
+        "planned": len(report.get("actions", [])),
+        "status_counts": counts,
+        "errors": counts.get("error", 0),
+        "dry_run": dry_run,
+    }
+
+
+def _emit_lines(report: dict[str, Any], dry_run: bool, stream: TextIO) -> None:
+    """Default human-tailable output: one JSON object per action, summary last."""
+    reasons = {
+        str(item.get("target")): str(item.get("reason", ""))
+        for item in report.get("actions", [])
+    }
+    for result in report.get("results", []):
+        line = {key: val for key, val in result.items() if val is not None}
+        line["reason"] = reasons.get(str(result.get("target")), "")
+        stream.write(json.dumps(line, sort_keys=True) + "\n")
+    stream.write(json.dumps({"summary": _summarize(report, dry_run)}, sort_keys=True) + "\n")
+
+
+def _main(
+    argv: list[str] | None = None,
+    config: Any | None = None,
+    stdout: TextIO | None = None,
+) -> int:
+    if config is None:
+        config = importlib.import_module("app.config")
+    stream = stdout if stdout is not None else sys.stdout
+
+    parser = argparse.ArgumentParser(
+        prog="python -m app.chat_sweeper",
+        description=(
+            "Scan chat workspaces and report (default dry run) or apply "
+            "lifecycle actions (archive idle, enforce limits, delete expired)."
+        ),
+    )
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="perform archiving/deletion instead of the default dry run",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="emit one machine-readable JSON document instead of JSON lines",
+    )
+    parser.add_argument(
+        "--root",
+        default="",
+        help="workspace root override (defaults to config HOST_CHAT_ROOT)",
+    )
+    args = parser.parse_args(argv)
+
+    if args.root:
+        root = Path(args.root).expanduser()
+    else:
+        configured = getattr(config, "HOST_CHAT_ROOT", "") or _DEFAULT_ROOT
+        root = Path(configured).expanduser()
+
+    dry_run = not args.apply
+    try:
+        limits = _limits_from_config(config)
+    except (TypeError, ValueError) as exc:
+        payload = {"summary": {"error": "invalid limits: {}".format(exc), "dry_run": dry_run}}
+        stream.write(json.dumps(payload, sort_keys=True) + "\n")
+        return 1
+
+    try:
+        report = run_sweep_once(root, limits, dry_run=dry_run)
+    except Exception as exc:  # noqa: BLE001 - entrypoint reports instead of crashing
+        payload = {
+            "summary": {
+                "error": "{}: {}".format(type(exc).__name__, exc),
+                "dry_run": dry_run,
+                "root": str(root),
+            }
+        }
+        stream.write(
+            json.dumps(payload, indent=2 if args.json else None, sort_keys=True) + "\n"
+        )
+        return 1
+
+    if args.json:
+        document = {
+            "root": str(root),
+            "dry_run": dry_run,
+            **report,
+            "summary": _summarize(report, dry_run),
+        }
+        stream.write(json.dumps(document, indent=2, sort_keys=True) + "\n")
+    else:
+        _emit_lines(report, dry_run, stream)
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(_main())

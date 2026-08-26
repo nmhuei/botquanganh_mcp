@@ -43,6 +43,17 @@ LAUNCHER_PID_FILE="logs/launcher.pid"
 TUNNEL_URL_FILE="logs/tunnel_url.txt"
 SERVER_LOG="logs/server.log"
 CLOUDFLARED_LOG="logs/cloudflared.log"
+# Chat workspace lifecycle sweep (scripts/sweep_chat_workspaces.sh). Gated on
+# HOST_CHAT_WORKSPACES=true; scheduled sweeps stay dry-run unless
+# HOST_CHAT_SWEEP_APPLY=true opts into real archiving/deletion. Reports land
+# in logs/sweeper.log.
+CHAT_SWEEP_ENABLED="$(read_env HOST_CHAT_WORKSPACES false)"
+CHAT_SWEEP_INTERVAL_MINUTES="$(read_env HOST_CHAT_SWEEP_INTERVAL_MINUTES 60)"
+case "$CHAT_SWEEP_INTERVAL_MINUTES" in
+    ''|*[!0-9]*) CHAT_SWEEP_INTERVAL_MINUTES=60 ;;
+esac
+CHAT_SWEEP_APPLY="$(read_env HOST_CHAT_SWEEP_APPLY false)"
+SWEEPER_LOG="logs/sweeper.log"
 
 SERVER_STARTED_AT=0
 MANAGED_SERVER_PID=""
@@ -51,6 +62,7 @@ PUBLISHED_TUNNEL_PID=""
 TUNNEL_LOG_OFFSET=0
 TUNNEL_LOST_REPORTED=0
 SHUTTING_DOWN=0
+LAST_CHAT_SWEEP=0
 
 read_pid() {
     read_pid_file "$1"
@@ -276,6 +288,20 @@ while true; do
                 health_failures=0
             fi
         fi
+    fi
+
+    # Hourly chat-workspace sweep gate; mirrors the health-check second-compare
+    # idiom above. The wrapper appends its own JSON report to $SWEEPER_LOG and
+    # a failure here must never take the supervisor down.
+    if [ "$CHAT_SWEEP_ENABLED" = "true" ] && [ $((now - LAST_CHAT_SWEEP)) -ge $((CHAT_SWEEP_INTERVAL_MINUTES * 60)) ]; then
+        LAST_CHAT_SWEEP=$now
+        sweep_args=()
+        if [ "$CHAT_SWEEP_APPLY" = "true" ]; then
+            sweep_args+=(--apply)
+        fi
+        echo "[+] Chat workspace sweep starting (apply=$CHAT_SWEEP_APPLY)."
+        ./scripts/sweep_chat_workspaces.sh "${sweep_args[@]}" >/dev/null 2>&1 ||
+            echo "[!] Chat workspace sweep failed; see $SWEEPER_LOG."
     fi
 
     sleep 0.1

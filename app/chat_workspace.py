@@ -7,10 +7,13 @@ cache. The journal is authoritative; STATE.md is always regenerable.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import importlib
 import json
 import os
 import re
+import secrets
 import threading
 import time
 from collections.abc import Callable, Iterable, Mapping
@@ -45,6 +48,14 @@ class CapacityError(RuntimeError):
     """Configured workspace capacity prevents creating another workspace."""
 
 
+class ResumeUnauthorizedError(RuntimeError):
+    """Resume token was invalid or missing for an existing workspace."""
+
+    def __init__(self, message: str, *, chat_id: str | None = None) -> None:
+        super().__init__(message)
+        self.chat_id = chat_id
+
+
 class QuotaError(RuntimeError):
     """Per-workspace byte quota blocks the requested mutation."""
 
@@ -64,6 +75,47 @@ class QuotaError(RuntimeError):
         self.quota_bytes = quota_bytes
 
 
+def generate_chat_id(label: str | None = None) -> str:
+    """Generate a server-assigned unique chat_id.
+
+    Format: cw-YYYYMMDD-[sanitized_label-]8hex
+    """
+    date_part = datetime.now(timezone.utc).strftime("%Y%m%d")
+    rand_part = secrets.token_hex(4)  # 8 hex chars
+    if label:
+        clean_label = re.sub(r"[^A-Za-z0-9_-]", "-", str(label).strip()).strip("-_")
+        max_label_len = 64 - 22  # "cw-YYYYMMDD-" (12) + "-" (1) + 8hex (8) + 1 = 22
+        clean_label = clean_label[:max_label_len].rstrip("-_")
+        if clean_label:
+            candidate = f"cw-{date_part}-{clean_label}-{rand_part}"
+            if CHAT_ID_PATTERN.fullmatch(candidate):
+                return candidate
+    return f"cw-{date_part}-{rand_part}"
+
+
+def generate_session_token() -> tuple[str, str]:
+    """Generate a raw 32-byte hex secret and its SHA-256 hash.
+
+    Returns (raw_token, token_hash).
+    """
+    raw_token = secrets.token_hex(32)
+    token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+    return raw_token, token_hash
+
+
+def hash_token(token: str) -> str:
+    """Return the SHA-256 hex digest of a token."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def verify_session_token(token: str, token_hash: str) -> bool:
+    """Constant-time comparison between hashed token and expected token_hash."""
+    if not token or not token_hash:
+        return False
+    candidate_hash = hash_token(token)
+    return hmac.compare_digest(candidate_hash.encode("ascii"), token_hash.encode("ascii"))
+
+
 @dataclass(frozen=True)
 class WorkspaceLimits:
     max_workspaces: int
@@ -80,6 +132,8 @@ class BindResult:
     path: Path
     created: bool
     resumed_hint: str | None
+    chat_id: str = ""
+    session_token: str | None = None
 
 
 def _int_limit(key: str, default: int) -> int:
@@ -442,9 +496,29 @@ class WorkspaceManager:
                 self._workspace_locks[chat_id] = lock
             return lock
 
-    def create_or_bind(self, chat_id: str) -> BindResult:
-        validated = validate_chat_id(chat_id)
+    def create_or_bind(
+        self,
+        chat_id: str | None = None,
+        *,
+        label: str | None = None,
+        resume_token: str | None = None,
+        require_token: bool = False,
+    ) -> BindResult:
         self.root.mkdir(parents=True, exist_ok=True)
+        if chat_id is None:
+            self._enforce_capacity()
+            for _ in range(10):
+                generated = generate_chat_id(label)
+                with self._lock_for(generated):
+                    ws = self.root / generated
+                    try:
+                        os.mkdir(ws)
+                    except FileExistsError:
+                        continue
+                    return self._initialize(generated, ws)
+            raise CapacityError("Unable to allocate a unique workspace directory.")
+
+        validated = validate_chat_id(chat_id)
         with self._lock_for(validated):
             ws = self.root / validated
             if not ws.exists():
@@ -452,7 +526,12 @@ class WorkspaceManager:
             try:
                 os.mkdir(ws)
             except FileExistsError:
-                return self._bind_existing(validated, ws)
+                return self._bind_existing(
+                    validated,
+                    ws,
+                    resume_token=resume_token,
+                    require_token=require_token,
+                )
             return self._initialize(validated, ws)
 
     def _enforce_capacity(self) -> None:
@@ -493,10 +572,12 @@ class WorkspaceManager:
 
     def _initialize(self, chat_id: str, ws: Path) -> BindResult:
         (ws / NOTES_NAME).mkdir(exist_ok=True)
+        raw_token, token_hash = generate_session_token()
         meta = {
             "chat_id": chat_id,
             "created_at": _utc_now_iso(),
             "schema": WORKSPACE_SCHEMA,
+            "token_hash": token_hash,
             "next_seq": 1,
         }
         meta_path = ws / META_NAME
@@ -511,16 +592,42 @@ class WorkspaceManager:
             os.close(descriptor)
         (ws / JOURNAL_NAME).touch(mode=0o600)
         rebuild_state(ws)
-        return BindResult(path=ws, created=True, resumed_hint=None)
+        return BindResult(
+            path=ws,
+            created=True,
+            resumed_hint=None,
+            chat_id=chat_id,
+            session_token=raw_token,
+        )
 
-    def _bind_existing(self, chat_id: str, ws: Path) -> BindResult:
+    def _bind_existing(
+        self,
+        chat_id: str,
+        ws: Path,
+        *,
+        resume_token: str | None = None,
+        require_token: bool = False,
+    ) -> BindResult:
         deadline = time.monotonic() + self.bind_wait_seconds
         while True:
             if (ws / META_NAME).exists():
-                load_workspace_meta(ws, expected_chat_id=chat_id)
+                meta = load_workspace_meta(ws, expected_chat_id=chat_id)
+                token_hash = meta.get("token_hash")
+                if token_hash and (require_token or resume_token is not None):
+                    if not resume_token or not verify_session_token(resume_token, token_hash):
+                        raise ResumeUnauthorizedError(
+                            f"Invalid or missing resume_token for workspace '{chat_id}'.",
+                            chat_id=chat_id,
+                        )
                 # Ownership first (squat defense), then quota, before any write.
                 self._enforce_quota(ws, chat_id)
-                return BindResult(path=ws, created=False, resumed_hint=self._resume_hint(ws))
+                return BindResult(
+                    path=ws,
+                    created=False,
+                    resumed_hint=self._resume_hint(ws),
+                    chat_id=chat_id,
+                    session_token=resume_token,
+                )
             if time.monotonic() >= deadline:
                 raise SquatError(f"directory exists without workspace metadata: {ws.name}")
             time.sleep(_BIND_POLL_SECONDS)

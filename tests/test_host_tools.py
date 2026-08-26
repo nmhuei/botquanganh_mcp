@@ -28,6 +28,7 @@ def host_workspace(tmp_path, monkeypatch):
     monkeypatch.setattr(app.config, "MAX_OUTPUT_BYTES", 10_000)
     monkeypatch.setattr(app.config, "MAX_SINGLE_FILE_BYTES", 100_000)
     monkeypatch.setattr(app.config, "MAX_TIMEOUT_SECONDS", 10)
+    monkeypatch.setattr(app.config, "ATTRIBUTION_MODE", "off")
     return tmp_path
 
 
@@ -63,6 +64,7 @@ def test_host_command_has_no_approval_parameter():
 
 
 def test_host_mcp_command_marks_result_for_the_local_activity_journal(monkeypatch):
+    monkeypatch.setattr(app.config, "ATTRIBUTION_MODE", "off")
     calls = []
     monkeypatch.setattr(
         "app.tools.host.execute_host_command",
@@ -125,6 +127,7 @@ def test_allowlist_policy_permits_all_when_configured_all(host_workspace, monkey
 def test_host_knowledge_reads_guides_and_detects_tools(monkeypatch):
     repo_root = Path(__file__).resolve().parents[1]
     monkeypatch.setattr(app.config, "HOST_KNOWLEDGE_DIR", repo_root / "knowledge")
+    monkeypatch.setattr(app.config, "ATTRIBUTION_MODE", "off")
 
     guides = read_guides()
     assert guides["document_count"] >= 2

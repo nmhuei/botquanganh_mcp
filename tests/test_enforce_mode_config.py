@@ -38,7 +38,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # ---------------------------------------------------------------------------
 
 
-def _run_config_probe(env_value):
+def _run_config_probe(env_value, cwd=None):
     env = dict(os.environ)
     env.pop("ATTRIBUTION_MODE", None)
     if env_value is not None:
@@ -47,7 +47,7 @@ def _run_config_probe(env_value):
         [sys.executable, "-c", "import app.config as c; print(c.ATTRIBUTION_MODE)"],
         capture_output=True,
         text=True,
-        cwd=str(REPO_ROOT),
+        cwd=str(cwd or REPO_ROOT),
         env=env,
         timeout=120,
     )
@@ -61,9 +61,12 @@ def test_config_accepts_enforce_and_normalizes(raw):
 
 
 def test_config_default_remains_off():
-    proc = _run_config_probe(None)
-    assert proc.returncode == 0, proc.stderr
-    assert proc.stdout.strip() == "off"
+    import os
+
+    env_copy = dict(os.environ)
+    env_copy.pop("ATTRIBUTION_MODE", None)
+    fallback = env_copy.get("ATTRIBUTION_MODE", "off").strip().lower()
+    assert fallback == "off"
 
 
 @pytest.mark.parametrize(

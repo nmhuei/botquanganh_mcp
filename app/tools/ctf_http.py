@@ -166,15 +166,28 @@ def ctf_fetch_url(
     timeout_seconds: int = _DEFAULT_TIMEOUT_SECONDS,
     max_bytes: int = _DEFAULT_MAX_BYTES,
     follow_redirects: bool = True,
+    chat_id: str | None = None,
 ) -> dict[str, Any]:
     """Run a single bounded read-only GET for an authorized CTF challenge URL."""
     try:
-        return fetch_ctf_url(
+        from app.tools.host import _guard_chat_id, _record_tool_call
+
+        validated, rejection = _guard_chat_id("ctf_fetch_url", chat_id)
+        if rejection is not None:
+            return rejection
+        result = fetch_ctf_url(
             url,
             timeout_seconds=timeout_seconds,
             max_bytes=max_bytes,
             follow_redirects=follow_redirects,
         )
+        _record_tool_call(
+            "ctf_fetch_url",
+            validated,
+            {"url": url},
+            ok=isinstance(result, dict) and bool(result.get("ok", False)),
+        )
+        return result
     except Exception as exc:
         return format_error_response(exc)
 
@@ -195,6 +208,11 @@ def ctf_fetch_url(
     },
     app=AppConfig(resource_uri=CTF_FETCH_RESULT_WIDGET_URI),
 )
-def ctf_render_fetch_result(result: dict[str, Any]) -> dict[str, Any]:
+def ctf_render_fetch_result(result: dict[str, Any], chat_id: str | None = None) -> dict[str, Any]:
     """Return a prior CTF fetch result unchanged for the MCP App UI to render."""
+    from app.tools.host import _guard_chat_id
+
+    _, rejection = _guard_chat_id("ctf_render_fetch_result", chat_id)
+    if rejection is not None:
+        return rejection
     return result

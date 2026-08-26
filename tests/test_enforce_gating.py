@@ -60,12 +60,24 @@ TOOL_FUNCTIONS = {
 
 @pytest.fixture
 def host_workspace(tmp_path, monkeypatch):
-    monkeypatch.setattr(app.config, "HOST_WORKSPACE_DIR", tmp_path)
+    ws_dir = tmp_path / "workspace"
+    ws_dir.mkdir(parents=True, exist_ok=True)
+    chat_root = tmp_path / "chats_storage"
+    monkeypatch.setattr(app.config, "HOST_WORKSPACE_DIR", ws_dir)
     monkeypatch.setattr(app.config, "HOST_RESTRICT_TO_WORKSPACE", True)
     monkeypatch.setattr(app.config, "HOST_COMMAND_POLICY", "guarded")
     monkeypatch.setattr(app.config, "MAX_OUTPUT_BYTES", 10_000)
     monkeypatch.setattr(app.config, "MAX_SINGLE_FILE_BYTES", 100_000)
-    return tmp_path
+    monkeypatch.setattr(app.config, "HOST_CHAT_ROOT", str(chat_root))
+    monkeypatch.setattr(app.config, "HOST_CHAT_WORKSPACES", True)
+    for cid in (VALID_ID, OTHER_VALID_ID):
+        target = chat_root / cid
+        target.mkdir(parents=True, exist_ok=True)
+        (target / "meta.json").write_text(
+            f'{{"chat_id": "{cid}", "created_at": "2026-08-26T00:00:00+00:00", "schema": 1, "next_seq": 1}}\n',
+            encoding="utf-8",
+        )
+    return ws_dir
 
 
 @pytest.fixture
@@ -338,6 +350,14 @@ def test_context_bound_chat_id_satisfies_enforce_without_a_param(
 @pytest.fixture
 def chat_root(tmp_path, monkeypatch):
     monkeypatch.setattr(app.config, "HOST_CHAT_ROOT", str(tmp_path), raising=False)
+    monkeypatch.setattr(app.config, "HOST_CHAT_WORKSPACES", True, raising=False)
+    # Create valid meta for VALID_ID
+    ws_dir = tmp_path / VALID_ID
+    ws_dir.mkdir(parents=True, exist_ok=True)
+    (ws_dir / "meta.json").write_text(
+        f'{{"chat_id": "{VALID_ID}", "created_at": "2026-08-26T00:00:00+00:00", "schema": 1, "next_seq": 1}}\n',
+        encoding="utf-8",
+    )
     return tmp_path
 
 
@@ -347,9 +367,10 @@ def fake_workspace_infra(monkeypatch, tmp_path):
         def __init__(self, root):
             self.root = root
 
-        def create_or_bind(self, chat_id):
-            path = tmp_path / "chats" / chat_id
-            return types.SimpleNamespace(path=path, created=True, resumed_hint=None)
+        def create_or_bind(self, chat_id=None, **kwargs):
+            target = chat_id or kwargs.get("label") or VALID_ID
+            path = tmp_path / "chats" / target
+            return types.SimpleNamespace(path=path, created=True, resumed_hint=None, chat_id=target)
 
     module = types.ModuleType("app.chat_workspace")
     module.WorkspaceManager = FakeWorkspaceManager
@@ -363,7 +384,7 @@ def test_only_host_workspace_bind_is_exempt():
 def test_bind_works_under_enforce_without_any_prior_binding(
     chat_root, enforce_mode, fake_workspace_infra
 ):
-    result = asyncio.run(host_workspace_bind(VALID_ID))
+    result = asyncio.run(host_workspace_bind(chat_id=VALID_ID))
 
     assert result["ok"] is True
     assert result["chat_id"] == VALID_ID
@@ -371,7 +392,7 @@ def test_bind_works_under_enforce_without_any_prior_binding(
 
 
 def test_bind_still_validates_ids_under_enforce(chat_root, enforce_mode):
-    result = asyncio.run(host_workspace_bind(INVALID_ID))
+    result = asyncio.run(host_workspace_bind(chat_id=INVALID_ID))
 
     assert result["ok"] is False
     assert result["error"]["code"] == "E1"
@@ -521,7 +542,7 @@ def test_registry_matches_the_host_tools_surface():
 
 def test_every_non_exempt_host_tool_accepts_a_chat_id():
     for name, func in TOOL_FUNCTIONS.items():
-        if name in BIND_EXEMPT_TOOLS or name in CTF_UNGATED_TOOLS:
+        if name in BIND_EXEMPT_TOOLS:
             continue
         parameters = inspect.signature(func).parameters
         assert "chat_id" in parameters, f"{name} lost its chat_id parameter"

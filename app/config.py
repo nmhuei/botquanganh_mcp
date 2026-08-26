@@ -146,6 +146,11 @@ MCP_STATELESS_HTTP = os.getenv("MCP_STATELESS_HTTP", "true").lower() == "true"
 GATEWAY_TOKEN = os.getenv("GATEWAY_TOKEN", "")
 REQUIRE_AUTH = os.getenv("REQUIRE_AUTH", "false").lower() == "true"
 TRUST_PROXY_HEADERS = os.getenv("TRUST_PROXY_HEADERS", "false").lower() == "true"
+ALLOWED_ORIGINS = tuple(
+    x.strip()
+    for x in os.getenv("ALLOWED_ORIGINS", "").split(",")
+    if x.strip()
+)
 
 HOST_WORKSPACE_DIR = Path(os.getenv("HOST_WORKSPACE_DIR", str(Path.home()))).expanduser()
 if not HOST_WORKSPACE_DIR.is_absolute():
