@@ -84,9 +84,26 @@ class ProgressReporter:
             return False
         if os.getenv("BQA_NO_PROGRESS", "").strip().lower() in {"1", "true", "yes", "on"}:
             return False
+        # Suppressed color implies suppressed motion: the visual contract
+        # forbids ANY escape bytes (cursor movement included) when styling is
+        # off, so NO_COLOR (any non-empty value, per spec) and the explicit
+        # "none" mode both disable the live block entirely.
+        if os.getenv("NO_COLOR", "") != "":
+            return False
+        if self.color_mode == "none":
+            return False
         if os.getenv("TERM", "") == "dumb":
             return False
         return _is_tty(self.stream)
+
+    @property
+    def style_mode(self) -> str:
+        """Color mode handed to style(): "none" maps to full suppression.
+
+        style()/color_enabled() only knows "never"; leaving "none" unchecked
+        would fall through to the isatty branch and emit SGR codes on a tty.
+        """
+        return "never" if self.color_mode == "none" else self.color_mode
 
     @property
     def elapsed_seconds(self) -> float:
@@ -115,8 +132,8 @@ class ProgressReporter:
             self._frame = (self._frame + 1) % len(_SPINNER)
 
     def _root_line(self) -> str:
-        spinner = style(_SPINNER[self._frame], "white", color_mode=self.color_mode, stream=self.stream)
-        message = style(self.message, "dim", color_mode=self.color_mode, stream=self.stream)
+        spinner = style(_SPINNER[self._frame], "white", color_mode=self.style_mode, stream=self.stream)
+        message = style(self.message, "dim", color_mode=self.style_mode, stream=self.stream)
         suffix = ""
         if self.total is not None:
             total = max(0, int(self.total))
@@ -125,7 +142,7 @@ class ProgressReporter:
         elapsed = ""
         if self.elapsed_seconds >= 2.0:
             rendered = _format_elapsed(self.elapsed_seconds)
-            elapsed = " · " + style(rendered, "dim", color_mode=self.color_mode, stream=self.stream)
+            elapsed = " · " + style(rendered, "dim", color_mode=self.style_mode, stream=self.stream)
         return f"{spinner} {message}{suffix}{elapsed}"
 
     def _row_lines(self) -> list[str]:
@@ -134,19 +151,22 @@ class ProgressReporter:
         max_name = max(len(row.name) for row in self._rows.values())
         lines: list[str] = []
         for row in self._rows.values():
-            name = style(row.name.ljust(max_name), "dim", color_mode=self.color_mode, stream=self.stream)
+            name = style(row.name.ljust(max_name), "dim", color_mode=self.style_mode, stream=self.stream)
             if row.total is None:
                 lines.append(f"{name} ....")
                 continue
             total = max(1, int(row.total))
             current = min(max(0, int(row.current)), total)
             filled = round(_REQUEST_BAR_WIDTH * (current / total))
-            done = style("-" * filled, "green", color_mode=self.color_mode, stream=self.stream)
-            left = style("-" * (_REQUEST_BAR_WIDTH - filled), "black_dim", color_mode=self.color_mode, stream=self.stream)
+            done = style("-" * filled, "green", color_mode=self.style_mode, stream=self.stream)
+            left = style("-" * (_REQUEST_BAR_WIDTH - filled), "black_dim", color_mode=self.style_mode, stream=self.stream)
+            # The metric is this row's final plain-text tail segment; strip its
+            # padding here so no row line ends with invisible trailing spaces
+            # (rstrip must never touch a styled segment, only plain text).
             if row.binary_bytes:
-                metric = f"{_binary_bytes(current):>7}/{_binary_bytes(total):7}"
+                metric = f"{_binary_bytes(current):>7}/{_binary_bytes(total):7}".rstrip()
             else:
-                metric = f"{current:>3}/{total:<3}"
+                metric = f"{current:>3}/{total:<3}".rstrip()
             lines.append(f"{name} {done}{left} {metric}")
         return lines
 
@@ -265,13 +285,13 @@ class ProgressReporter:
             return
         elapsed = _format_elapsed(self.elapsed_seconds)
         verb, _, subject = summary.partition(" ")
-        rendered_verb = style(verb, "green", color_mode=self.color_mode, stream=self.stream)
+        rendered_verb = style(verb, "green", color_mode=self.style_mode, stream=self.stream)
         line = rendered_verb
         if subject:
-            line += " " + style(subject, "bold", color_mode=self.color_mode, stream=self.stream)
-        line += " " + style(f"in {elapsed}", "green", color_mode=self.color_mode, stream=self.stream)
+            line += " " + style(subject, "bold", color_mode=self.style_mode, stream=self.stream)
+        line += " " + style(f"in {elapsed}", "green", color_mode=self.style_mode, stream=self.stream)
         if detail:
-            line += " " + style(detail, "bold", color_mode=self.color_mode, stream=self.stream)
+            line += " " + style(detail, "bold", color_mode=self.style_mode, stream=self.stream)
         print(line, file=self.stream)
 
     def close(self, *, clear: bool = True) -> None:
@@ -290,8 +310,14 @@ class ProgressReporter:
 
 
 def progress_for(ctx: Any, message: str, *, total: int | None = None, stream: TextIO | None = None, summary_non_tty: bool = True) -> ProgressReporter:
+    # Mirror renderer_for(): an explicit --no-color / --color never request
+    # (ctx.no_color is True exactly when ctx.color == "never") becomes the
+    # reporter's fully-suppressed "none" mode so animation dies with styling.
+    color = str(getattr(ctx, "color", "auto"))
+    if bool(getattr(ctx, "no_color", False)):
+        color = "none"
     return ProgressReporter(
-        color_mode=str(getattr(ctx, "color", "auto")),
+        color_mode=color,
         output_mode=getattr(ctx, "output_mode", OutputMode.HUMAN),
         no_progress=bool(getattr(ctx, "no_progress", False)),
         verbose=bool(getattr(ctx, "verbose", False)),
