@@ -61,6 +61,8 @@ bqa capabilities       # capabilities của service
 bqa capabilities --tools|--limits|--host      # lọc: tools / limits / host
 bqa knowledge overview|guide|tools|search|all # guides + catalog tool (--query để lọc)
 bqa logs <server|tunnel|launcher|audit|follow> [-n 100] [-f] [--since 10m] [--grep TEXT]
+bqa chats list                                # liệt kê chat workspace cục bộ theo hoạt động gần nhất
+bqa chats show <chat_id>                      # xem một workspace: đường dẫn, đầu STATE.md, thống kê journal
 # Files & commands
 bqa fs ls [path] --max 500                    # liệt kê thư mục (mặc định workspace root)
 bqa fs cat <path> --lines 1:50                # đọc file UTF-8 (--max-bytes N)
@@ -82,8 +84,10 @@ bqa version
 bqa help [command]
 ```
 
+Chat workspace cục bộ mặc định nằm dưới `~/Downloads/bqa-workspaces`.
+
 Probe sức khỏe trực tiếp: `curl -s http://127.0.0.1:18427/healthz` · endpoint MCP: `<URL>/mcp`.
 
 ## Tài liệu
 
-[Kiến trúc](docs/ARCHITECTURE.md) · [Vận hành](docs/OPERATIONS_RUNBOOK.md) · [Checklist phát hành](docs/RELEASE_CHECKLIST.md) · [Bảo mật](SECURITY.md) · [Giao diện CLI](docs/CLI_UI.md)
+[Kiến trúc](docs/ARCHITECTURE.md) · [Vận hành](docs/OPERATIONS_RUNBOOK.md) · [Checklist phát hành](docs/RELEASE_CHECKLIST.md) · [Bảo mật](SECURITY.md) · [Giao diện CLI](docs/CLI_UI.md) · [Chat workspaces](docs/CHAT_WORKSPACES.md)

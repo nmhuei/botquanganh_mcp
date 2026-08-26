@@ -153,6 +153,7 @@ No progress for instant display/streaming operations:
 - help/completion
 - config show/get/path
 - log output/follow
+- `chats`/`chats list` and `chats show <chat-id>` (local workspace reads, no REST call)
 
 Interactive interfaces (own full screens; no uv progress region):
 
@@ -169,7 +170,13 @@ Inspection, Files & commands, Diagnostics, Config & help) with the subcommand
 metavar
 rendered as `<command>`. On Python 3.14+ the parser disables argparse's own
 color palette unconditionally, so all help styling stays owned by the shared
-output layer.
+output layer. The Inspection group carries `status`, `health`, `capabilities`,
+`knowledge`, `logs`, and `chats`; bare `bqa chats` is an alias for
+`bqa chats list` (workspaces ordered by recent activity) and
+`bqa chats show <chat-id>` prints one workspace's path, state notes head, and
+journal counts — both honor the shared `--json`/`--quiet` modes and read the
+local workspace root (`~/Downloads/bqa-workspaces` by default) without a REST
+call.
 
 ## Automation contract
 
