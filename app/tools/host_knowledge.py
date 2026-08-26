@@ -130,21 +130,26 @@ def host_knowledge(
     refresh: bool = False,
     chat_id: Optional[str] = None,
 ) -> dict[str, Any]:
-    # Read-only tool: without a supplied id there is nothing to validate or
-    # enforce, so the shared guard is only pulled in when an id is present.
+    # Read-only tool: in off/tag/strict a missing id has nothing to validate,
+    # so the legacy fast path stays byte-identical there. Under enforce the
+    # shared guard runs even with no id, so unbound callers get E6 before any
+    # inventory or guide work happens (reads are gated too).
     if chat_id is None:
-        try:
-            return _knowledge_payload(
-                section,
-                query,
-                category,
-                available_only,
-                include_versions,
-                include_uncatalogued,
-                refresh,
-            )
-        except Exception as exc:
-            return format_error_response(exc)
+        from app.tools.host import _is_enforcing_mode
+
+        if not _is_enforcing_mode():
+            try:
+                return _knowledge_payload(
+                    section,
+                    query,
+                    category,
+                    available_only,
+                    include_versions,
+                    include_uncatalogued,
+                    refresh,
+                )
+            except Exception as exc:
+                return format_error_response(exc)
     from app.tools.host import _guard_chat_id, _record_tool_call
 
     validated, rejection = _guard_chat_id("host_knowledge", chat_id)

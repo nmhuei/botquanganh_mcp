@@ -1,8 +1,13 @@
 """Copy-safe error catalog shared by the chat workspace MCP tools.
 
-Codes E1..E5 are stable identifiers; message templates only interpolate
+Codes E1..E6 are stable identifiers; message templates only interpolate
 values that were already validated (ids, paths, byte counts), never raw
 unvalidated caller input.
+
+The semantic contract for ``ATTRIBUTION_MODE="enforce"`` (E6 BIND_REQUIRED)
+is documented once, in the comment block directly above the E6 catalog
+entry below; the tool layer gates against it via
+``app.chat_identity.is_enforcing()``.
 """
 
 from __future__ import annotations
@@ -54,6 +59,42 @@ CHAT_ERROR_CATALOG: dict[str, ChatErrorCode] = {
         "Path {path} exists but was not created by botquanganh.",
         "Move or rename the conflicting directory, then bind the workspace again.",
     ),
+    # -----------------------------------------------------------------------
+    # SEMANTIC CONTRACT -- ATTRIBUTION_MODE="enforce" (E6 BIND_REQUIRED)
+    #
+    # "enforce" is the hardest attribution level. Every HOST_TOOLS
+    # entry-point requires a valid, bound chat identity BEFORE it performs
+    # any work:
+    #
+    # - A chat_id counts as present when it is either supplied as the
+    #   tool's ``chat_id`` parameter or already bound to the request
+    #   context (app.chat_identity).
+    # - The ONLY exempt tool is ``host_workspace_bind`` itself: binding
+    #   must stay reachable while unbound, otherwise no session could ever
+    #   start.
+    # - A present-but-invalid chat id (fails CHAT_ID_PATTERN) is rejected
+    #   with E1 INVALID_CHAT_ID in every mode -- never E6.
+    # - A missing/unbound chat id under enforce is rejected with E6
+    #   BIND_REQUIRED before any side effect: no reads, writes, runs,
+    #   notes, journal entries, or audit stamps for the call.
+    # - ``{chat_id}`` on E6 carries only an already-validated id (the
+    #   bound one or the caller's argument that passed the pattern); it
+    #   renders through the copy-safe field guard like every other
+    #   template. Raw invalid input never reaches this code because
+    #   invalid ids route to E1, whose template interpolates nothing.
+    #
+    # This catalog defines only the wire contract (code, name, copy,
+    # fields). The request gating that emits E6 lives in the tool layer
+    # and switches on ``app.chat_identity.is_enforcing()`` alone.
+    # -----------------------------------------------------------------------
+    "E6": ChatErrorCode(
+        "E6",
+        "BIND_REQUIRED",
+        "Chat binding required: call host_workspace_bind with a valid chat id "
+        "(current: {chat_id}) before using any other host tool.",
+        "Invoke host_workspace_bind with a valid chat id first, then retry "
+        "this tool.",
+    ),
 }
 
 # Kept identical to app.chat_workspace.CHAT_ID_PATTERN so ids accepted by the
@@ -83,6 +124,7 @@ _DOMAIN_EXCEPTION_NAMES: dict[str, tuple[str, ...]] = {
     "E3": ("QuotaExceededError", "WorkspaceQuotaExceededError"),
     "E4": ("WorkspaceRootFullError", "RootFullError"),
     "E5": ("SquatError", "SquatDetectedError", "WorkspaceSquatDetectedError"),
+    "E6": ("BindRequiredError", "WorkspaceBindRequiredError", "ChatBindRequiredError"),
 }
 
 # Fallback when the module cannot be imported: match on class-name fragments.
@@ -96,6 +138,9 @@ _NAME_FRAGMENTS: tuple[tuple[str, str], ...] = (
     ("quota", "E3"),
     ("rootfull", "E4"),
     ("squat", "E5"),
+    # "bind" alone would over-match; require the full "bindrequired" stem so
+    # only bind-gating exceptions (BindRequiredError and friends) map to E6.
+    ("bindrequired", "E6"),
 )
 
 

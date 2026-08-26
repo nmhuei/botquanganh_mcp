@@ -68,6 +68,9 @@ def _workspace_path_from(result: Any) -> Path | None:
     return None
 
 
+# Enforce-mode exemption marker: host_workspace_bind is the only HOST_TOOLS
+# entry listed in app.tools.host.BIND_EXEMPT_TOOLS, because binding IS the
+# way in — every other tool requires a bound chat id once enforce is active.
 @mcp.tool(
     name="host_workspace_bind",
     description=(
@@ -136,7 +139,14 @@ async def host_save_note(text: str, chat_id: str | None = None) -> dict[str, Any
                     "suggestion": "Provide non-blank text for the note.",
                 },
             }
-        validated = validate_chat_id(chat_id) if chat_id else None
+        # Enforce-mode parity with the other HOST_TOOLS entries: saving a note
+        # writes into the workspace, so it is gated too. It never performs the
+        # bind itself — the caller must bind first and reuse the same chat_id.
+        from app.tools.host import _guard_chat_id
+
+        validated, rejection = _guard_chat_id("host_save_note", chat_id)
+        if rejection is not None:
+            return rejection
         notes_file = _resolve_notes_file(validated)
         notes_file.parent.mkdir(parents=True, exist_ok=True)
         line = f"{datetime.now(timezone.utc).isoformat()} {cleaned}\n"

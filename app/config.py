@@ -241,8 +241,10 @@ AUDIT_MAX_FIELD_CHARS = max(256, int(os.getenv("AUDIT_MAX_FIELD_CHARS", "4000"))
 # yet. Defaults keep every feature they gate switched off.
 
 ATTRIBUTION_MODE = os.getenv("ATTRIBUTION_MODE", "off").strip().lower()
-if ATTRIBUTION_MODE not in {"off", "tag", "strict"}:
-    raise ValueError("ATTRIBUTION_MODE must be one of 'off', 'tag', 'strict'")
+if ATTRIBUTION_MODE not in {"off", "tag", "strict", "enforce"}:
+    raise ValueError(
+        "ATTRIBUTION_MODE must be one of 'off', 'tag', 'strict', 'enforce'"
+    )
 
 HOST_CHAT_WORKSPACES = os.getenv("HOST_CHAT_WORKSPACES", "false").lower() == "true"
 HOST_CHAT_ROOT = _resolve_config_path(

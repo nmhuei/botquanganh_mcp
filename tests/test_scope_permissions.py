@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -88,39 +90,51 @@ def split_scopes(workspace, monkeypatch):
 
 
 def _config_snapshot(extra_env: dict[str, str]) -> dict:
-    code = (
-        "import json, app.config as c; print(json.dumps({"
-        "'ws': str(c.HOST_WORKSPACE_DIR),"
-        "'read': str(c.HOST_READ_SCOPE),"
-        "'write': str(c.HOST_WRITE_SCOPE),"
-        "'read_set': c.HOST_READ_SCOPE_SET,"
-        "'write_set': c.HOST_WRITE_SCOPE_SET,"
-        "'deny': c.HOST_READ_DENY_GLOBS,"
-        "'attribution': c.ATTRIBUTION_MODE,"
-        "'chat_workspaces': c.HOST_CHAT_WORKSPACES,"
-        "'chat_root': str(c.HOST_CHAT_ROOT),"
-        "'idle_hours': c.HOST_CHAT_IDLE_ARCHIVE_HOURS,"
-        "'retention': c.HOST_CHAT_RETENTION_DAYS,"
-        "'max_ws': c.HOST_CHAT_MAX_WORKSPACES,"
-        "'quota_mb': c.HOST_CHAT_QUOTA_MB,"
-        "'isolate': c.HOST_CHAT_ISOLATE,"
-        "'resume_hint': c.HOST_CHAT_RESUME_HINT_MINUTES,"
-        "'root_gb': c.HOST_CHAT_ROOT_MAX_GB,"
-        "'journal': c.HOST_CHAT_JOURNAL_MAX_BYTES,"
-        "'search_deadline': c.SEARCH_TEXT_DEADLINE_SECONDS}))"
-    )
-    env = dict(os.environ)
-    for key in _NEW_ENV_KEYS:
-        env.pop(key, None)
-    env.update({key: str(value) for key, value in extra_env.items()})
-    proc = subprocess.run(  # nosec B603
-        [sys.executable, "-c", code],
-        capture_output=True,
-        text=True,
-        cwd=str(REPO_ROOT),
-        env=env,
-        timeout=120,
-    )
+    # Run against an isolated copy of the app package: app.config discovers
+    # its .env by walking up from config.py itself (not cwd), so a probe in
+    # the real repo would inherit the operator's .env (e.g.
+    # HOST_CHAT_WORKSPACES=true) even with os.environ stripped. The sandbox
+    # has no .env, so defaults are observed honestly.
+    with tempfile.TemporaryDirectory() as sandbox:
+        shutil.copytree(
+            REPO_ROOT / "app",
+            Path(sandbox) / "app",
+            ignore=shutil.ignore_patterns("__pycache__"),
+        )
+        code = (
+            "import json, app.config as c; print(json.dumps({"
+            "'base_dir': str(c.BASE_DIR),"
+            "'ws': str(c.HOST_WORKSPACE_DIR),"
+            "'read': str(c.HOST_READ_SCOPE),"
+            "'write': str(c.HOST_WRITE_SCOPE),"
+            "'read_set': c.HOST_READ_SCOPE_SET,"
+            "'write_set': c.HOST_WRITE_SCOPE_SET,"
+            "'deny': c.HOST_READ_DENY_GLOBS,"
+            "'attribution': c.ATTRIBUTION_MODE,"
+            "'chat_workspaces': c.HOST_CHAT_WORKSPACES,"
+            "'chat_root': str(c.HOST_CHAT_ROOT),"
+            "'idle_hours': c.HOST_CHAT_IDLE_ARCHIVE_HOURS,"
+            "'retention': c.HOST_CHAT_RETENTION_DAYS,"
+            "'max_ws': c.HOST_CHAT_MAX_WORKSPACES,"
+            "'quota_mb': c.HOST_CHAT_QUOTA_MB,"
+            "'isolate': c.HOST_CHAT_ISOLATE,"
+            "'resume_hint': c.HOST_CHAT_RESUME_HINT_MINUTES,"
+            "'root_gb': c.HOST_CHAT_ROOT_MAX_GB,"
+            "'journal': c.HOST_CHAT_JOURNAL_MAX_BYTES,"
+            "'search_deadline': c.SEARCH_TEXT_DEADLINE_SECONDS}))"
+        )
+        env = dict(os.environ)
+        for key in _NEW_ENV_KEYS:
+            env.pop(key, None)
+        env.update({key: str(value) for key, value in extra_env.items()})
+        proc = subprocess.run(  # nosec B603
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            cwd=sandbox,
+            env=env,
+            timeout=120,
+        )
     assert proc.returncode == 0, proc.stderr
     return json.loads(proc.stdout)
 
@@ -168,7 +182,7 @@ def test_new_settings_parse_explicit_environment(tmp_path):
             "SEARCH_TEXT_DEADLINE_SECONDS": "2.5",
         }
     )
-    assert snap["read"] == str((app.config.BASE_DIR / "scoped-reads").resolve())
+    assert snap["read"] == str((Path(snap["base_dir"]) / "scoped-reads").resolve())
     assert snap["write"] == str((tmp_path / "abs-write").resolve())
     assert snap["read_set"] is True
     assert snap["write_set"] is True

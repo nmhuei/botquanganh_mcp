@@ -60,15 +60,107 @@ def _invalid_chat_id_payload() -> dict[str, Any]:
         }
 
 
+# Tools exempt from enforce-mode binding: host_workspace_bind IS the way in,
+# so demanding a prior bind from it would deadlock every caller.
+BIND_EXEMPT_TOOLS = frozenset({"host_workspace_bind"})
+
+
+def _is_enforcing_mode() -> bool:
+    """True only when ATTRIBUTION_MODE=enforce is actually active.
+
+    Prefers ``chat_identity.is_enforcing()`` from the concurrent contract
+    change; until that helper lands (or if it ever disappears) a defensive raw
+    read of the config value keeps the decision working locally.  Missing or
+    unknown values behave as today: not enforcing.
+    """
+    try:
+        from app.chat_identity import is_enforcing
+
+        return bool(is_enforcing())
+    except ImportError:
+        pass
+    from app import config as config_module
+
+    raw = str(getattr(config_module, "ATTRIBUTION_MODE", "") or "").strip().lower()
+    return raw == "enforce"
+
+
+def _context_chat_id() -> Optional[str]:
+    """Defensive lookup of a context-bound chat id, if that layer exists."""
+    try:
+        from app.chat_identity import get_chat_id
+
+        candidate = get_chat_id()
+    except ImportError:
+        return None
+    if isinstance(candidate, str) and candidate:
+        return candidate
+    return None
+
+
+def _bind_required_payload(tool: str) -> dict[str, Any]:
+    """Structured E6 payload telling the caller to bind a chat id first.
+
+    Uses the shared catalog once the concurrent E6 entry exists; otherwise a
+    hand-built payload with the same envelope shape.  Either way the reply
+    names host_workspace_bind as the way in.
+    """
+    payload: Optional[dict[str, Any]] = None
+    try:
+        from app.chat_errors import CHAT_ERROR_CATALOG, chat_error_payload
+
+        if "E6" in CHAT_ERROR_CATALOG:
+            payload = chat_error_payload("E6")
+    except ImportError:
+        payload = None
+    if payload is None:
+        payload = {
+            "ok": False,
+            "error": {
+                "code": "E6",
+                "name": "BIND_REQUIRED",
+                "message": (
+                    f"{tool} requires a bound chat id while "
+                    "ATTRIBUTION_MODE=enforce."
+                ),
+                "suggestion": (
+                    "Call host_workspace_bind with a valid chat id first, then "
+                    "pass that chat_id to every host tool call."
+                ),
+            },
+        }
+    error = payload.get("error")
+    if isinstance(error, dict):
+        combined = f"{error.get('message', '')} {error.get('suggestion', '')}"
+        if "host_workspace_bind" not in combined:
+            error["message"] = (
+                f"{str(error.get('message', '')).strip()} "
+                "Call host_workspace_bind first."
+            ).strip()
+    return payload
+
+
 def _guard_chat_id(
     tool: str, chat_id: Optional[str]
 ) -> tuple[Optional[str], Optional[dict[str, Any]]]:
-    """Validate an optional caller chat id and enforce strict-mode writes.
+    """Validate an optional caller chat id and enforce strict/enforce modes.
 
     Returns (validated_id, None) when the call may proceed, or (None, payload)
     with a structured error when it must be rejected.
+
+    - enforce: every call needs a valid chat id, reads included. A missing id
+      falls back to a context-bound one; with neither, the call is rejected
+      with E6 before any executor or filesystem function runs. An invalid id
+      is still E1. host_workspace_bind is exempt (see BIND_EXEMPT_TOOLS).
+    - strict: only state-changing tools need an id (unchanged).
+    - off/tag: validate whatever id is supplied, nothing more (unchanged).
     """
-    if chat_id is None:
+    resolved = chat_id
+    if resolved is None and _is_enforcing_mode():
+        resolved = _context_chat_id()
+        if resolved is None:
+            return None, _bind_required_payload(tool)
+    if resolved is None:
         if tool in _STATE_CHANGING_TOOLS and effective_attribution_mode() == "strict":
             return None, format_error_code(
                 "INVALID_ARGUMENT",
@@ -79,9 +171,25 @@ def _guard_chat_id(
             )
         return None, None
     try:
-        return validate_chat_id(chat_id), None
+        return validate_chat_id(resolved), None
     except InvalidChatId:
         return None, _invalid_chat_id_payload()
+
+
+def _stamp_chat_id(
+    details: dict[str, Any], chat_id: Optional[str]
+) -> dict[str, Any]:
+    """Stamp like logging_audit.stamp_chat_id, extended for enforce mode.
+
+    logging_audit only knows off/tag/strict, so an enforce deployment reads as
+    "off" there and would silently drop the attribution stamp. Enforce exists
+    precisely so every executed action is attributable, so the stamp is applied
+    directly whenever the mode helper reports enforcing.
+    """
+    if chat_id and _is_enforcing_mode():
+        details["chat_id"] = chat_id
+        return details
+    return stamp_chat_id(details, chat_id)
 
 
 def _record_tool_call(
@@ -97,7 +205,7 @@ def _record_tool_call(
     payload = {
         key: value for key, value in (details or {}).items() if value is not None
     }
-    stamp_chat_id(payload, chat_id)
+    _stamp_chat_id(payload, chat_id)
     if payload:
         log_audit_event("HOST_TOOL_CALL", {"tool": tool, **payload})
 
@@ -350,7 +458,7 @@ def host_run_command(
     except Exception as exc:
         result = format_error_response(exc)
     attributed: dict[str, Any] = {}
-    stamp_chat_id(attributed, validated)
+    _stamp_chat_id(attributed, validated)
     if cleaned_intent is not None:
         attributed["intent"] = cleaned_intent
     if attributed:

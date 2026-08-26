@@ -16,7 +16,7 @@ Toàn bộ nằm trong `.env`, nạp khi khởi động (xem thêm bảng chung 
 
 | Khóa | Mặc định | Ý nghĩa |
 | --- | --- | --- |
-| `ATTRIBUTION_MODE` | `off` | Gán thao tác host về chat: `off` tắt; `tag` gắn nhãn `chat_id` vào log/kết quả; `strict` từ chối thao tác không mang `chat_id` hợp lệ |
+| `ATTRIBUTION_MODE` | `off` | Gán thao tác host về chat: `off` tắt; `tag` gắn nhãn `chat_id` vào log/kết quả; `strict` từ chối thao tác ghi không mang `chat_id` hợp lệ; `enforce` từ chối toàn bộ thao tác (kể cả đọc) nếu chưa bind |
 | `HOST_CHAT_WORKSPACES` | `false` | Công tắc bật/tắt cả tính năng workspace theo chat |
 | `HOST_CHAT_ROOT` | `~/Downloads/bqa-workspaces` | Thư mục gốc chứa mọi workspace |
 | `HOST_CHAT_IDLE_ARCHIVE_HOURS` | `72` | Số giờ không hoạt động trước khi workspace bị archive |
@@ -49,6 +49,7 @@ Toàn bộ nằm trong `.env`, nạp khi khởi động (xem thêm bảng chung 
 | `E3` | Vượt quota: workspace đầy (`HOST_CHAT_QUOTA_MB`) hoặc journal chạm trần (`HOST_CHAT_JOURNAL_MAX_BYTES`) |
 | `E4` | Root đầy (`HOST_CHAT_ROOT_MAX_GB`) |
 | `E5` | Phát hiện chiếm chỗ: thư mục workspace tồn tại nhưng không có `meta.json` hợp lệ |
+| `E6` | Chưa bind workspace (`host_workspace_bind`) khi đang bật `ATTRIBUTION_MODE=enforce` |
 
 ## Vòng đời
 

@@ -27,7 +27,11 @@ CHAT_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{5,63}$")
 
 REGISTRY_CAPACITY = 64
 DEFAULT_ATTRIBUTION_MODE = "off"
-KNOWN_ATTRIBUTION_MODES = frozenset({"off", "on"})
+ENFORCED_ATTRIBUTION_MODE = "enforce"
+# Mirrors the validated set in app.config (off/tag/strict/enforce) plus the
+# legacy "on" alias kept so earlier-wave callers keep resolving; anything
+# unknown or missing still degrades to "off".
+KNOWN_ATTRIBUTION_MODES = frozenset({"off", "on", "tag", "strict", "enforce"})
 
 _CHAT_ID: ContextVar[str | None] = ContextVar("bqa_chat_id", default=None)
 
@@ -119,6 +123,18 @@ def attribution_mode() -> str:
     raw = _raw_attribution_mode()
     mode = str(raw).strip().lower()
     return mode if mode in KNOWN_ATTRIBUTION_MODES else DEFAULT_ATTRIBUTION_MODE
+
+
+def is_enforcing() -> bool:
+    """True only when the effective attribution mode is ``"enforce"``.
+
+    Enforce mode is the hardest attribution level: every HOST_TOOLS
+    entry-point requires a valid, bound chat identity before doing any work.
+    The wire contract (E6 BIND_REQUIRED, the single ``host_workspace_bind``
+    exemption) is defined in :mod:`app.chat_errors`; tool-layer gating
+    switches on this helper alone.
+    """
+    return attribution_mode() == ENFORCED_ATTRIBUTION_MODE
 
 
 def annotate(record: dict[str, Any]) -> dict[str, Any]:

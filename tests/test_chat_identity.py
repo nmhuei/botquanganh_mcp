@@ -196,3 +196,39 @@ def test_real_config_module_reads_defensively():
     # Whatever state the concurrent config change is in, the accessor must
     # return a usable mode string without raising.
     assert isinstance(attribution_mode(), str)
+
+
+# ---------------------------------------------------------------------------
+# B1: "enforce" attribution mode.
+# ---------------------------------------------------------------------------
+
+
+def test_known_modes_cover_every_config_value_plus_legacy_on():
+    import app.config as config_module
+
+    assert {"off", "tag", "strict", "enforce"} <= chat_identity.KNOWN_ATTRIBUTION_MODES
+    assert "on" in chat_identity.KNOWN_ATTRIBUTION_MODES  # legacy alias survives
+    # Whatever the ambient environment selected, the validated config value
+    # must always resolve inside the identity layer's known set.
+    assert config_module.ATTRIBUTION_MODE in chat_identity.KNOWN_ATTRIBUTION_MODES
+
+
+def test_enforce_mode_resolves_through_the_real_config_module(monkeypatch):
+    import app.config as config_module
+
+    monkeypatch.setattr(config_module, "ATTRIBUTION_MODE", "enforce")
+    assert chat_identity.attribution_mode() == "enforce"
+    assert chat_identity.is_enforcing() is True
+
+    monkeypatch.setattr(config_module, "ATTRIBUTION_MODE", "tag")
+    assert chat_identity.attribution_mode() == "tag"
+    assert chat_identity.is_enforcing() is False
+
+
+def test_is_enforcing_is_false_for_off_and_unknown(monkeypatch):
+    import app.config as config_module
+
+    monkeypatch.setattr(config_module, "ATTRIBUTION_MODE", "off")
+    assert chat_identity.is_enforcing() is False
+    monkeypatch.setattr(config_module, "ATTRIBUTION_MODE", "banana")
+    assert chat_identity.is_enforcing() is False
