@@ -166,6 +166,34 @@ if HOST_RESTRICT_TO_WORKSPACE:
     except ValueError:
         HOST_DEFAULT_DIR = HOST_WORKSPACE_DIR
 
+# --- Scoped permissions ------------------------------------------------------
+# Read and write operations can be scoped independently. Both scopes fall back
+# to the resolved HOST_WORKSPACE_DIR so behavior is unchanged until an operator
+# sets HOST_READ_SCOPE / HOST_WRITE_SCOPE / HOST_READ_DENY_GLOBS explicitly.
+# The *_SET flags record whether the key was actually provided so callers can
+# tell an explicit override apart from the fallback value.
+
+
+def _resolve_config_path(raw: str, fallback: Path) -> Path:
+    """Resolve a path-valued setting the way HOST_WORKSPACE_DIR is resolved."""
+    candidate = Path(raw if raw else str(fallback)).expanduser()
+    if not candidate.is_absolute():
+        candidate = BASE_DIR / candidate
+    return candidate.resolve()
+
+
+_HOST_READ_SCOPE_RAW = os.getenv("HOST_READ_SCOPE", "").strip()
+_HOST_WRITE_SCOPE_RAW = os.getenv("HOST_WRITE_SCOPE", "").strip()
+HOST_READ_SCOPE_SET = bool(_HOST_READ_SCOPE_RAW)
+HOST_WRITE_SCOPE_SET = bool(_HOST_WRITE_SCOPE_RAW)
+HOST_READ_SCOPE = _resolve_config_path(_HOST_READ_SCOPE_RAW, HOST_WORKSPACE_DIR)
+HOST_WRITE_SCOPE = _resolve_config_path(_HOST_WRITE_SCOPE_RAW, HOST_WORKSPACE_DIR)
+HOST_READ_DENY_GLOBS = [
+    item.strip()
+    for item in os.getenv("HOST_READ_DENY_GLOBS", "").split(",")
+    if item.strip()
+]
+
 HOST_COMMAND_POLICY = os.getenv("HOST_COMMAND_POLICY", "guarded").strip().lower()
 if HOST_COMMAND_POLICY not in {"guarded", "allowlist"}:
     raise ValueError("HOST_COMMAND_POLICY must be 'guarded' or 'allowlist'")
@@ -196,6 +224,9 @@ MAX_CONCURRENT_COMMANDS = max(1, int(os.getenv("MAX_CONCURRENT_COMMANDS", "100")
 COMMAND_QUEUE_TIMEOUT_SECONDS = max(
     0.0, float(os.getenv("COMMAND_QUEUE_TIMEOUT_SECONDS", "2"))
 )
+SEARCH_TEXT_DEADLINE_SECONDS = max(
+    0.0, float(os.getenv("SEARCH_TEXT_DEADLINE_SECONDS", "15"))
+)
 
 LOG_FILE = Path(os.getenv("LOG_FILE", str(BASE_DIR / "logs" / "gateway.log")))
 if not LOG_FILE.is_absolute():
@@ -204,3 +235,31 @@ LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 AUDIT_LOG_MAX_BYTES = max(1024, int(os.getenv("AUDIT_LOG_MAX_BYTES", "10000000")))
 AUDIT_LOG_BACKUP_COUNT = max(1, int(os.getenv("AUDIT_LOG_BACKUP_COUNT", "5")))
 AUDIT_MAX_FIELD_CHARS = max(256, int(os.getenv("AUDIT_MAX_FIELD_CHARS", "4000")))
+
+# --- Attribution and chat workspaces (parsed for later waves) ----------------
+# These keys are validated and exposed here; no runtime component consumes them
+# yet. Defaults keep every feature they gate switched off.
+
+ATTRIBUTION_MODE = os.getenv("ATTRIBUTION_MODE", "off").strip().lower()
+if ATTRIBUTION_MODE not in {"off", "tag", "strict"}:
+    raise ValueError("ATTRIBUTION_MODE must be one of 'off', 'tag', 'strict'")
+
+HOST_CHAT_WORKSPACES = os.getenv("HOST_CHAT_WORKSPACES", "false").lower() == "true"
+HOST_CHAT_ROOT = _resolve_config_path(
+    os.getenv("HOST_CHAT_ROOT", "").strip(),
+    Path("~/Downloads/bqa-workspaces"),
+)
+HOST_CHAT_IDLE_ARCHIVE_HOURS = max(
+    0, int(os.getenv("HOST_CHAT_IDLE_ARCHIVE_HOURS", "72"))
+)
+HOST_CHAT_RETENTION_DAYS = max(0, int(os.getenv("HOST_CHAT_RETENTION_DAYS", "30")))
+HOST_CHAT_MAX_WORKSPACES = max(1, int(os.getenv("HOST_CHAT_MAX_WORKSPACES", "128")))
+HOST_CHAT_QUOTA_MB = max(0, int(os.getenv("HOST_CHAT_QUOTA_MB", "2048")))
+HOST_CHAT_ISOLATE = os.getenv("HOST_CHAT_ISOLATE", "false").lower() == "true"
+HOST_CHAT_RESUME_HINT_MINUTES = max(
+    0, int(os.getenv("HOST_CHAT_RESUME_HINT_MINUTES", "30"))
+)
+HOST_CHAT_ROOT_MAX_GB = max(0.0, float(os.getenv("HOST_CHAT_ROOT_MAX_GB", "24")))
+HOST_CHAT_JOURNAL_MAX_BYTES = max(
+    1024, int(os.getenv("HOST_CHAT_JOURNAL_MAX_BYTES", "8388608"))
+)

@@ -4,6 +4,7 @@ import fcntl
 import itertools
 import os
 import stat
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Optional
@@ -216,7 +217,7 @@ def write_text_file(
     create_parents: bool = True,
 ) -> dict[str, Any]:
     raw, size = _validate_write_size(content)
-    resolved = resolve_host_path(path)
+    resolved = resolve_host_path(path, mode="write")
     if resolved.exists() and not resolved.is_file():
         raise ValueError(f"Path is not a regular file: {resolved}")
     if resolved.exists() and not overwrite:
@@ -246,31 +247,45 @@ def replace_text_in_file(
     *,
     expected_count: int = 1,
 ) -> dict[str, Any]:
-    resolved = resolve_host_path(path, must_exist=True, expect_directory=False)
-    fd = _open_regular_file(resolved, os.O_RDWR)
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
-        file_size = os.fstat(fd).st_size
-        if file_size > app.config.MAX_SINGLE_FILE_BYTES:
-            raise ValueError(
-                f"File exceeds MAX_SINGLE_FILE_BYTES: {file_size} > "
-                f"{app.config.MAX_SINGLE_FILE_BYTES}"
-            )
-        raw = _read_up_to(fd, file_size + 1)
-        content = raw.decode("utf-8")
-        count = content.count(old)
-        if count == 0:
-            raise ValueError("Target text was not found.")
-        if expected_count >= 0 and count != expected_count:
-            raise ValueError(f"Expected {expected_count} occurrence(s), found {count}.")
-        updated = content.replace(old, new)
-        updated_raw, _size = _validate_write_size(updated)
-        os.ftruncate(fd, 0)
-        os.lseek(fd, 0, os.SEEK_SET)
-        _write_all(fd, updated_raw)
-        os.fsync(fd)
-    finally:
-        os.close(fd)
+    resolved = resolve_host_path(
+        path, must_exist=True, expect_directory=False, mode="write"
+    )
+    # Crash-atomic swap instead of truncate-in-place: the target is replaced
+    # via os.replace() from a fully fsynced temp file in the same directory,
+    # so a SIGKILL at any instant can never leave it truncated. The flock on
+    # the open target serializes concurrent writers; because a swap swaps the
+    # inode, a contender that opened the old inode revalidates and reopens.
+    max_attempts = 32
+    for _attempt in range(max_attempts):
+        fd = _open_regular_file(resolved, os.O_RDWR)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            live = os.stat(resolved)
+            held = os.fstat(fd)
+            if (held.st_dev, held.st_ino) != (live.st_dev, live.st_ino):
+                # The file was swapped after our open; retry on newest inode.
+                continue
+            file_size = held.st_size
+            if file_size > app.config.MAX_SINGLE_FILE_BYTES:
+                raise ValueError(
+                    f"File exceeds MAX_SINGLE_FILE_BYTES: {file_size} > "
+                    f"{app.config.MAX_SINGLE_FILE_BYTES}"
+                )
+            raw = _read_up_to(fd, file_size + 1)
+            content = raw.decode("utf-8")
+            count = content.count(old)
+            if count == 0:
+                raise ValueError("Target text was not found.")
+            if expected_count >= 0 and count != expected_count:
+                raise ValueError(f"Expected {expected_count} occurrence(s), found {count}.")
+            updated = content.replace(old, new)
+            updated_raw, _size = _validate_write_size(updated)
+            _atomic_write(resolved, updated_raw, overwrite=True)
+        finally:
+            os.close(fd)
+        break
+    else:
+        raise OSError(f"File kept changing during replacement: {resolved}")
     log_audit_event(
         "HOST_REPLACE_FILE",
         {"path": str(resolved), "replacement_count": count},
@@ -284,7 +299,7 @@ def replace_text_in_file(
 
 def append_text_file(path: str, content: str) -> dict[str, Any]:
     raw, size = _validate_write_size(content)
-    resolved = resolve_host_path(path)
+    resolved = resolve_host_path(path, mode="write")
     if resolved.exists() and not resolved.is_file():
         raise ValueError(f"Path is not a regular file: {resolved}")
     resolved.parent.mkdir(parents=True, exist_ok=True)
@@ -315,7 +330,7 @@ def append_text_file(path: str, content: str) -> dict[str, Any]:
 
 
 def make_directory(path: str, *, parents: bool = True) -> dict[str, Any]:
-    resolved = resolve_host_path(path)
+    resolved = resolve_host_path(path, mode="write")
     resolved.mkdir(parents=parents, exist_ok=True)
     log_audit_event("HOST_MKDIR", {"path": str(resolved)})
     return {"ok": True, "path": display_host_path(resolved)}
@@ -327,16 +342,28 @@ def search_text(
     path: str = ".",
     case_sensitive: bool = False,
     max_results: int = 100,
+    deadline_seconds: Optional[float] = None,
 ) -> dict[str, Any]:
     if not query:
         raise ValueError("query must not be empty")
     root = resolve_host_path(path, must_exist=True, expect_directory=True)
     max_results = max(1, min(int(max_results), 500))
+    if deadline_seconds is None:
+        deadline_seconds = app.config.SEARCH_TEXT_DEADLINE_SECONDS
+    deadline_seconds = max(0.0, float(deadline_seconds))
+    started = time.monotonic()
     needle = query if case_sensitive else query.lower()
     results: list[dict[str, Any]] = []
     scanned_files = 0
+    deadline_exceeded = False
+
+    def _out_of_time() -> bool:
+        return time.monotonic() - started >= deadline_seconds
 
     for current_root, dirs, files in os.walk(root, followlinks=False):
+        if _out_of_time():
+            deadline_exceeded = True
+            break
         current_path = Path(current_root)
         dirs[:] = [
             directory
@@ -344,7 +371,12 @@ def search_text(
             if directory not in _EXCLUDED_DIRS
             and not (current_path / directory).is_symlink()
         ]
+        stop_walk = False
         for filename in files:
+            if _out_of_time():
+                deadline_exceeded = True
+                stop_walk = True
+                break
             file_path = current_path / filename
             try:
                 file_stat = file_path.lstat()
@@ -373,9 +405,12 @@ def search_text(
                                     "results": results,
                                     "scanned_files": scanned_files,
                                     "truncated": True,
+                                    "deadline_exceeded": False,
                                 }
             except (OSError, UnicodeError, ValueError, PermissionError):
                 continue
+        if stop_walk:
+            break
 
     return {
         "ok": True,
@@ -383,5 +418,6 @@ def search_text(
         "path": display_host_path(root),
         "results": results,
         "scanned_files": scanned_files,
-        "truncated": False,
+        "truncated": deadline_exceeded,
+        "deadline_exceeded": deadline_exceeded,
     }
