@@ -37,7 +37,7 @@ class GroupedHelpFormatter(argparse.RawDescriptionHelpFormatter):
     COMMAND_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ("Lifecycle", ("start", "stop", "restart", "server", "url")),
         ("Interface", ("ui", "tui")),
-        ("Inspection", ("status", "health", "capabilities", "knowledge", "logs")),
+        ("Inspection", ("status", "health", "capabilities", "knowledge", "logs", "chats")),
         ("Files & commands", ("fs", "cmd")),
         ("Diagnostics", ("doctor",)),
         ("Config & help", ("config", "completion", "version", "help")),
@@ -500,6 +500,22 @@ Output modes:
     logs.add_argument(
         "--grep", dest="grep_text", help="Only lines containing TEXT"
     )
+
+    chats = commands.add_parser(
+        "chats",
+        help="Inspect local chat workspaces",
+        epilog="""Examples:
+  bqa chats
+  bqa chats show <chat-id> --json""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    chats_commands = chats.add_subparsers(dest="chats_command")
+    chats_commands.add_parser("list", help="List workspaces by recent activity")
+    chats_show = chats_commands.add_parser(
+        "show",
+        help="Show one workspace's path, state notes, and journal counts",
+    )
+    chats_show.add_argument("chat_id", help="Chat identifier to inspect")
 
     config = commands.add_parser("config", help="Inspect and validate .env")
     config_commands = config.add_subparsers(dest="config_command", required=True)
