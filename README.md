@@ -61,6 +61,7 @@ bqa capabilities       # capabilities của service
 bqa capabilities --tools|--limits|--host      # lọc: tools / limits / host
 bqa knowledge overview|guide|tools|search|all # guides + catalog tool (--query để lọc)
 bqa logs <server|tunnel|launcher|audit|follow> [-n 100] [-f] [--since 10m] [--grep TEXT]
+bqa logs all [-n 100] [-f] [--since 10m] [--grep TEXT]   # gộp cả 4 nguồn log, tiền tố [source]
 bqa chats list                                # liệt kê chat workspace cục bộ theo hoạt động gần nhất
 bqa chats show <chat_id>                      # xem một workspace: đường dẫn, đầu STATE.md, thống kê journal
 # Files & commands
@@ -83,6 +84,8 @@ bqa completion bash|zsh|fish
 bqa version
 bqa help [command]
 ```
+
+Khi cần debug, chỉ cần nhìn hai nơi: `bqa logs all` gộp toàn bộ log server, tunnel, launcher và audit thành một dòng lệnh duy nhất; REST `GET /api/v1/logs/tail` trả cùng bản chụp đó qua HTTP — không phải đi tìm từng file log.
 
 Chat workspace cục bộ mặc định nằm dưới `~/Downloads/bqa-workspaces`.
 

@@ -257,7 +257,65 @@ AUDIT_LOG_MAX_BYTES=10000000
 AUDIT_LOG_BACKUP_COUNT=5
 ```
 
-## 9. Production checklist
+## 9. Quan sát & dọn dẹp
+
+### Watch every log from one place
+
+`bqa logs all` merges server, tunnel, launcher, and audit output into a single
+view, prefixing each line with its `[source]` tag. The shared filters work on
+the merged view; `-f` follows all sources at once.
+
+```bash
+bqa logs all -n 200                  # last 200 merged lines
+bqa logs all --since 10m             # entries newer than ten minutes
+bqa logs all --grep error            # only lines containing "error"
+bqa logs all -f --grep Traceback     # follow all sources, filtered live
+bqa logs all --json                  # machine-readable snapshot (--quiet drops headers)
+```
+
+The same snapshot is available over REST without following:
+
+```bash
+curl -s "http://127.0.0.1:18427/api/v1/logs/tail?lines=100&grep=error"
+```
+
+Query parameters: `sources` (comma-separated stream names; defaults to all),
+`lines` (capped at 500), `grep`. The endpoint is stateless — one snapshot per
+request, no follow mode.
+
+### Lifecycle sweeper for chat workspaces
+
+Plan first, apply deliberately. Without `--apply` the sweeper is a dry run:
+
+```bash
+python -m app.chat_sweeper           # dry-run: prints planned actions only
+python -m app.chat_sweeper --apply   # archive/delete for real
+./scripts/sweep_chat_workspaces.sh   # shell wrapper around the same sweep
+```
+
+Automation: the managed supervisor triggers the sweep once per hour
+(`HOST_CHAT_SWEEP_INTERVAL_MINUTES`, default `60`) and the gate only fires when
+chat workspaces are enabled (`HOST_CHAT_WORKSPACES=true`). Sweeps run by the
+supervisor stay dry-run unless `HOST_CHAT_SWEEP_APPLY=true`.
+
+The sweep acts in order: delete archived workspaces past retention, archive
+idle ones, then enforce workspace count and root footprint thresholds.
+
+### Where the underlying files live
+
+You rarely need these directly — `bqa logs all` and `/api/v1/logs/tail`
+aggregate everything below.
+
+| File | Content |
+| --- | --- |
+| `logs/server.log` | MCP bridge/server runtime output |
+| `logs/cloudflared.log` | Quick Tunnel process output |
+| `logs/launcher.log` | Desktop UI / background launcher output |
+| `logs/gateway.log` | Rotating audit trail (`AUDIT_LOG_*` controls rotation) |
+| `<HOST_CHAT_ROOT>/<chat_id>/journal.jsonl` | Per-chat activity journal |
+| `<HOST_CHAT_ROOT>/.archive/<chat_id>/` | Archived workspaces awaiting retention deletion |
+
+## 10. Production checklist
 
 Before deployment:
 

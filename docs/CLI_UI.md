@@ -152,7 +152,8 @@ No progress for instant display/streaming operations:
 - `status`, `url`, `version`
 - help/completion
 - config show/get/path
-- log output/follow
+- log output/follow, including the merged `bqa logs all` view (same instant
+  display when snapshotting; `-f` streams without a progress region)
 - `chats`/`chats list` and `chats show <chat-id>` (local workspace reads, no REST call)
 
 Interactive interfaces (own full screens; no uv progress region):
