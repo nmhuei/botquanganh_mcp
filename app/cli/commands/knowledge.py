@@ -129,7 +129,10 @@ def handle_knowledge(ctx: CLIContext, args) -> int:
             [
                 ("Profile", overview.get("profile", "")),
                 ("Workspace", overview.get("workspace", "")),
-                ("Restricted", overview.get("restrict_to_workspace", "")),
+                (
+                    "Restricted",
+                    "yes" if overview.get("restrict_to_workspace") else "no",
+                ),
                 ("Policy", overview.get("command_policy", "")),
                 ("Knowledge directory", overview.get("knowledge_dir", "")),
                 ("Guide files", ", ".join(overview.get("guide_files", []))),

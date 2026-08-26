@@ -35,18 +35,18 @@ def handle_command(ctx: CLIContext, args) -> int:
             renderer.blank()
             renderer.status("allowed" if allowed else "blocked")
             renderer.blank()
-            renderer.facts(
-                [
-                    ("Policy", result.get("policy", "")),
-                    ("Commands", ", ".join(result.get("command_names", []))),
-                    ("Severity", result.get("severity", "")),
-                    ("Rule", result.get("rule", "") or "none"),
-                    (
-                        "Message",
-                        result.get("message", "") or "No policy violation detected.",
-                    ),
-                ]
-            )
+            names = list(result.get("command_names", []))
+            rows = [
+                ("Policy", result.get("policy", "")),
+                ("Command" if len(names) == 1 else "Commands", ", ".join(names)),
+                ("Severity", result.get("severity", "")),
+                ("Rule", result.get("rule", "") or "none"),
+                (
+                    "Message",
+                    result.get("message", "") or "No policy violation detected.",
+                ),
+            ]
+            renderer.facts([row for row in rows if row[1]])
             renderer.blank()
             if allowed:
                 renderer.hint(
@@ -117,8 +117,14 @@ def handle_command(ctx: CLIContext, args) -> int:
                     ("Exit code", result.get("exit_code")),
                     ("Duration", f"{result.get('duration_ms', 0)} ms"),
                     ("CWD", result.get("cwd", "")),
-                    ("Stdout truncated", result.get("stdout_truncated", False)),
-                    ("Stderr truncated", result.get("stderr_truncated", False)),
+                    (
+                        "Stdout truncated",
+                        "yes" if result.get("stdout_truncated") else "no",
+                    ),
+                    (
+                        "Stderr truncated",
+                        "yes" if result.get("stderr_truncated") else "no",
+                    ),
                 ]
             )
 

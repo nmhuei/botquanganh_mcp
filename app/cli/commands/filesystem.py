@@ -98,7 +98,9 @@ def handle_filesystem(ctx: CLIContext, args) -> int:
             renderer = renderer_for(ctx)
             renderer.header("Filesystem listing", str(result.get("path", args.path)))
             renderer.blank()
-            renderer.status("success", f"{len(items)} entries")
+            renderer.status(
+                "success", f"{len(items)} {'entry' if len(items) == 1 else 'entries'}"
+            )
             if items:
                 renderer.blank()
                 renderer.table(
@@ -232,7 +234,10 @@ def handle_filesystem(ctx: CLIContext, args) -> int:
             renderer = renderer_for(ctx)
             renderer.header("Filesystem search", args.query)
             renderer.blank()
-            renderer.status("success", f"{len(matches)} matches")
+            renderer.status(
+                "success",
+                f"{len(matches)} {'match' if len(matches) == 1 else 'matches'}",
+            )
             if matches:
                 renderer.blank()
                 renderer.table(

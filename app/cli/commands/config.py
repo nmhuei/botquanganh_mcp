@@ -44,7 +44,7 @@ def handle_config(ctx: CLIContext, args) -> int:
             emit_quiet([f"{key}={value}" for key, value in values.items()])
         else:
             renderer = renderer_for(ctx)
-            renderer.header("Configuration", "Effective values · secrets protected")
+            renderer.header("Configuration", "Effective values · secrets redacted")
             renderer.blank()
             renderer.facts(
                 [

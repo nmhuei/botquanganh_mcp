@@ -21,6 +21,11 @@ def handle_health(ctx: CLIContext, _args) -> int:
         return 0 if result.get("ok") else 1
 
     metrics = result.get("metrics", {}) if isinstance(result, dict) else {}
+    capacity = (
+        result.get("capacity", {}).get("commands", {})
+        if isinstance(result, dict)
+        else {}
+    )
     renderer = renderer_for(ctx)
     renderer.header("Service health", "REST and host runtime")
     renderer.blank()
@@ -36,8 +41,12 @@ def handle_health(ctx: CLIContext, _args) -> int:
             ("Uptime", human_duration(metrics.get("uptime_seconds", 0))),
             ("Requests", metrics.get("total_requests", 0)),
             ("Errors", metrics.get("error_count", 0)),
-            ("Rate-limit hits", metrics.get("rate_limit_hits", 0)),
             ("Average latency", f"{metrics.get('avg_latency_ms', 0)} ms"),
+            (
+                "Command slots",
+                f"{capacity.get('active', 0)} active / "
+                f"{capacity.get('max_concurrent', '?')} max",
+            ),
         ]
     )
     renderer.blank()
@@ -87,7 +96,10 @@ def handle_capabilities(ctx: CLIContext, args) -> int:
     renderer.blank()
     if selected == ["tools"]:
         tools = result.get("tools", [])
-        renderer.status("success", f"{len(tools)} tools available")
+        renderer.status(
+            "success",
+            f"{len(tools)} {'tool' if len(tools) == 1 else 'tools'} available",
+        )
         renderer.blank()
         renderer.table(["TOOL"], [[tool] for tool in tools])
         return 0
