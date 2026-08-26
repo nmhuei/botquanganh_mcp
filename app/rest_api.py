@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import functools
 import json
+import re
+from collections import deque
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
@@ -43,6 +46,24 @@ _ACTIVITY_INCLUDE_CHOICES = ("journals", "jobs", "all")
 _ARCHIVE_DIR_NAME = ".archive"
 _JOURNAL_PREVIOUS_NAME = "journal.jsonl.1"
 _JOURNAL_CURRENT_NAME = "journal.jsonl"
+
+# Log-tail visibility: fixed source-name -> filename map under logs/. The base
+# directory resolves once at import and query parameters never carry paths, so
+# a caller can only ever reach these five files.
+_LOG_TAIL_SOURCES = {
+    "server": "server.log",
+    "tunnel": "cloudflared.log",
+    "launcher": "launcher.log",
+    "audit": "gateway.log",
+    "desktop": "desktop-ui.log",
+}
+_LOG_TAIL_BASE_DIR = app.config.BASE_DIR / "logs"
+_LOG_TAIL_LINES_DEFAULT = 100
+_LOG_TAIL_LINES_MAX = 500
+_LOG_TAIL_LINE_CHAR_CAP = 2000
+_LOG_TS_PREFIX_RE = re.compile(
+    r"^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:[.,](\d+))?(Z|[+-]\d{2}:?\d{2})?"
+)
 
 # Dedicated worker budget for blocking REST handlers. Without it, a burst of
 # concurrent command runs can occupy the shared default pool and freeze every
@@ -264,6 +285,111 @@ def _activity_response(
     }
 
 
+def _log_line_timestamp(line: str) -> str | None:
+    """Best-effort UTC ISO timestamp from a leading stamp prefix, else None."""
+    match = _LOG_TS_PREFIX_RE.match(line)
+    if not match:
+        return None
+    date, clock, fraction, zone = match.groups()
+    text = f"{date}T{clock}"
+    if fraction:
+        text += f".{fraction[:6]}"
+    if zone == "Z":
+        text += "+00:00"
+    elif zone:
+        if len(zone) == 5 and ":" not in zone:
+            zone = f"{zone[:3]}:{zone[3:]}"
+        text += zone
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).isoformat()
+
+
+def _tail_lines(path: Path, *, lines: int, grep: str | None) -> tuple[list[str], int]:
+    """Newest-last window of matching lines plus the total number of matches.
+
+    Streams the file line by so memory stays bounded by `lines`, not file size;
+    original order is preserved inside the window.
+    """
+    window: deque[str] = deque(maxlen=max(lines, 0))
+    total_matches = 0
+    with path.open("rb") as handle:
+        for raw in handle:
+            text = raw.decode("utf-8", errors="replace").rstrip("\r\n")
+            if grep and grep not in text:
+                continue
+            total_matches += 1
+            window.append(text)
+    return list(window), total_matches
+
+
+def _log_source_entry(name: str, *, lines: int, grep: str | None) -> dict[str, Any]:
+    filename = _LOG_TAIL_SOURCES[name]
+    entry: dict[str, Any] = {
+        "source": name,
+        # Relative layout only; absolute filesystem paths stay server-side.
+        "path": f"logs/{filename}",
+        "exists": False,
+        "truncated": False,
+        "lines": [],
+    }
+    path = _LOG_TAIL_BASE_DIR / filename
+    if not path.is_file():
+        return entry
+    matched, total_matches = _tail_lines(path, lines=lines, grep=grep)
+    capped_lines: list[dict[str, Any]] = []
+    for text in matched:
+        item: dict[str, Any] = {
+            "ts": _log_line_timestamp(text),
+            "line": text[:_LOG_TAIL_LINE_CHAR_CAP],
+        }
+        if len(text) > _LOG_TAIL_LINE_CHAR_CAP:
+            item["truncated"] = True
+        capped_lines.append(item)
+    entry["exists"] = True
+    entry["truncated"] = total_matches > lines
+    entry["lines"] = capped_lines
+    return entry
+
+
+def _resolve_log_sources(raw: str) -> list[str]:
+    tokens = [token.strip() for token in raw.split(",") if token.strip()]
+    if not tokens or tokens == ["all"]:
+        return [
+            name
+            for name, filename in _LOG_TAIL_SOURCES.items()
+            if (_LOG_TAIL_BASE_DIR / filename).is_file()
+        ]
+    unknown = [token for token in tokens if token not in _LOG_TAIL_SOURCES]
+    if unknown:
+        raise ValueError(
+            "Query parameter 'sources' must be one of: "
+            + ", ".join(("all", *_LOG_TAIL_SOURCES))
+            + "."
+        )
+    selected: list[str] = []
+    for token in tokens:
+        if token not in selected:
+            selected.append(token)
+    return selected
+
+
+def _logs_tail_response(
+    *, sources: str, lines: int, grep: str | None
+) -> dict[str, Any]:
+    selected = _resolve_log_sources(sources)
+    return {
+        "ok": True,
+        "sources": [
+            _log_source_entry(name, lines=lines, grep=grep) for name in selected
+        ],
+    }
+
+
 async def api_index(_request: Request) -> JSONResponse:
     return JSONResponse(
         {
@@ -286,6 +412,7 @@ async def api_index(_request: Request) -> JSONResponse:
                 {"method": "GET", "path": f"{API_PREFIX}/knowledge"},
                 {"method": "GET", "path": f"{API_PREFIX}/jobs"},
                 {"method": "GET", "path": f"{API_PREFIX}/activity"},
+                {"method": "GET", "path": f"{API_PREFIX}/logs/tail"},
             ],
         }
     )
@@ -505,6 +632,19 @@ async def api_activity(request: Request) -> JSONResponse:
         return JSONResponse(format_error_response(exc), status_code=_error_status(exc))
 
 
+async def api_logs_tail(request: Request) -> JSONResponse:
+    try:
+        sources = request.query_params.get("sources", "").strip() or "all"
+        grep = request.query_params.get("grep", "").strip() or None
+        lines = _query_int(request, "lines", _LOG_TAIL_LINES_DEFAULT) or 0
+        lines = max(0, min(lines, _LOG_TAIL_LINES_MAX))
+        # Log reads are disk work; keep them off the event loop like the
+        # filesystem routes instead of the inline registry-only path.
+        return await _call(_logs_tail_response, sources=sources, lines=lines, grep=grep)
+    except Exception as exc:
+        return JSONResponse(format_error_response(exc), status_code=_error_status(exc))
+
+
 def openapi_document() -> dict[str, Any]:
     json_object = {"type": "object", "additionalProperties": True}
     error_descriptions = {
@@ -566,6 +706,7 @@ def openapi_document() -> dict[str, Any]:
             f"{API_PREFIX}/knowledge": {"get": {"summary": "Read host guides and tool inventory", "parameters": [{"name": "section", "in": "query", "schema": {"type": "string", "default": "overview"}}, {"name": "query", "in": "query", "schema": {"type": "string"}}], "responses": {"200": {"description": "Knowledge result"}, **error_responses}}},
             f"{API_PREFIX}/jobs": {"get": {"summary": "List tracked jobs", "parameters": [{"name": "job_id", "in": "query", "schema": {"type": "string"}}, {"name": "chat_id", "in": "query", "schema": {"type": "string"}}, {"name": "status", "in": "query", "schema": {"type": "string", "enum": ["queued", "running", "done", "error"]}}, {"name": "limit", "in": "query", "schema": {"type": "integer", "default": 50, "maximum": 200}}], "responses": {"200": {"description": "Job listing or single job"}, **error_responses}}},
             f"{API_PREFIX}/activity": {"get": {"summary": "Recent activity feed", "parameters": [{"name": "chat_id", "in": "query", "schema": {"type": "string"}}, {"name": "include", "in": "query", "schema": {"type": "string", "enum": ["journals", "jobs", "all"], "default": "all"}}], "responses": {"200": {"description": "Recent activity events"}, **error_responses}}},
+            f"{API_PREFIX}/logs/tail": {"get": {"summary": "Tail service log files", "description": "Snapshot-only tail of fixed server-side log sources (" + ", ".join(_LOG_TAIL_SOURCES) + "). Stateless endpoint: follow streaming is not supported; request again for fresh lines. Paths are resolved server-side and cannot be chosen by the caller.", "parameters": [{"name": "sources", "in": "query", "description": "Comma-separated subset of: " + ", ".join(_LOG_TAIL_SOURCES) + "; 'all' selects every source that exists on disk.", "schema": {"type": "string", "default": "all"}}, {"name": "lines", "in": "query", "schema": {"type": "integer", "default": 100, "maximum": 500}}, {"name": "grep", "in": "query", "schema": {"type": "string"}, "description": "Substring filter applied before the per-source line cap."}], "responses": {"200": {"description": "Log tail snapshot"}, **error_responses}}},
             f"{API_PREFIX}/openapi.json": {"get": {"summary": "OpenAPI document", "security": [], "responses": {"200": {"description": "OpenAPI 3.1 document"}}}},
         },
     }
@@ -592,6 +733,7 @@ def rest_routes() -> list[Route]:
         Route(f"{API_PREFIX}/knowledge", api_knowledge, methods=["GET"]),
         Route(f"{API_PREFIX}/jobs", api_jobs, methods=["GET"]),
         Route(f"{API_PREFIX}/activity", api_activity, methods=["GET"]),
+        Route(f"{API_PREFIX}/logs/tail", api_logs_tail, methods=["GET"]),
         Route(f"{API_PREFIX}/openapi.json", api_openapi, methods=["GET"]),
     ]
 
