@@ -4,16 +4,19 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from app.activity_log import read_mcp_command_activity
+from app.cli.client import RESTClient
 from app.cli.config_view import set_workspace_config
 from app.cli.context import CLIContext
 from app.cli.lifecycle import process_command_line, read_pid
@@ -22,6 +25,7 @@ from app.cli.lifecycle import restart, start, status_data
 StatusReader = Callable[[Any, dict[str, str]], dict[str, Any]]
 LifecycleAction = Callable[..., dict[str, Any]]
 ActivityReader = Callable[[int], list[dict[str, Any]]]
+StreamJobsReader = Callable[[], Any]
 
 BQA_UI_DAEMON_ENV = "BQA_UI_DAEMON"
 DESKTOP_UI_PID_FILENAME = "desktop-ui.pid"
@@ -29,6 +33,14 @@ BACKEND_ALIVE_BADGE = ("backend: ● alive", "#147a45")
 BACKEND_DOWN_BADGE = ("backend: ○ down", "#64748b")
 MIN_COMPLETION_TOAST_SECONDS = 10.0
 COMPLETION_TOAST_LIFETIME_MS = 6000
+STREAM_JOBS_PATH = "/api/v1/jobs"
+STREAM_JOBS_LIMIT = 100
+STREAM_DEFAULT_CHIP = "all"
+STREAM_CHIP_KEYS = ("all", "running", "done", "error")
+STREAM_CHIP_LABELS = ("ALL", "RUNNING", "DONE", "ERROR")
+STREAM_STATUS_GLYPHS = {"running": "●", "done": "✓", "error": "✗", "queued": "◔"}
+STREAM_UNKNOWN_GLYPH = "·"
+STREAM_EMPTY_MESSAGE = "Chưa có job nào trong luồng."
 
 
 class DesktopUIUnavailable(RuntimeError):
@@ -88,6 +100,181 @@ def completion_toast_due(
     if start_fingerprint is not None and current_fingerprint == start_fingerprint:
         return False
     return current_fingerprint != last_fired_fingerprint
+
+
+@dataclass(frozen=True)
+class StreamRow:
+    """Display model for one row of the desktop activity stream panel."""
+
+    job_id: str
+    op: str = ""
+    status: str = ""
+    chat_id: str = ""
+    created_at: float | None = None
+    detail: str = ""
+    result_excerpt: str = ""
+
+
+def clip_text(value: Any, limit: int) -> str:
+    """Collapse whitespace and hard-clip to ``limit`` characters."""
+    text = " ".join(str(value).split())
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def normalize_stream_status(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+def stream_status_glyph(status: Any) -> str:
+    return STREAM_STATUS_GLYPHS.get(normalize_stream_status(status), STREAM_UNKNOWN_GLYPH)
+
+
+def format_stream_time(value: Any) -> str:
+    """Render an epoch timestamp as UTC; anything unparsable becomes a dash."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "—"
+    if not math.isfinite(number):
+        return "—"
+    try:
+        return time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(int(number)))
+    except (OverflowError, OSError, ValueError):
+        return "—"
+
+
+def stream_row_from_mapping(entry: Any) -> StreamRow | None:
+    """Build a display row from one job record; non-mappings are skipped."""
+    if not isinstance(entry, dict):
+        return None
+    created_raw = entry.get("created_at")
+    created_at: float | None
+    try:
+        created_at = float(created_raw) if created_raw is not None else None
+    except (TypeError, ValueError):
+        created_at = None
+    return StreamRow(
+        job_id=str(entry.get("job_id") or ""),
+        op=str(entry.get("op") or ""),
+        status=normalize_stream_status(entry.get("status")),
+        chat_id=str(entry.get("chat_id") or ""),
+        created_at=created_at,
+        detail=str(entry.get("detail") or ""),
+        result_excerpt=str(entry.get("result_excerpt") or ""),
+    )
+
+
+def stream_rows_from_payload(payload: Any) -> list[StreamRow]:
+    """Parse a /api/v1/jobs envelope defensively; garbage yields no rows."""
+    if not isinstance(payload, dict):
+        return []
+    jobs = payload.get("jobs")
+    if not isinstance(jobs, list):
+        return []
+    rows: list[StreamRow] = []
+    for entry in jobs:
+        row = stream_row_from_mapping(entry)
+        if row is not None:
+            rows.append(row)
+    return rows
+
+
+def normalize_stream_chip(value: Any) -> str | None:
+    """Map a chip click to its filter key; unknown chips change nothing."""
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    return normalized if normalized in STREAM_CHIP_KEYS else None
+
+
+def stream_row_matches_chip(row: StreamRow, chip: str) -> bool:
+    # Unknown-status rows only ever surface under ALL.
+    if chip == STREAM_DEFAULT_CHIP:
+        return True
+    return row.status == chip
+
+
+def filter_stream_rows(rows: Sequence[StreamRow], chip: str) -> list[StreamRow]:
+    return [row for row in rows if stream_row_matches_chip(row, chip)]
+
+
+def shifted_selection(order: Sequence[str], current: str | None, delta: int) -> str | None:
+    """Next iid after moving ``delta`` steps, clamped to the visible range."""
+    if not order:
+        return None
+    if current in order:
+        index = order.index(current) + delta
+    else:
+        index = 0 if delta >= 0 else len(order) - 1
+    index = max(0, min(len(order) - 1, index))
+    return order[index]
+
+
+def reduce_stream_view(
+    rows: Sequence[StreamRow],
+    *,
+    chip: str,
+    error_message: str = "",
+) -> tuple[list[StreamRow], str]:
+    """Resolve the panel state: filtered rows plus the muted notice line.
+
+    A fetch error always wins and clears previous rows so a dead backend
+    degrades to a single muted line instead of stale data.
+    """
+    if error_message:
+        return [], error_message
+    visible = filter_stream_rows(rows, chip)
+    if not visible:
+        return [], STREAM_EMPTY_MESSAGE
+    return list(visible), ""
+
+
+def stream_error_message(exc: BaseException) -> str:
+    return clip_text(f"Không đọc được luồng job: {exc}", 180)
+
+
+def stream_copy_line(row: StreamRow) -> str:
+    parts = [row.op or "?", row.status or "?", row.job_id or "?"]
+    if row.chat_id:
+        parts.append(row.chat_id)
+    return " ".join(parts)
+
+
+def format_stream_details(row: StreamRow) -> str:
+    lines = [
+        f"Job: {row.job_id or '—'}",
+        f"Op: {row.op or '—'}",
+        f"Status: {stream_status_glyph(row.status)} {row.status or '—'}",
+        f"Created: {format_stream_time(row.created_at)}",
+        f"Chat: {row.chat_id or '—'}",
+        "",
+        "Detail:",
+        row.detail or "(empty)",
+        "",
+        "Result:",
+        row.result_excerpt or "(empty)",
+        "",
+        f"Copy: {stream_copy_line(row)}",
+    ]
+    return "\n".join(lines)
+
+
+def make_stream_jobs_reader(ctx: CLIContext, *, limit: int = STREAM_JOBS_LIMIT) -> StreamJobsReader:
+    """Default stream reader following the CLI REST client conventions."""
+    values = getattr(ctx, "values", {}) or {}
+    connect_host = str(values.get("MCP_CONNECT_HOST", "127.0.0.1")).strip() or "127.0.0.1"
+    if connect_host in {"0.0.0.0", "::"}:  # nosec B104
+        connect_host = "127.0.0.1"
+    port = str(values.get("MCP_PORT", "18427")).strip() or "18427"
+    base_url = str(getattr(ctx, "base_url", "") or "").rstrip("/") or f"http://{connect_host}:{port}"
+    token = str(getattr(ctx, "token", "") or "")
+    timeout = float(getattr(ctx, "request_timeout", 15.0) or 15.0)
+    client = RESTClient(base_url, token=token, timeout=timeout)
+
+    def reader() -> Any:
+        return client.get(STREAM_JOBS_PATH, query={"limit": limit})
+
+    return reader
 
 
 def desktop_ui_pid_path(repo_root: Path) -> Path:
@@ -186,6 +373,7 @@ class _DesktopDashboard:
         start_action: LifecycleAction,
         restart_action: LifecycleAction,
         activity_reader: ActivityReader,
+        stream_reader: StreamJobsReader | None = None,
     ) -> None:
         self.root = root
         self.tk = tk
@@ -195,6 +383,7 @@ class _DesktopDashboard:
         self.start_action = start_action
         self.restart_action = restart_action
         self.activity_reader = activity_reader
+        self.stream_reader = stream_reader or make_stream_jobs_reader(ctx)
         self.busy = False
         self.closed = False
         self.refresh_job: Any = None
@@ -204,6 +393,18 @@ class _DesktopDashboard:
         self.action_start_fingerprint: str | None = None
         self.last_toast_fingerprint: str | None = None
         self.active_toast: Any = None
+        self.stream_chip = STREAM_DEFAULT_CHIP
+        self.stream_rows_all: list[StreamRow] = []
+        self.stream_rows_by_iid: dict[str, StreamRow] = {}
+        self.stream_iids: list[str] = []
+        self.stream_error_message = ""
+        self.stream_selected_job_id: str | None = None
+        self.stream_inflight = False
+        self.stream_tree: Any = None
+        self.stream_detail: Any = None
+        self.stream_notice_label: Any = None
+        self.stream_notice_var: Any = None
+        self.stream_chip_buttons: dict[str, Any] = {}
         self.values = {key: tk.StringVar(value="—") for key in (
             "bridge",
             "server",
@@ -242,6 +443,18 @@ class _DesktopDashboard:
         style.configure("Subtle.TLabel", foreground="#475569")
         style.configure("FieldName.TLabel", foreground="#64748b", font=("TkDefaultFont", 9, "bold"))
         style.configure("Status.TLabel", font=("TkDefaultFont", 11, "bold"), padding=(10, 5))
+        style.configure("Chip.TButton", padding=(10, 3))
+        style.configure(
+            "ChipActive.TButton",
+            padding=(10, 3),
+            foreground="#ffffff",
+            background="#1d4ed8",
+        )
+        style.map(
+            "ChipActive.TButton",
+            background=[("active", "#1d4ed8"), ("pressed", "#1e40af")],
+            foreground=[("active", "#ffffff")],
+        )
 
         container = self.ttk.Frame(self.root, padding=22)
         container.pack(fill="both", expand=True)
@@ -272,8 +485,10 @@ class _DesktopDashboard:
         notebook = self.ttk.Notebook(container)
         notebook.grid(row=2, column=0, sticky="nsew")
         runtime_tab = self.ttk.Frame(notebook, padding=14)
+        stream_tab = self.ttk.Frame(notebook, padding=14)
         activity_tab = self.ttk.Frame(notebook, padding=14)
         notebook.add(runtime_tab, text="Runtime")
+        notebook.add(stream_tab, text="Luồng công việc")
         notebook.add(activity_tab, text="Hoạt động ChatGPT")
 
         fields = self.ttk.LabelFrame(runtime_tab, text="Trạng thái runtime", padding=14)
@@ -308,6 +523,7 @@ class _DesktopDashboard:
                 browse = self.ttk.Button(fields, text="Chọn thư mục…", command=self.choose_workspace)
                 browse.grid(row=index, column=2, sticky="e", padx=(10, 0), pady=5)
 
+        self._build_stream_tab(stream_tab)
         self._build_activity_tab(activity_tab)
 
         actions = self.ttk.Frame(container)
@@ -360,6 +576,204 @@ class _DesktopDashboard:
         detail.grid(row=2, column=0, columnspan=2, sticky="nsew", pady=(12, 0))
         self.activity_detail = detail
 
+    def _build_stream_tab(self, parent: Any) -> None:
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(2, weight=1)
+        parent.rowconfigure(3, weight=1)
+
+        chips = self.ttk.Frame(parent)
+        chips.grid(row=0, column=0, sticky="w")
+        for label, key in zip(STREAM_CHIP_LABELS, STREAM_CHIP_KEYS):
+            button = self.ttk.Button(
+                chips,
+                text=label,
+                style="Chip.TButton",
+                command=lambda key=key: self.select_stream_chip(key),
+            )
+            button.pack(side="left", padx=(0, 6))
+            self.stream_chip_buttons[key] = button
+
+        self.stream_notice_var = self.tk.StringVar(value="")
+        notice = self.ttk.Label(parent, textvariable=self.stream_notice_var, style="Subtle.TLabel")
+        notice.grid(row=1, column=0, sticky="w", pady=(6, 2))
+        self.stream_notice_label = notice
+
+        columns = ("time", "op", "status", "chat", "detail")
+        tree = self.ttk.Treeview(parent, columns=columns, show="headings", height=9)
+        for key, title, width in (
+            ("time", "Thời gian (UTC)", 150),
+            ("op", "Op", 120),
+            ("status", "Trạng thái", 95),
+            ("chat", "Chat ID", 110),
+            ("detail", "Chi tiết", 320),
+        ):
+            tree.heading(key, text=title)
+            tree.column(key, width=width, stretch=key == "detail")
+        scrollbar = self.ttk.Scrollbar(parent, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        tree.grid(row=2, column=0, sticky="nsew")
+        scrollbar.grid(row=2, column=1, sticky="ns")
+        tree.bind("<<TreeviewSelect>>", self.show_selected_stream)
+        tree.bind("<Up>", lambda _event: self.move_stream_selection(-1) or "break")
+        tree.bind("<Down>", lambda _event: self.move_stream_selection(1) or "break")
+        self.stream_tree = tree
+
+        holder = self.ttk.Frame(parent)
+        holder.grid(row=3, column=0, columnspan=2, sticky="nsew", pady=(10, 0))
+        holder.columnconfigure(0, weight=1)
+        detail = self.tk.Text(holder, height=8, wrap="word", state="disabled")
+        detail.grid(row=0, column=0, sticky="nsew")
+        self.ttk.Button(holder, text="Copy", command=self.copy_stream_details).grid(
+            row=0, column=1, sticky="n", padx=(10, 0)
+        )
+        self.stream_detail = detail
+        self._restyle_stream_chips()
+        self.render_stream()
+
+    def select_stream_chip(self, key: str) -> None:
+        normalized = normalize_stream_chip(key)
+        # Unknown chips are ignored so a stale click can never blank the view.
+        if normalized is None or normalized == self.stream_chip:
+            return
+        self.stream_chip = normalized
+        self._restyle_stream_chips()
+        self.render_stream()
+
+    def _restyle_stream_chips(self) -> None:
+        for key, button in self.stream_chip_buttons.items():
+            active = key == self.stream_chip
+            button.configure(style="ChipActive.TButton" if active else "Chip.TButton")
+
+    def render_stream(self) -> None:
+        """Repaint the stream panel from cached rows; filtering stays local."""
+        if self.stream_tree is None or self.stream_notice_var is None:
+            return
+        display, notice_text = reduce_stream_view(
+            self.stream_rows_all,
+            chip=self.stream_chip,
+            error_message=self.stream_error_message,
+        )
+        self.stream_notice_var.set(notice_text)
+        if notice_text:
+            self.stream_notice_label.grid()
+        else:
+            self.stream_notice_label.grid_remove()
+        for item in self.stream_tree.get_children():
+            self.stream_tree.delete(item)
+        self.stream_rows_by_iid = {}
+        self.stream_iids = []
+        seen: set[str] = set()
+        for index, row in enumerate(display):
+            base = row.job_id or f"row-{index}"
+            iid = base
+            suffix = 2
+            while iid in seen:
+                iid = f"{base}#{suffix}"
+                suffix += 1
+            seen.add(iid)
+            glyph = stream_status_glyph(row.status)
+            values = (
+                format_stream_time(row.created_at),
+                clip_text(row.op, 40),
+                f"{glyph} {row.status}".strip(),
+                row.chat_id,
+                clip_text(row.detail, 80),
+            )
+            self.stream_tree.insert("", "end", iid=iid, values=values)
+            self.stream_rows_by_iid[iid] = row
+            self.stream_iids.append(iid)
+        target: str | None = None
+        if self.stream_selected_job_id:
+            target = next(
+                (
+                    iid
+                    for iid, row in self.stream_rows_by_iid.items()
+                    if row.job_id == self.stream_selected_job_id
+                ),
+                None,
+            )
+        if target is None and self.stream_iids:
+            target = self.stream_iids[0]
+        if target is not None:
+            self.stream_tree.selection_set(target)
+            self.stream_tree.see(target)
+            self.show_selected_stream()
+        else:
+            self.stream_selected_job_id = None
+            self._set_stream_detail("")
+
+    def show_selected_stream(self, _event: Any = None) -> None:
+        if self.stream_tree is None:
+            return
+        selected = self.stream_tree.selection()
+        if not selected:
+            return
+        row = self.stream_rows_by_iid.get(selected[0])
+        if row is None:
+            return
+        self.stream_selected_job_id = row.job_id or None
+        self._set_stream_detail(format_stream_details(row))
+
+    def move_stream_selection(self, delta: int) -> None:
+        if self.stream_tree is None or not self.stream_iids:
+            return None
+        current = (self.stream_tree.selection() or [None])[0]
+        target = shifted_selection(self.stream_iids, current, delta)
+        if target is not None and target != current:
+            self.stream_tree.selection_set(target)
+            self.stream_tree.see(target)
+        return None
+
+    def copy_stream_details(self) -> None:
+        if self.stream_tree is None:
+            return
+        selected = self.stream_tree.selection()
+        row = self.stream_rows_by_iid.get(selected[0]) if selected else None
+        if row is None:
+            self._set_message("warn", "Chưa chọn job nào để copy.")
+            return
+        self.root.clipboard_clear()
+        self.root.clipboard_append(stream_copy_line(row))
+        self.root.update_idletasks()
+        self._set_message("success", "Đã copy thông tin job vào clipboard.")
+
+    def _set_stream_detail(self, text: str) -> None:
+        if self.stream_detail is None:
+            return
+        self.stream_detail.configure(state="normal")
+        self.stream_detail.delete("1.0", "end")
+        self.stream_detail.insert("1.0", text)
+        self.stream_detail.configure(state="disabled")
+
+    def refresh_stream(self) -> None:
+        """Fetch jobs off the UI thread; results land via ``root.after``."""
+        if self.closed or self.stream_inflight or self.stream_reader is None:
+            return
+        reader = self.stream_reader
+        self.stream_inflight = True
+
+        def worker() -> None:
+            error: BaseException | None = None
+            payload: Any = None
+            try:
+                payload = reader()
+            except Exception as exc:  # REST failures must degrade to the muted line.
+                error = exc
+            rows = [] if error is not None else stream_rows_from_payload(payload)
+            if self.closed:
+                return
+            self.root.after(0, lambda: self._finish_stream_fetch(rows, error))
+
+        threading.Thread(target=worker, name="bqa-desktop-stream", daemon=True).start()
+
+    def _finish_stream_fetch(self, rows: list[StreamRow], error: BaseException | None) -> None:
+        self.stream_inflight = False
+        if self.closed:
+            return
+        self.stream_rows_all = rows
+        self.stream_error_message = stream_error_message(error) if error is not None else ""
+        self.render_stream()
+
     def _add_action(self, parent: Any, text: str, command: Callable[[], None], column: int) -> None:
         button = self.ttk.Button(parent, text=text, command=command)
         button.grid(row=0, column=column, sticky="w", padx=(0, 8))
@@ -404,6 +818,7 @@ class _DesktopDashboard:
             if not self.closed:
                 self._schedule_refresh()
         self.refresh_activity()
+        self.refresh_stream()
 
     def refresh_activity(self) -> None:
         if self.closed or self.activity_tree is None:
@@ -436,8 +851,7 @@ class _DesktopDashboard:
 
     @staticmethod
     def _short_activity_text(value: Any, limit: int) -> str:
-        text = " ".join(str(value).split())
-        return text if len(text) <= limit else text[: limit - 1] + "…"
+        return clip_text(value, limit)
 
     def _set_activity_detail(self, text: str) -> None:
         if self.activity_detail is None:
@@ -649,6 +1063,7 @@ def run_desktop_ui(
     start_action: LifecycleAction = start,
     restart_action: LifecycleAction = restart,
     activity_reader: ActivityReader = read_mcp_command_activity,
+    stream_reader: StreamJobsReader | None = None,
 ) -> int:
     """Open the native Tkinter control window and return after it is closed."""
     try:
@@ -672,6 +1087,7 @@ def run_desktop_ui(
         start_action=start_action,
         restart_action=restart_action,
         activity_reader=activity_reader,
+        stream_reader=stream_reader,
     )
     root.mainloop()
     return 0
