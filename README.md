@@ -1,110 +1,85 @@
 # BotQuangAnh Host MCP
 
+Máy chủ Host MCP và CLI vận hành `bqa` để thực thi các lệnh cho phép trên máy này qua MCP.
+
 ## Cài đặt
+
+Yêu cầu: Python >= 3.10, `git` và `uv` (cài nếu thiếu: `curl -LsSf https://astral.sh/uv/install.sh | sh`).
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/nmhuei/botquanganh_mcp/main/install.sh | bash
 ```
 
-## Khởi động
+Installer sẽ clone repo về `~/.botquanganh_mcp` (nếu chạy ngoài thư mục repo), tạo virtualenv `.venv` bằng `uv venv --seed`,
+cài dependencies và CLI, sinh `.env` từ `.env.example`, rồi symlink `bqa` vào `~/.local/bin/bqa`.
 
-```bash
-bqa
-```
-
-Lệnh trên khởi động MCP server và in URL để kết nối (URL chỉ được in sau khi connector xác nhận sẵn sàng):
+Khởi động service; khi từng thành phần sẵn sàng (server → tunnel → bridge → endpoint), URL connector được in ra như một dòng copy-safe:
 
 ```text
 https://<random>.trycloudflare.com/mcp
 ```
 
-Trên máy có graphical desktop, có thể mở thêm cửa sổ Python **BQA Control Center**
-để theo dõi và điều khiển service:
-
-- xem trạng thái MCP bridge, Cloudflare tunnel, endpoint và workspace;
-- nút Start/Adopt, Restart bridge, Refresh và Copy endpoint;
-- nút **Chọn thư mục…** để duyệt workspace và **Áp dụng workspace** để lưu cấu hình,
-  restart riêng MCP bridge và giữ nguyên tunnel. Không cần sửa `.env` thủ công;
-- tab **Hoạt động ChatGPT** hiển thị các lần `host_run_command` gần nhất qua MCP,
-  gồm command, exit code, `stdout` và `stderr` đã giới hạn/redact;
-- tự cập nhật trạng thái mỗi 2 giây mà không tạo request CTF mới.
-
-Mở giao diện bất kỳ lúc nào:
-
-```bash
-bqa ui
-```
-
-Không cần giữ terminal: sau cài đặt, mở **BQA Control Center** từ menu ứng dụng.
-Launcher không mở terminal và tách cửa sổ khỏi phiên shell. Có thể làm tương tự từ dòng lệnh:
-
-```bash
-bqa ui --detach
-```
-
-Nếu đang SSH/headless không có graphical display, dùng bản TUI trong terminal:
-
-```bash
-bqa tui
-```
-
-## Giao diện CLI
-
-- Tiến trình theo mốc: các lệnh vòng đời (`start`, `restart`, `stop`) đánh dấu từng thành phần khi thực sự sẵn sàng, lần lượt qua server → tunnel → bridge → URL connector; chờ lâu sẽ hiển thị thời gian đã trôi.
-- Render không nhấp nháy: chỉ vẽ lại những dòng thực sự thay đổi.
-- Copy an toàn: URL connector và đường dẫn tuyệt đối luôn là một chuỗi liền ở mọi độ rộng terminal.
-- Help gom nhóm theo chủ đề; lỗi kèm gợi ý lệnh kế tiếp được chọn theo exit code.
-- Khởi động nhanh: mỗi lệnh vẽ khung đầu tiên trong ~45–70ms.
-
-## Các lệnh khác
-
-```bash
-bqa status           # xem trạng thái
-bqa url --quiet      # lấy URL MCP
-bqa restart          # restart server, giữ nguyên tunnel
-bqa doctor           # kiểm tra lỗi
-bqa logs server -n 100
-bqa config validate  # kiểm tra cấu hình
-bqa stop             # dừng toàn bộ, URL hiện tại sẽ mất
-```
-
 ## Cấu hình
 
-Sửa file `.env` nếu cần thay đổi workspace, lệnh cho phép hoặc bật xác thực:
+Toàn bộ cấu hình nằm trong `.env` ở thư mục repo, được nạp khi tiến trình khởi động; sửa xong chạy `bqa restart` (hoặc `bqa server restart` nếu muốn giữ nguyên tunnel).
 
-```env
-HOST_WORKSPACE_DIR=/home/user
-HOST_DEFAULT_DIR=/home/user/Downloads
-HOST_COMMAND_POLICY=guarded
-HOST_ALLOWED_COMMANDS=all
-HOST_INHERIT_ENV=true
-MAX_CONCURRENT_COMMANDS=100
-REQUIRE_AUTH=false
-GATEWAY_TOKEN=
-```
+| Khóa | Mặc định | Ý nghĩa |
+| --- | --- | --- |
+| `HOST_WORKSPACE_DIR` | `$HOME` | Thư mục gốc mà tool được phép thao tác |
+| `HOST_DEFAULT_DIR` | = `HOST_WORKSPACE_DIR` | Thư mục mặc định cho đường dẫn tương đối |
+| `HOST_COMMAND_POLICY` | `guarded` | `guarded` chặn mẫu lệnh phá hủy; `allowlist` chỉ cho phép lệnh được liệt kê |
+| `HOST_ALLOWED_COMMANDS` | `all` | Danh sách lệnh cho phép, phân tách bằng dấu phẩy |
+| `MAX_CONCURRENT_COMMANDS` | `100` | Số lệnh chạy đồng thời tối đa |
+| `MAX_TIMEOUT_SECONDS` | `60` | Thời gian chờ tối đa của một lệnh |
+| `MAX_OUTPUT_BYTES` | `500000` | Giới hạn byte stdout/stderr trả về |
+| `MCP_PORT` | `18427` | Cổng MCP bridge cục bộ |
+| `MCP_BIND_HOST` | `127.0.0.1` | Địa chỉ bind của bridge |
+| `REQUIRE_AUTH` | `false` | Bật xác thực token cho HTTP API |
+| `GATEWAY_TOKEN` | *(trống)* | Token dùng cùng `REQUIRE_AUTH=true` |
+| `HOST_TOOL_CACHE_SECONDS` | `300` | Thời gian cache catalog tool |
 
-Sau khi sửa cấu hình:
+## Cách dùng
+
+Gõ `bqa` (không đối số) tương đương `bqa start`; mọi lệnh hỗ trợ `--help` và chế độ đầu ra chung `--json`, `--quiet`.
 
 ```bash
-bqa restart
+# Lifecycle
+bqa start              # khởi động/đón nhận runtime: server → tunnel → bridge → URL connector
+bqa stop               # dừng toàn bộ; URL hiện tại sẽ mất
+bqa restart            # khởi động lại MCP server, giữ nguyên tunnel PID/URL
+bqa server restart     # chỉ restart bridge cục bộ
+bqa server status      # trạng thái riêng của bridge
+bqa url                # in URL connector (--quiet: chỉ chuỗi URL)
+# Interface
+bqa ui                 # BQA Control Center trên desktop
+bqa ui --detach        # mở cửa sổ desktop tách khỏi terminal
+bqa tui                # bản TUI trong terminal (dùng khi SSH/headless)
+# Inspection
+bqa status             # trạng thái runtime tổng thể
+bqa health             # đọc REST health
+bqa capabilities       # capabilities của service
+bqa capabilities --tools|--limits|--host      # lọc: tools / limits / host
+bqa knowledge overview|guide|tools|search|all # guides + catalog tool (--query để lọc)
+bqa logs <server|tunnel|launcher|audit|follow> [-n 100] [-f] [--since 10m] [--grep TEXT]
+# Files & commands
+bqa fs ls [path] --max 500                    # liệt kê thư mục (mặc định workspace root)
+bqa fs cat <path> --lines 1:50                # đọc file UTF-8 (--max-bytes N)
+bqa fs write <path> --text "hi"|--from FILE|--stdin   # tạo/ghi đè file (--no-overwrite)
+bqa fs append <path> --text "..."|--from FILE|--stdin # nối nội dung
+bqa fs replace <path> --old "A" --new "B" --expected-count 1  # thay text chính xác
+bqa fs mkdir <path>                           # tạo thư mục (mặc định tạo cả thư mục cha)
+bqa fs search "từ khóa" --path docs --max 100 # tìm kiếm text đệ quy
+bqa cmd check "ls -la"                        # soi chính sách mà không chạy lệnh
+bqa cmd run "df -h" --timeout 30 --cwd DIR --check-first
+# Diagnostics
+bqa doctor              # chẩn đoán cục bộ + tunnel công khai
+bqa doctor --local-only # bỏ qua kiểm tra public tunnel
+bqa doctor --strict     # coi cảnh báo là thất bại
+# Config & help
+bqa config show|get KEY|path|validate [--strict]
+bqa completion bash|zsh|fish
+bqa version
+bqa help [command]
 ```
 
-## Thẻ kết quả CTF trong ChatGPT
-
-Khi người dùng xác nhận một URL HTTPS CTF được phép truy cập và yêu cầu lấy trang cơ bản,
-ChatGPT có thể gọi `ctf_fetch_url`. Tool này chỉ thực hiện một `GET` có giới hạn, không
-quét, crawl hoặc fuzz. Sau đó `ctf_render_fetch_result` hiển thị thẻ inline gồm URL cuối,
-HTTP status, redirects, content type và phần body đã giới hạn.
-
-Sau khi cập nhật server, chạy `bqa restart`, rồi **Refresh** kết nối MCP trong ChatGPT
-Developer Mode để ChatGPT nhận resource UI và tool mới. Thẻ UI chỉ hiển thị kết quả được
-truyền vào; nó không tự tạo request HTTP nào.
-
-## Tài liệu
-
-- [Kiến trúc hệ thống](docs/ARCHITECTURE.md)
-- [CLI UI contract](docs/CLI_UI.md)
-- [Hướng dẫn vận hành](docs/OPERATIONS_RUNBOOK.md)
-- [Runbook điều tra MCP 502](docs/MCP_FORENSICS_RUNBOOK.md)
-- [Checklist phát hành](docs/RELEASE_CHECKLIST.md)
-- [Chính sách bảo mật](SECURITY.md)
+Probe sức khỏe trực tiếp: `curl -s http://127.0.0.1:18427/healthz` · endpoint MCP: `<URL>/mcp`.
