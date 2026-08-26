@@ -24,9 +24,13 @@ from app.host.files import (
     write_text_file,
 )
 from app.host.policy import inspect_host_command
+from app.jobs_registry import JOB_STATUSES, get_jobs_registry
 from app.security import format_error_response
 
 API_PREFIX = "/api/v1"
+
+# Recent-activity feed window served from the jobs registry today.
+_ACTIVITY_EVENT_LIMIT = 50
 
 # Dedicated worker budget for blocking REST handlers. Without it, a burst of
 # concurrent command runs can occupy the shared default pool and freeze every
@@ -100,6 +104,38 @@ def _query_bool(request: Request, name: str, default: bool = False) -> bool:
     raise ValueError(f"Query parameter '{name}' must be a boolean.")
 
 
+def _jobs_response(
+    *,
+    job_id: str,
+    chat_id: str | None,
+    status: str | None,
+    limit: int,
+) -> dict[str, Any]:
+    registry = get_jobs_registry()
+    if job_id:
+        record = registry.get(job_id)
+        if record is None:
+            raise FileNotFoundError(f"Job '{job_id}' was not found.")
+        return {"ok": True, "job": record.as_dict()}
+    records = registry.list(chat_id=chat_id, status=status, limit=limit)
+    return {
+        "ok": True,
+        "count": len(records),
+        "jobs": [record.as_dict() for record in records],
+    }
+
+
+def _activity_response(*, chat_id: str | None) -> dict[str, Any]:
+    # Served from the jobs registry today; the journal feed plugs in here later.
+    records = get_jobs_registry().list(chat_id=chat_id, limit=_ACTIVITY_EVENT_LIMIT)
+    return {
+        "ok": True,
+        "source": "jobs_registry",
+        "count": len(records),
+        "activity": [record.as_dict() for record in records],
+    }
+
+
 async def api_index(_request: Request) -> JSONResponse:
     return JSONResponse(
         {
@@ -120,6 +156,8 @@ async def api_index(_request: Request) -> JSONResponse:
                 {"method": "POST", "path": f"{API_PREFIX}/commands/check"},
                 {"method": "POST", "path": f"{API_PREFIX}/commands/run"},
                 {"method": "GET", "path": f"{API_PREFIX}/knowledge"},
+                {"method": "GET", "path": f"{API_PREFIX}/jobs"},
+                {"method": "GET", "path": f"{API_PREFIX}/activity"},
             ],
         }
     )
@@ -294,6 +332,38 @@ async def api_knowledge(request: Request) -> JSONResponse:
         return JSONResponse(format_error_response(exc), status_code=_error_status(exc))
 
 
+async def api_jobs(request: Request) -> JSONResponse:
+    try:
+        job_id = request.query_params.get("job_id", "").strip()
+        chat_id = request.query_params.get("chat_id", "").strip() or None
+        status = request.query_params.get("status", "").strip().lower() or None
+        if status is not None and status not in JOB_STATUSES:
+            raise ValueError(
+                "Query parameter 'status' must be one of: "
+                + ", ".join(JOB_STATUSES)
+                + "."
+            )
+        limit = _query_int(request, "limit", 50) or 50
+        limit = max(1, min(limit, 200))
+        return await _call_nowait(
+            _jobs_response,
+            job_id=job_id,
+            chat_id=chat_id,
+            status=status,
+            limit=limit,
+        )
+    except Exception as exc:
+        return JSONResponse(format_error_response(exc), status_code=_error_status(exc))
+
+
+async def api_activity(request: Request) -> JSONResponse:
+    try:
+        chat_id = request.query_params.get("chat_id", "").strip() or None
+        return await _call_nowait(_activity_response, chat_id=chat_id)
+    except Exception as exc:
+        return JSONResponse(format_error_response(exc), status_code=_error_status(exc))
+
+
 def openapi_document() -> dict[str, Any]:
     json_object = {"type": "object", "additionalProperties": True}
     error_descriptions = {
@@ -353,6 +423,8 @@ def openapi_document() -> dict[str, Any]:
             f"{API_PREFIX}/commands/check": {"post": {"summary": "Inspect a host command", "requestBody": {"required": True, "content": {"application/json": {"schema": json_object}}}, "responses": {"200": {"description": "Policy result"}, **error_responses}}},
             f"{API_PREFIX}/commands/run": {"post": {"summary": "Run a host command", "requestBody": {"required": True, "content": {"application/json": {"schema": json_object}}}, "responses": {"200": {"description": "Execution result"}, **error_responses}}},
             f"{API_PREFIX}/knowledge": {"get": {"summary": "Read host guides and tool inventory", "parameters": [{"name": "section", "in": "query", "schema": {"type": "string", "default": "overview"}}, {"name": "query", "in": "query", "schema": {"type": "string"}}], "responses": {"200": {"description": "Knowledge result"}, **error_responses}}},
+            f"{API_PREFIX}/jobs": {"get": {"summary": "List tracked jobs", "parameters": [{"name": "job_id", "in": "query", "schema": {"type": "string"}}, {"name": "chat_id", "in": "query", "schema": {"type": "string"}}, {"name": "status", "in": "query", "schema": {"type": "string", "enum": ["queued", "running", "done", "error"]}}, {"name": "limit", "in": "query", "schema": {"type": "integer", "default": 50, "maximum": 200}}], "responses": {"200": {"description": "Job listing or single job"}, **error_responses}}},
+            f"{API_PREFIX}/activity": {"get": {"summary": "Recent activity feed", "parameters": [{"name": "chat_id", "in": "query", "schema": {"type": "string"}}], "responses": {"200": {"description": "Recent activity events"}, **error_responses}}},
             f"{API_PREFIX}/openapi.json": {"get": {"summary": "OpenAPI document", "security": [], "responses": {"200": {"description": "OpenAPI 3.1 document"}}}},
         },
     }
@@ -377,6 +449,8 @@ def rest_routes() -> list[Route]:
         Route(f"{API_PREFIX}/commands/check", api_check_command, methods=["POST"]),
         Route(f"{API_PREFIX}/commands/run", api_run_command, methods=["POST"]),
         Route(f"{API_PREFIX}/knowledge", api_knowledge, methods=["GET"]),
+        Route(f"{API_PREFIX}/jobs", api_jobs, methods=["GET"]),
+        Route(f"{API_PREFIX}/activity", api_activity, methods=["GET"]),
         Route(f"{API_PREFIX}/openapi.json", api_openapi, methods=["GET"]),
     ]
 
