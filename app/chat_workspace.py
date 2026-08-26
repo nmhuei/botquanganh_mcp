@@ -45,6 +45,25 @@ class CapacityError(RuntimeError):
     """Configured workspace capacity prevents creating another workspace."""
 
 
+class QuotaError(RuntimeError):
+    """Per-workspace byte quota blocks the requested mutation."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        chat_id: str | None = None,
+        used_bytes: int | None = None,
+        quota_bytes: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        # Names mirror app.chat_errors._fields_from_exception so the E3
+        # template renders concrete numbers instead of "?" placeholders.
+        self.chat_id = chat_id
+        self.used_bytes = used_bytes
+        self.quota_bytes = quota_bytes
+
+
 @dataclass(frozen=True)
 class WorkspaceLimits:
     max_workspaces: int
@@ -369,6 +388,33 @@ def rebuild_state(ws_dir: Path) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Quota accounting. Walked only on mutation points (create/bind, appends);
+# read APIs never pay for it, so no cache is needed.
+# ---------------------------------------------------------------------------
+
+
+def _workspace_bytes(ws: Path) -> int:
+    total = 0
+    stack = [ws]
+    while stack:
+        try:
+            entries = list(stack.pop().iterdir())
+        except OSError:
+            continue
+        for entry in entries:
+            try:
+                if entry.is_symlink():
+                    total += entry.lstat().st_size
+                elif entry.is_dir():
+                    stack.append(entry)
+                else:
+                    total += entry.stat().st_size
+            except OSError:
+                continue
+    return total
+
+
+# ---------------------------------------------------------------------------
 # Manager.
 # ---------------------------------------------------------------------------
 
@@ -422,6 +468,29 @@ class WorkspaceManager:
                 f"max_workspaces={max_workspaces} reached under {self.root}"
             )
 
+    def _enforce_quota(
+        self, ws: Path, chat_id: str, incoming_bytes: int | None = None
+    ) -> None:
+        quota_mb = read_limits().quota_mb
+        if quota_mb <= 0:
+            return
+        quota_bytes = quota_mb * 1024 * 1024
+        used = _workspace_bytes(ws)
+        if used < quota_bytes:
+            return
+        # An append is refused only when its payload would grow the footprint;
+        # bind-time enforcement has no incoming bytes and refuses outright.
+        if incoming_bytes is not None and incoming_bytes <= 0:
+            return
+        detail = "" if incoming_bytes is None else f"; refusing {incoming_bytes} more"
+        raise QuotaError(
+            f"chat {chat_id} workspace over quota: "
+            f"{used} of {quota_bytes} bytes used{detail}",
+            chat_id=chat_id,
+            used_bytes=used,
+            quota_bytes=quota_bytes,
+        )
+
     def _initialize(self, chat_id: str, ws: Path) -> BindResult:
         (ws / NOTES_NAME).mkdir(exist_ok=True)
         meta = {
@@ -449,6 +518,8 @@ class WorkspaceManager:
         while True:
             if (ws / META_NAME).exists():
                 load_workspace_meta(ws, expected_chat_id=chat_id)
+                # Ownership first (squat defense), then quota, before any write.
+                self._enforce_quota(ws, chat_id)
                 return BindResult(path=ws, created=False, resumed_hint=self._resume_hint(ws))
             if time.monotonic() >= deadline:
                 raise SquatError(f"directory exists without workspace metadata: {ws.name}")
@@ -505,6 +576,9 @@ class WorkspaceManager:
             _repair_torn_tail(journal)
             record = {"seq": int(meta["next_seq"]), "ts": _utc_now_iso(), **base}
             encoded = _json_line_bytes(record)
+            # Gate before rotation: rotation only relocates bytes, the append
+            # is what would grow the footprint past the quota.
+            self._enforce_quota(ws, validated, len(encoded))
             if rotates and self._needs_rotation(journal, len(encoded)):
                 os.replace(journal, ws / JOURNAL_ARCHIVE_NAME)
             descriptor = os.open(journal, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)

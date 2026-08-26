@@ -7,6 +7,7 @@ import types
 
 import pytest
 
+import app.chat_errors
 import app.chat_workspace as cw
 import app.config
 
@@ -460,3 +461,138 @@ def test_rotation_only_on_started_ops(monkeypatch, tmp_path):
     assert not (tmp_path / "chats" / "rot002" / "journal.jsonl.1").exists()
     stored = mgr.read_events("rot002")
     assert len(stored) == 2 and len(stored[1]["payload"]["blob"]) == 400
+
+
+# ---------------------------------------------------------------------------
+# Per-workspace quota enforcement.
+# ---------------------------------------------------------------------------
+
+
+def _fill_to_exact_bytes(ws_dir, target_bytes):
+    filler = ws_dir / "filler.bin"
+    current = cw._workspace_bytes(ws_dir)
+    assert current < target_bytes
+    filler.write_bytes(b"\0" * (target_bytes - current))
+    return filler
+
+
+def test_default_quota_leaves_normal_fixtures_unblocked(monkeypatch, manager):
+    monkeypatch.delattr(app.config, "HOST_CHAT_QUOTA_MB", raising=False)
+    manager.create_or_bind("inert1")
+    for index in range(5):
+        manager.append_op_started("inert1", f"op{index}", "run", {"n": index})
+    assert len(manager.read_events("inert1")) == 5
+    # Rebinding an existing workspace is not a quota event at this size.
+    assert manager.create_or_bind("inert1").created is False
+
+
+def test_create_refused_at_exact_quota_boundary(monkeypatch, tmp_path):
+    monkeypatch.setattr(app.config, "HOST_CHAT_QUOTA_MB", 1, raising=False)
+    mgr = cw.WorkspaceManager(tmp_path / "chats", bind_wait_seconds=0.25)
+    bound = mgr.create_or_bind("quota01")
+    limit = 1024 * 1024
+    _fill_to_exact_bytes(bound.path, limit)
+    assert cw._workspace_bytes(bound.path) == limit
+
+    with pytest.raises(cw.QuotaError) as excinfo:
+        mgr.create_or_bind("quota01")
+    assert excinfo.value.used_bytes == limit
+    assert excinfo.value.quota_bytes == limit
+
+    # Per-workspace quota: a sibling workspace is still creatable.
+    assert mgr.create_or_bind("other01").created is True
+
+
+def test_append_refuses_over_quota_and_recovers(monkeypatch, manager, tmp_path):
+    monkeypatch.setattr(app.config, "HOST_CHAT_QUOTA_MB", 1, raising=False)
+    bound = manager.create_or_bind("quota02")
+    filler = _fill_to_exact_bytes(bound.path, 1024 * 1024)
+
+    with pytest.raises(cw.QuotaError):
+        manager.append_op_started("quota02", "opX", "run", {"n": 1})
+
+    meta = json.loads((bound.path / "meta.json").read_text(encoding="utf-8"))
+    assert meta["next_seq"] == 1
+    assert manager.read_events("quota02") == []
+
+    filler.unlink()
+    record = manager.append_op_started("quota02", "opX", "run", {"n": 1})
+    assert record["seq"] == 1
+
+
+def test_rotation_still_governs_oversized_payload_under_quota(monkeypatch, tmp_path):
+    monkeypatch.setattr(app.config, "HOST_CHAT_JOURNAL_MAX_BYTES", 512, raising=False)
+    monkeypatch.setattr(app.config, "HOST_CHAT_QUOTA_MB", 1, raising=False)
+    mgr = cw.WorkspaceManager(tmp_path / "chats", bind_wait_seconds=0.25)
+    mgr.create_or_bind("rot003")
+
+    record = mgr.append_op_started("rot003", "opBig", "run", {"blob": "b" * 1200})
+
+    ws = tmp_path / "chats" / "rot003"
+    assert (ws / "journal.jsonl.1").exists()
+    events = mgr.read_events("rot003")
+    assert [event["seq"] for event in events] == [1]
+    assert len(events[0]["payload"]["blob"]) == 1200
+    assert record["seq"] == 1
+
+
+def test_append_refused_over_quota_even_when_rotation_would_fit(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(app.config, "HOST_CHAT_JOURNAL_MAX_BYTES", 512, raising=False)
+    monkeypatch.setattr(app.config, "HOST_CHAT_QUOTA_MB", 1, raising=False)
+    mgr = cw.WorkspaceManager(tmp_path / "chats", bind_wait_seconds=0.25)
+    bound = mgr.create_or_bind("rot004")
+    mgr.append_op_started("rot004", "op1", "run", {})
+    journal_before = (bound.path / "journal.jsonl").read_bytes()
+    _fill_to_exact_bytes(bound.path, 1024 * 1024)
+
+    with pytest.raises(cw.QuotaError):
+        mgr.append_op_started("rot004", "op2", "run", {"blob": "b" * 1200})
+
+    assert not (bound.path / "journal.jsonl.1").exists()
+    assert (bound.path / "journal.jsonl").read_bytes() == journal_before
+    assert [event["op"] for event in mgr.read_events("rot004")] == ["op1"]
+
+
+def test_quota_error_message_is_copy_safe_with_tiny_quota(
+    monkeypatch, manager, tmp_path
+):
+    secret_marker = "SECRETPAYLOAD-must-never-be-echoed"
+    monkeypatch.setattr(app.config, "HOST_CHAT_QUOTA_MB", 1, raising=False)
+    bound = manager.create_or_bind("copy02")
+    (bound.path / "notes" / "leak.txt").write_text(secret_marker, encoding="utf-8")
+    _fill_to_exact_bytes(bound.path, 1024 * 1024)
+
+    with pytest.raises(cw.QuotaError) as excinfo:
+        manager.append_op_started(
+            "copy02", "opS", "shell", {"stdout": f"prefix {secret_marker} suffix"}
+        )
+
+    rendered = f"{excinfo.value}"
+    assert secret_marker not in rendered
+    assert secret_marker not in repr(excinfo.value)
+    assert "prefix" not in rendered and "suffix" not in rendered
+    # Only validated ids and byte counts may appear in the message.
+    assert excinfo.value.chat_id == "copy02"
+    assert isinstance(excinfo.value.used_bytes, int)
+
+
+def test_quota_error_matches_chat_errors_fragment_rule():
+    # app.chat_errors.to_tool_error falls back to matching lowercased class
+    # names against known fragments; "quota" must resolve to E3.
+    assert "quota" in cw.QuotaError.__name__.lower()
+    payload = app.chat_errors.to_tool_error(
+        cw.QuotaError(
+            "workspace over quota",
+            chat_id="abcdef",
+            used_bytes=2048,
+            quota_bytes=1024,
+        )
+    )
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "E3"
+    assert payload["error"]["name"] == "QUOTA_EXCEEDED"
+    assert payload["error"]["message"] == (
+        "Chat abcdef is over quota: 2048 of 1024 bytes used."
+    )
