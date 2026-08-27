@@ -20,8 +20,13 @@ DEFAULTS: dict[str, str] = {
     "REQUIRE_AUTH": "false",
     "GATEWAY_TOKEN": str(),
     "TRUST_PROXY_HEADERS": "false",
+    "ALLOWED_ORIGINS": "",
     "HOST_WORKSPACE_DIR": str(Path.home()),
     "HOST_RESTRICT_TO_WORKSPACE": "true",
+    "HOST_DEFAULT_DIR": str(Path.home()),
+    "HOST_READ_SCOPE": "",
+    "HOST_WRITE_SCOPE": "",
+    "HOST_READ_DENY_GLOBS": "",
     "HOST_COMMAND_POLICY": "guarded",
     "HOST_ALLOWED_COMMANDS": "all",
     "HOST_INHERIT_ENV": "true",
@@ -33,10 +38,24 @@ DEFAULTS: dict[str, str] = {
     "MAX_TIMEOUT_SECONDS": "60",
     "MAX_CONCURRENT_COMMANDS": "100",
     "COMMAND_QUEUE_TIMEOUT_SECONDS": "2",
+    "SEARCH_TEXT_DEADLINE_SECONDS": "15",
     "LOG_FILE": "./logs/gateway.log",
     "AUDIT_LOG_MAX_BYTES": "10000000",
     "AUDIT_LOG_BACKUP_COUNT": "5",
     "AUDIT_MAX_FIELD_CHARS": "4000",
+    "ATTRIBUTION_MODE": "off",
+    "HOST_CHAT_WORKSPACES": "false",
+    "HOST_CHAT_ROOT": str(Path.home() / "Downloads" / "bqa-workspaces"),
+    "HOST_CHAT_IDLE_ARCHIVE_HOURS": "72",
+    "HOST_CHAT_RETENTION_DAYS": "30",
+    "HOST_CHAT_MAX_WORKSPACES": "128",
+    "HOST_CHAT_QUOTA_MB": "2048",
+    "HOST_CHAT_ISOLATE": "false",
+    "HOST_CHAT_RESUME_HINT_MINUTES": "30",
+    "HOST_CHAT_ROOT_MAX_GB": "24",
+    "HOST_CHAT_JOURNAL_MAX_BYTES": "8388608",
+    "HOST_CHAT_SWEEP_INTERVAL_MINUTES": "60",
+    "HOST_CHAT_SWEEP_APPLY": "false",
 }
 
 _BOOLEAN_KEYS = (
@@ -46,6 +65,9 @@ _BOOLEAN_KEYS = (
     "TRUST_PROXY_HEADERS",
     "HOST_RESTRICT_TO_WORKSPACE",
     "HOST_INHERIT_ENV",
+    "HOST_CHAT_WORKSPACES",
+    "HOST_CHAT_ISOLATE",
+    "HOST_CHAT_SWEEP_APPLY",
 )
 _INTEGER_LIMITS: dict[str, tuple[int, int | None]] = {
     "MCP_PORT": (1, 65535),
@@ -57,9 +79,18 @@ _INTEGER_LIMITS: dict[str, tuple[int, int | None]] = {
     "AUDIT_LOG_MAX_BYTES": (1024, None),
     "AUDIT_LOG_BACKUP_COUNT": (1, 1000),
     "AUDIT_MAX_FIELD_CHARS": (256, None),
+    "HOST_CHAT_IDLE_ARCHIVE_HOURS": (0, None),
+    "HOST_CHAT_RETENTION_DAYS": (0, None),
+    "HOST_CHAT_MAX_WORKSPACES": (1, None),
+    "HOST_CHAT_QUOTA_MB": (0, None),
+    "HOST_CHAT_RESUME_HINT_MINUTES": (0, None),
+    "HOST_CHAT_JOURNAL_MAX_BYTES": (1024, None),
+    "HOST_CHAT_SWEEP_INTERVAL_MINUTES": (1, None),
 }
 _FLOAT_LIMITS: dict[str, tuple[float, float | None]] = {
     "COMMAND_QUEUE_TIMEOUT_SECONDS": (0.0, None),
+    "SEARCH_TEXT_DEADLINE_SECONDS": (0.0, None),
+    "HOST_CHAT_ROOT_MAX_GB": (0.0, None),
 }
 _TRUE_VALUES = {"1", "true", "yes", "on"}
 _FALSE_VALUES = {"0", "false", "no", "off"}
@@ -266,6 +297,13 @@ def validate_config(
         "command_policy",
         "pass" if policy in {"guarded", "allowlist"} else "fail",
         policy,
+    )
+
+    mode = values.get("ATTRIBUTION_MODE", "off").strip().lower()
+    add(
+        "attribution_mode",
+        "pass" if mode in {"off", "tag", "strict", "enforce"} else "fail",
+        mode,
     )
 
     auth_required = bool_value(values, "REQUIRE_AUTH", False)

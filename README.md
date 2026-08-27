@@ -25,18 +25,36 @@ Toàn bộ cấu hình nằm trong `.env` ở thư mục repo, được nạp kh
 
 | Khóa | Mặc định | Ý nghĩa |
 | --- | --- | --- |
-| `HOST_WORKSPACE_DIR` | `$HOME` | Thư mục gốc mà tool được phép thao tác |
-| `HOST_DEFAULT_DIR` | = `HOST_WORKSPACE_DIR` | Thư mục mặc định cho đường dẫn tương đối |
+| `HOST_WORKSPACE_DIR` | `~` (`$HOME`) | Thư mục gốc mà tool được phép thao tác |
+| `HOST_DEFAULT_DIR` | `~` (`$HOME`) | Thư mục mặc định cho đường dẫn tương đối |
+| `HOST_RESTRICT_TO_WORKSPACE` | `true` | Giới hạn mọi thao tác file nằm trong workspace |
+| `HOST_READ_SCOPE` | *(trống)* | Phạm vi đọc hẹp hơn (mặc định lấy `HOST_WORKSPACE_DIR`) |
+| `HOST_WRITE_SCOPE` | *(trống)* | Phạm vi ghi hẹp hơn (mặc định lấy `HOST_WORKSPACE_DIR`) |
+| `HOST_READ_DENY_GLOBS` | *(trống)* | Danh sách mẫu glob từ chối đọc, phân tách bằng dấu phẩy |
 | `HOST_COMMAND_POLICY` | `guarded` | `guarded` chặn mẫu lệnh phá hủy; `allowlist` chỉ cho phép lệnh được liệt kê |
 | `HOST_ALLOWED_COMMANDS` | `all` | Danh sách lệnh cho phép, phân tách bằng dấu phẩy |
+| `HOST_INHERIT_ENV` | `true` | Kế thừa biến môi trường khi chạy command (đã lọc secret/token) |
+| `HOST_ENV_ALLOWLIST` | *(trống)* | Danh sách biến môi trường cho phép thêm khi chạy command |
 | `MAX_CONCURRENT_COMMANDS` | `100` | Số lệnh chạy đồng thời tối đa |
-| `MAX_TIMEOUT_SECONDS` | `60` | Thời gian chờ tối đa của một lệnh |
+| `MAX_TIMEOUT_SECONDS` | `60` | Thời gian chờ tối đa của một lệnh (giây) |
 | `MAX_OUTPUT_BYTES` | `500000` | Giới hạn byte stdout/stderr trả về |
+| `MAX_SINGLE_FILE_BYTES` | `3000000` | Giới hạn kích thước file tối đa khi đọc/ghi |
+| `SEARCH_TEXT_DEADLINE_SECONDS` | `15` | Giới hạn thời gian quét text đệ quy trước khi trả kết quả một phần |
 | `MCP_PORT` | `18427` | Cổng MCP bridge cục bộ |
 | `MCP_BIND_HOST` | `127.0.0.1` | Địa chỉ bind của bridge |
 | `REQUIRE_AUTH` | `false` | Bật xác thực token cho HTTP API |
 | `GATEWAY_TOKEN` | *(trống)* | Token dùng cùng `REQUIRE_AUTH=true` |
+| `ALLOWED_ORIGINS` | *(trống)* | Danh sách CORS origin cho phép qua HTTP API |
+| `TRUST_PROXY_HEADERS` | `false` | Tin cậy header proxy khi đứng sau Cloudflare Tunnel / reverse proxy |
 | `HOST_TOOL_CACHE_SECONDS` | `300` | Thời gian cache catalog tool |
+| `ATTRIBUTION_MODE` | `off` | Gán thao tác host về chat: `off` / `tag` / `strict` / `enforce` |
+| `HOST_CHAT_WORKSPACES` | `false` | Bật tính năng tạo workspace riêng cho từng chat |
+| `HOST_CHAT_ROOT` | `~/Downloads/bqa-workspaces` | Thư mục gốc chứa các chat workspace |
+| `HOST_CHAT_ISOLATE` | `false` | Khóa ghi: không cho ghi ra ngoài workspace riêng của chat |
+| `HOST_CHAT_QUOTA_MB` | `2048` | Dung lượng tối đa của một chat workspace (MB) |
+| `HOST_CHAT_IDLE_ARCHIVE_HOURS` | `72` | Số giờ không hoạt động trước khi tự động archive workspace |
+| `HOST_CHAT_RETENTION_DAYS` | `30` | Số ngày lưu giữ workspace trước khi dọn dẹp vĩnh viễn |
+| `HOST_CHAT_MAX_WORKSPACES` | `128` | Giới hạn số lượng workspace tồn tại đồng thời |
 
 ## Cách dùng
 
