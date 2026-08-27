@@ -17,7 +17,6 @@ from app.cli.errors import (
     EXIT_AUTH,
     EXIT_CONNECTION,
     EXIT_NOT_FOUND,
-    EXIT_OPERATION_FAILED,
     EXIT_POLICY,
     EXIT_TIMEOUT,
     EXIT_USAGE,

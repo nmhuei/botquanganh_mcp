@@ -45,6 +45,7 @@ def _run_config_probe(env_value, cwd=None):
         env["ATTRIBUTION_MODE"] = env_value
     return subprocess.run(  # nosec B603
         [sys.executable, "-c", "import app.config as c; print(c.ATTRIBUTION_MODE)"],
+        check=False,
         capture_output=True,
         text=True,
         cwd=str(cwd or REPO_ROOT),

@@ -10,8 +10,9 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -19,13 +20,19 @@ from app.activity_log import read_mcp_command_activity
 from app.cli.client import RESTClient
 from app.cli.config_view import set_workspace_config
 from app.cli.context import CLIContext
-from app.cli.lifecycle import process_command_line, read_pid
-from app.cli.lifecycle import restart, start, status_data
+from app.cli.lifecycle import (
+    process_command_line,
+    read_pid,
+    restart,
+    start,
+    status_data,
+)
 
 StatusReader = Callable[[Any, dict[str, str]], dict[str, Any]]
 LifecycleAction = Callable[..., dict[str, Any]]
 ActivityReader = Callable[[int], list[dict[str, Any]]]
 StreamJobsReader = Callable[[], Any]
+WorkspaceLogStreamReader = Callable[[str | None], Iterator[dict[str, Any]]]
 
 BQA_UI_DAEMON_ENV = "BQA_UI_DAEMON"
 DESKTOP_UI_PID_FILENAME = "desktop-ui.pid"
@@ -41,6 +48,14 @@ STREAM_CHIP_LABELS = ("ALL", "RUNNING", "DONE", "ERROR")
 STREAM_STATUS_GLYPHS = {"running": "●", "done": "✓", "error": "✗", "queued": "◔"}
 STREAM_UNKNOWN_GLYPH = "·"
 STREAM_EMPTY_MESSAGE = "Chưa có job nào trong luồng."
+WORKSPACE_LOG_STREAM_PATH = "/api/v1/activity/stream"
+WORKSPACE_LOG_REPLAY = 100
+WORKSPACE_LOG_CACHE_LIMIT = 500
+WORKSPACE_LOG_DEFAULT_CHIP = "all"
+WORKSPACE_LOG_CHIP_KEYS = ("all", "error", "process", "file", "session")
+WORKSPACE_LOG_CHIP_LABELS = ("ALL", "ERROR", "PROCESS", "FILE", "SESSION")
+WORKSPACE_LOG_RECONNECT_SECONDS = 2.0
+WORKSPACE_LOG_EMPTY_MESSAGE = "Chưa có workspace log phù hợp bộ lọc."
 
 
 class DesktopUIUnavailable(RuntimeError):
@@ -113,6 +128,25 @@ class StreamRow:
     created_at: float | None = None
     detail: str = ""
     result_excerpt: str = ""
+
+
+@dataclass(frozen=True)
+class WorkspaceLogRow:
+    """Normalized display model for one workspace journal event."""
+
+    event_id: str
+    timestamp: str = ""
+    severity: str = "INFO"
+    category: str = "api"
+    action: str = ""
+    outcome: str = "unknown"
+    phase: str = ""
+    chat_id: str = ""
+    duration_ms: float | None = None
+    interaction_id: str = ""
+    dataset: str = ""
+    source: str = ""
+    payload: Any = None
 
 
 def clip_text(value: Any, limit: int) -> str:
@@ -277,6 +311,176 @@ def make_stream_jobs_reader(ctx: CLIContext, *, limit: int = STREAM_JOBS_LIMIT) 
     return reader
 
 
+def workspace_log_row_from_mapping(entry: Any, *, event_id: str = "") -> WorkspaceLogRow | None:
+    if not isinstance(entry, dict):
+        return None
+    duration_raw = entry.get("event_duration_ms")
+    try:
+        duration = float(duration_raw) if duration_raw is not None else None
+    except (TypeError, ValueError):
+        duration = None
+    return WorkspaceLogRow(
+        event_id=str(event_id or entry.get("event_id") or entry.get("interaction_id") or ""),
+        timestamp=str(entry.get("ts") or ""),
+        severity=str(entry.get("severity_text") or "INFO").upper(),
+        category=str(entry.get("event_category") or "api").lower(),
+        action=str(entry.get("event_action") or entry.get("kind") or ""),
+        outcome=str(entry.get("event_outcome") or "unknown").lower(),
+        phase=str(entry.get("operation_phase") or "").lower(),
+        chat_id=str(entry.get("chat_id") or ""),
+        duration_ms=duration,
+        interaction_id=str(entry.get("interaction_id") or entry.get("op") or ""),
+        dataset=str(entry.get("event_dataset") or ""),
+        source=str(entry.get("log_source") or entry.get("source") or ""),
+        payload=entry.get("payload"),
+    )
+
+
+def normalize_workspace_log_chip(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    return normalized if normalized in WORKSPACE_LOG_CHIP_KEYS else None
+
+
+def workspace_log_row_matches_chip(row: WorkspaceLogRow, chip: str) -> bool:
+    if chip == "all":
+        return True
+    if chip == "error":
+        return row.severity == "ERROR" or row.outcome == "failure"
+    return row.category == chip
+
+
+def filter_workspace_log_rows(
+    rows: Sequence[WorkspaceLogRow], *, chip: str, chat_filter: str = ""
+) -> list[WorkspaceLogRow]:
+    wanted_chat = chat_filter.strip().lower()
+    return [
+        row
+        for row in rows
+        if workspace_log_row_matches_chip(row, chip)
+        and (not wanted_chat or wanted_chat in row.chat_id.lower())
+    ]
+
+
+def format_workspace_log_time(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return "—"
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return clip_text(text, 19)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def format_workspace_log_details(row: WorkspaceLogRow) -> str:
+    payload = row.payload
+    if isinstance(payload, (dict, list)):
+        payload_text = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
+    elif payload is None:
+        payload_text = "(empty)"
+    else:
+        payload_text = str(payload)
+    duration = f"{row.duration_ms:.3f} ms" if row.duration_ms is not None else "—"
+    return "\n".join(
+        [
+            f"Time: {row.timestamp or '—'}",
+            f"Severity: {row.severity}",
+            f"Category: {row.category}",
+            f"Action: {row.action or '—'}",
+            f"Outcome: {row.outcome}",
+            f"Phase: {row.phase or '—'}",
+            f"Duration: {duration}",
+            f"Chat: {row.chat_id or '—'}",
+            f"Interaction: {row.interaction_id or '—'}",
+            f"Dataset: {row.dataset or '—'}",
+            f"Source: {row.source or '—'}",
+            "",
+            "Payload:",
+            payload_text,
+        ]
+    )
+
+
+def parse_sse_lines(lines: Iterator[str]) -> Iterator[dict[str, Any]]:
+    """Parse UTF-8-decoded SSE lines into JSON event envelopes."""
+    event_id = ""
+    event_name = "message"
+    data_lines: list[str] = []
+    for raw in lines:
+        line = raw.rstrip("\r\n")
+        if not line:
+            if data_lines:
+                data_text = "\n".join(data_lines)
+                try:
+                    data = json.loads(data_text)
+                except json.JSONDecodeError:
+                    data = data_text
+                yield {"id": event_id, "event": event_name, "data": data}
+            event_id = ""
+            event_name = "message"
+            data_lines = []
+            continue
+        if line.startswith(":"):
+            continue
+        field, separator, value = line.partition(":")
+        if separator and value.startswith(" "):
+            value = value[1:]
+        if field == "id":
+            event_id = value
+        elif field == "event":
+            event_name = value or "message"
+        elif field == "data":
+            data_lines.append(value)
+    if data_lines:
+        data_text = "\n".join(data_lines)
+        try:
+            data = json.loads(data_text)
+        except json.JSONDecodeError:
+            data = data_text
+        yield {"id": event_id, "event": event_name, "data": data}
+
+
+def make_workspace_log_stream_reader(
+    ctx: CLIContext, *, replay: int = WORKSPACE_LOG_REPLAY
+) -> WorkspaceLogStreamReader:
+    """Create a reconnectable SSE reader using the same auth as the CLI."""
+    values = getattr(ctx, "values", {}) or {}
+    connect_host = str(values.get("MCP_CONNECT_HOST", "127.0.0.1")).strip() or "127.0.0.1"
+    if connect_host in {"0.0.0.0", "::"}:  # nosec B104
+        connect_host = "127.0.0.1"
+    port = str(values.get("MCP_PORT", "18427")).strip() or "18427"
+    base_url = str(getattr(ctx, "base_url", "") or "").rstrip("/") or f"http://{connect_host}:{port}"
+    token = str(getattr(ctx, "token", "") or "")
+    timeout = float(getattr(ctx, "request_timeout", 15.0) or 15.0)
+
+    def reader(last_event_id: str | None = None) -> Iterator[dict[str, Any]]:
+        import httpx
+
+        headers = {"Accept": "text/event-stream", "User-Agent": "bqa-desktop/1.0"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        if last_event_id:
+            headers["Last-Event-ID"] = last_event_id
+        url = f"{base_url}{WORKSPACE_LOG_STREAM_PATH}"
+        stream_timeout = httpx.Timeout(timeout, read=30.0)
+        with httpx.stream(
+            "GET",
+            url,
+            params={"replay": max(0, min(int(replay), 200))},
+            headers=headers,
+            timeout=stream_timeout,
+            follow_redirects=True,
+        ) as response:
+            response.raise_for_status()
+            yield from parse_sse_lines(iter(response.iter_lines()))
+
+    return reader
+
+
 def desktop_ui_pid_path(repo_root: Path) -> Path:
     """Return the pid file used to track detached desktop windows."""
     return Path(repo_root) / "logs" / DESKTOP_UI_PID_FILENAME
@@ -374,6 +578,7 @@ class _DesktopDashboard:
         restart_action: LifecycleAction,
         activity_reader: ActivityReader,
         stream_reader: StreamJobsReader | None = None,
+        workspace_log_stream_reader: WorkspaceLogStreamReader | None = None,
     ) -> None:
         self.root = root
         self.tk = tk
@@ -384,6 +589,24 @@ class _DesktopDashboard:
         self.restart_action = restart_action
         self.activity_reader = activity_reader
         self.stream_reader = stream_reader or make_stream_jobs_reader(ctx)
+        self.workspace_log_stream_reader = (
+            workspace_log_stream_reader or make_workspace_log_stream_reader(ctx)
+        )
+        self.workspace_log_stop = threading.Event()
+        self.workspace_log_thread: threading.Thread | None = None
+        self.workspace_log_chip = WORKSPACE_LOG_DEFAULT_CHIP
+        self.workspace_log_rows_all: list[WorkspaceLogRow] = []
+        self.workspace_log_rows_by_iid: dict[str, WorkspaceLogRow] = {}
+        self.workspace_log_iids: list[str] = []
+        self.workspace_log_selected_id: str | None = None
+        self.workspace_log_last_event_id: str | None = None
+        self.workspace_log_connection_status = "connecting"
+        self.workspace_log_connection_error = ""
+        self.workspace_log_tree: Any = None
+        self.workspace_log_detail: Any = None
+        self.workspace_log_notice_var: Any = None
+        self.workspace_log_chat_filter_var: Any = None
+        self.workspace_log_chip_buttons: dict[str, Any] = {}
         self.busy = False
         self.closed = False
         self.refresh_job: Any = None
@@ -427,6 +650,7 @@ class _DesktopDashboard:
         self._build(initial_message)
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.refresh()
+        self._start_workspace_log_stream()
 
     def _build(self, initial_message: tuple[str, str] | None) -> None:
         self.root.title("BQA Control Center")
@@ -486,9 +710,11 @@ class _DesktopDashboard:
         notebook.grid(row=2, column=0, sticky="nsew")
         runtime_tab = self.ttk.Frame(notebook, padding=14)
         stream_tab = self.ttk.Frame(notebook, padding=14)
+        workspace_logs_tab = self.ttk.Frame(notebook, padding=14)
         activity_tab = self.ttk.Frame(notebook, padding=14)
         notebook.add(runtime_tab, text="Runtime")
         notebook.add(stream_tab, text="Luồng công việc")
+        notebook.add(workspace_logs_tab, text="Workspace Logs")
         notebook.add(activity_tab, text="Hoạt động ChatGPT")
 
         fields = self.ttk.LabelFrame(runtime_tab, text="Trạng thái runtime", padding=14)
@@ -524,6 +750,7 @@ class _DesktopDashboard:
                 browse.grid(row=index, column=2, sticky="e", padx=(10, 0), pady=5)
 
         self._build_stream_tab(stream_tab)
+        self._build_workspace_logs_tab(workspace_logs_tab)
         self._build_activity_tab(activity_tab)
 
         actions = self.ttk.Frame(container)
@@ -537,6 +764,308 @@ class _DesktopDashboard:
 
         if initial_message:
             self._set_message(*initial_message)
+
+    def _build_workspace_logs_tab(self, parent: Any) -> None:
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(2, weight=1)
+        parent.rowconfigure(3, weight=1)
+
+        toolbar = self.ttk.Frame(parent)
+        toolbar.grid(row=0, column=0, columnspan=2, sticky="ew")
+        toolbar.columnconfigure(1, weight=1)
+        chips = self.ttk.Frame(toolbar)
+        chips.grid(row=0, column=0, sticky="w")
+        for label, key in zip(WORKSPACE_LOG_CHIP_LABELS, WORKSPACE_LOG_CHIP_KEYS):
+            button = self.ttk.Button(
+                chips,
+                text=label,
+                style="Chip.TButton",
+                command=lambda key=key: self.select_workspace_log_chip(key),
+            )
+            button.pack(side="left", padx=(0, 6))
+            self.workspace_log_chip_buttons[key] = button
+
+        filter_box = self.ttk.Frame(toolbar)
+        filter_box.grid(row=0, column=1, sticky="e")
+        self.ttk.Label(filter_box, text="Chat filter", style="FieldName.TLabel").pack(
+            side="left", padx=(10, 6)
+        )
+        self.workspace_log_chat_filter_var = self.tk.StringVar(value="")
+        chat_entry = self.ttk.Entry(
+            filter_box,
+            textvariable=self.workspace_log_chat_filter_var,
+            width=28,
+        )
+        chat_entry.pack(side="left")
+        chat_entry.bind("<KeyRelease>", lambda _event: self.render_workspace_logs())
+
+        self.workspace_log_notice_var = self.tk.StringVar(value="connecting…")
+        self.ttk.Label(
+            parent,
+            textvariable=self.workspace_log_notice_var,
+            style="Subtle.TLabel",
+        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(7, 5))
+
+        columns = ("time", "severity", "category", "action", "outcome", "duration", "chat")
+        tree = self.ttk.Treeview(parent, columns=columns, show="headings", height=9)
+        for key, title, width in (
+            ("time", "Thời gian (UTC)", 145),
+            ("severity", "Severity", 75),
+            ("category", "Category", 82),
+            ("action", "Action", 170),
+            ("outcome", "Outcome", 80),
+            ("duration", "ms", 70),
+            ("chat", "Chat ID", 170),
+        ):
+            tree.heading(key, text=title)
+            tree.column(key, width=width, stretch=key in {"action", "chat"})
+        scrollbar = self.ttk.Scrollbar(parent, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        tree.grid(row=2, column=0, sticky="nsew")
+        scrollbar.grid(row=2, column=1, sticky="ns")
+        tree.bind("<<TreeviewSelect>>", self.show_selected_workspace_log)
+        tree.bind("<Up>", lambda _event: self.move_workspace_log_selection(-1) or "break")
+        tree.bind("<Down>", lambda _event: self.move_workspace_log_selection(1) or "break")
+        self.workspace_log_tree = tree
+
+        holder = self.ttk.Frame(parent)
+        holder.grid(row=3, column=0, columnspan=2, sticky="nsew", pady=(10, 0))
+        holder.columnconfigure(0, weight=1)
+        detail = self.tk.Text(holder, height=9, wrap="word", state="disabled")
+        detail.grid(row=0, column=0, sticky="nsew")
+        self.ttk.Button(holder, text="Copy", command=self.copy_workspace_log_details).grid(
+            row=0, column=1, sticky="n", padx=(10, 0)
+        )
+        self.workspace_log_detail = detail
+        self._restyle_workspace_log_chips()
+        self.render_workspace_logs()
+
+    def select_workspace_log_chip(self, key: str) -> None:
+        normalized = normalize_workspace_log_chip(key)
+        if normalized is None or normalized == self.workspace_log_chip:
+            return
+        self.workspace_log_chip = normalized
+        self._restyle_workspace_log_chips()
+        self.render_workspace_logs()
+
+    def _restyle_workspace_log_chips(self) -> None:
+        for key, button in self.workspace_log_chip_buttons.items():
+            active = key == self.workspace_log_chip
+            button.configure(style="ChipActive.TButton" if active else "Chip.TButton")
+
+    def _workspace_log_notice(self, visible_count: int) -> str:
+        cached = len(self.workspace_log_rows_all)
+        if self.workspace_log_connection_status == "live":
+            prefix = "LIVE"
+        elif self.workspace_log_connection_status == "reconnecting":
+            prefix = "RECONNECTING"
+        elif self.workspace_log_connection_status == "reset":
+            prefix = "RESET"
+        else:
+            prefix = "CONNECTING"
+        error_suffix = (
+            f" · {self.workspace_log_connection_error}"
+            if self.workspace_log_connection_error
+            else ""
+        )
+        if visible_count:
+            return f"{prefix} · {visible_count} visible · {cached} cached{error_suffix}"
+        return f"{prefix} · {WORKSPACE_LOG_EMPTY_MESSAGE} · {cached} cached{error_suffix}"
+
+    def render_workspace_logs(self) -> None:
+        if self.workspace_log_tree is None or self.workspace_log_notice_var is None:
+            return
+        chat_filter = (
+            self.workspace_log_chat_filter_var.get()
+            if self.workspace_log_chat_filter_var is not None
+            else ""
+        )
+        display = filter_workspace_log_rows(
+            self.workspace_log_rows_all,
+            chip=self.workspace_log_chip,
+            chat_filter=chat_filter,
+        )
+        display = list(reversed(display[-200:]))
+        self.workspace_log_notice_var.set(self._workspace_log_notice(len(display)))
+        for item in self.workspace_log_tree.get_children():
+            self.workspace_log_tree.delete(item)
+        self.workspace_log_rows_by_iid = {}
+        self.workspace_log_iids = []
+        seen: set[str] = set()
+        for index, row in enumerate(display):
+            fallback = f"{row.interaction_id}:{row.phase}:{row.timestamp}".strip(":")
+            base = row.event_id or fallback or f"row-{index}"
+            iid = base
+            suffix = 2
+            while iid in seen:
+                iid = f"{base}#{suffix}"
+                suffix += 1
+            seen.add(iid)
+            duration = f"{row.duration_ms:.3f}" if row.duration_ms is not None else "—"
+            self.workspace_log_tree.insert(
+                "",
+                "end",
+                iid=iid,
+                values=(
+                    format_workspace_log_time(row.timestamp),
+                    row.severity,
+                    row.category,
+                    clip_text(row.action, 42),
+                    row.outcome,
+                    duration,
+                    clip_text(row.chat_id, 36),
+                ),
+            )
+            self.workspace_log_rows_by_iid[iid] = row
+            self.workspace_log_iids.append(iid)
+        target = None
+        if self.workspace_log_selected_id:
+            target = next(
+                (
+                    iid
+                    for iid, row in self.workspace_log_rows_by_iid.items()
+                    if row.event_id == self.workspace_log_selected_id
+                ),
+                None,
+            )
+        if target is None and self.workspace_log_iids:
+            target = self.workspace_log_iids[0]
+        if target is not None:
+            self.workspace_log_tree.selection_set(target)
+            self.workspace_log_tree.see(target)
+            self.show_selected_workspace_log()
+        else:
+            self.workspace_log_selected_id = None
+            self._set_workspace_log_detail("")
+
+    def _accept_workspace_log_event(self, envelope: dict[str, Any]) -> None:
+        if self.closed:
+            return
+        event_id = str(envelope.get("id") or "")
+        row = workspace_log_row_from_mapping(envelope.get("data"), event_id=event_id)
+        if row is None:
+            return
+        if event_id:
+            self.workspace_log_last_event_id = event_id
+        if row.event_id:
+            self.workspace_log_rows_all = [
+                item for item in self.workspace_log_rows_all if item.event_id != row.event_id
+            ]
+        self.workspace_log_rows_all.append(row)
+        self.workspace_log_rows_all = self.workspace_log_rows_all[-WORKSPACE_LOG_CACHE_LIMIT:]
+        self.workspace_log_connection_status = "live"
+        self.workspace_log_connection_error = ""
+        self.render_workspace_logs()
+
+    def _accept_workspace_log_control(self, envelope: dict[str, Any]) -> None:
+        if self.closed or envelope.get("event") != "stream_reset":
+            return
+        # The server could not honor Last-Event-ID (rotation, retention, or a
+        # bounded snapshot window). Drop the stale cursor and cached timeline
+        # so replayed rows are never presented as a gap-free continuation.
+        self.workspace_log_last_event_id = None
+        self.workspace_log_selected_id = None
+        self.workspace_log_rows_all = []
+        self.workspace_log_connection_status = "reset"
+        self.render_workspace_logs()
+
+    def _set_workspace_log_connection(self, state: str, error: str = "") -> None:
+        if self.closed:
+            return
+        self.workspace_log_connection_status = state
+        self.workspace_log_connection_error = clip_text(error, 160) if error else ""
+        self.render_workspace_logs()
+
+    def _start_workspace_log_stream(self) -> None:
+        if self.workspace_log_thread is not None or self.workspace_log_stream_reader is None:
+            return
+        reader = self.workspace_log_stream_reader
+
+        def worker() -> None:
+            while not self.workspace_log_stop.is_set():
+                try:
+                    if not self.closed:
+                        self.root.after(0, lambda: self._set_workspace_log_connection("connecting"))
+                    for envelope in reader(self.workspace_log_last_event_id):
+                        if self.workspace_log_stop.is_set() or self.closed:
+                            return
+                        event_name = envelope.get("event")
+                        if event_name == "stream_reset":
+                            self.root.after(
+                                0,
+                                lambda envelope=envelope: self._accept_workspace_log_control(envelope),
+                            )
+                            continue
+                        if event_name != "workspace_log":
+                            continue
+                        self.root.after(
+                            0,
+                            lambda envelope=envelope: self._accept_workspace_log_event(envelope),
+                        )
+                    if self.workspace_log_stop.is_set() or self.closed:
+                        return
+                    self.root.after(0, lambda: self._set_workspace_log_connection("reconnecting"))
+                except Exception as exc:
+                    if self.workspace_log_stop.is_set() or self.closed:
+                        return
+                    message = f"{type(exc).__name__}: {exc}"
+                    self.root.after(
+                        0,
+                        lambda message=message: self._set_workspace_log_connection(
+                            "reconnecting", message
+                        ),
+                    )
+                if self.workspace_log_stop.wait(WORKSPACE_LOG_RECONNECT_SECONDS):
+                    return
+
+        self.workspace_log_thread = threading.Thread(
+            target=worker,
+            name="bqa-desktop-workspace-logs",
+            daemon=True,
+        )
+        self.workspace_log_thread.start()
+
+    def show_selected_workspace_log(self, _event: Any = None) -> None:
+        if self.workspace_log_tree is None:
+            return
+        selected = self.workspace_log_tree.selection()
+        if not selected:
+            return
+        row = self.workspace_log_rows_by_iid.get(selected[0])
+        if row is None:
+            return
+        self.workspace_log_selected_id = row.event_id or None
+        self._set_workspace_log_detail(format_workspace_log_details(row))
+
+    def move_workspace_log_selection(self, delta: int) -> None:
+        if self.workspace_log_tree is None or not self.workspace_log_iids:
+            return
+        current = (self.workspace_log_tree.selection() or [None])[0]
+        target = shifted_selection(self.workspace_log_iids, current, delta)
+        if target is not None and target != current:
+            self.workspace_log_tree.selection_set(target)
+            self.workspace_log_tree.see(target)
+
+    def _set_workspace_log_detail(self, text: str) -> None:
+        if self.workspace_log_detail is None:
+            return
+        self.workspace_log_detail.configure(state="normal")
+        self.workspace_log_detail.delete("1.0", "end")
+        self.workspace_log_detail.insert("1.0", text)
+        self.workspace_log_detail.configure(state="disabled")
+
+    def copy_workspace_log_details(self) -> None:
+        if self.workspace_log_tree is None:
+            return
+        selected = self.workspace_log_tree.selection()
+        row = self.workspace_log_rows_by_iid.get(selected[0]) if selected else None
+        if row is None:
+            self._set_message("warn", "Chưa chọn workspace log nào để copy.")
+            return
+        self.root.clipboard_clear()
+        self.root.clipboard_append(format_workspace_log_details(row))
+        self.root.update_idletasks()
+        self._set_message("success", "Đã copy workspace log vào clipboard.")
 
     def _build_activity_tab(self, parent: Any) -> None:
         parent.columnconfigure(0, weight=1)
@@ -1049,6 +1578,7 @@ class _DesktopDashboard:
 
     def close(self) -> None:
         self.closed = True
+        self.workspace_log_stop.set()
         if self.refresh_job is not None:
             self.root.after_cancel(self.refresh_job)
             self.refresh_job = None
@@ -1064,6 +1594,7 @@ def run_desktop_ui(
     restart_action: LifecycleAction = restart,
     activity_reader: ActivityReader = read_mcp_command_activity,
     stream_reader: StreamJobsReader | None = None,
+    workspace_log_stream_reader: WorkspaceLogStreamReader | None = None,
 ) -> int:
     """Open the native Tkinter control window and return after it is closed."""
     try:
@@ -1088,6 +1619,7 @@ def run_desktop_ui(
         restart_action=restart_action,
         activity_reader=activity_reader,
         stream_reader=stream_reader,
+        workspace_log_stream_reader=workspace_log_stream_reader,
     )
     root.mainloop()
     return 0

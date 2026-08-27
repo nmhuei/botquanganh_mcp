@@ -14,9 +14,9 @@ from typing import Any
 
 import app.config
 from app.chat_errors import (
+    to_tool_error,
     tool_success,
     tool_unavailable,
-    to_tool_error,
     validate_chat_id,
 )
 from app.mcp_server import mcp
@@ -135,6 +135,17 @@ async def host_workspace_bind(
         }
         if session_token:
             extra_fields["session_token"] = session_token
+        # Binding cannot be journaled before authorization/creation without
+        # risking writes to an unowned workspace. Record a compact lifecycle
+        # event only after a successful bind, never including the session token.
+        from app.tools.host import _record_workspace_journal
+
+        _record_workspace_journal(
+            "host_workspace_bind",
+            assigned_id,
+            {"created": bool(created), "resumed": not bool(created)},
+            ok=True,
+        )
         return tool_success(
             message,
             **extra_fields,
@@ -152,6 +163,9 @@ async def host_workspace_bind(
     ),
 )
 async def host_save_note(text: str, chat_id: str | None = None) -> dict[str, Any]:
+    journal_op: str | None = None
+    validated: str | None = None
+    journal_details: dict[str, Any] = {}
     try:
         cleaned = " ".join(text.split())
         if not cleaned:
@@ -168,22 +182,50 @@ async def host_save_note(text: str, chat_id: str | None = None) -> dict[str, Any
         # Enforce-mode parity with the other HOST_TOOLS entries: saving a note
         # writes into the workspace, so it is gated too. It never performs the
         # bind itself — the caller must bind first and reuse the same chat_id.
-        from app.tools.host import _guard_chat_id
+        from app.tools.host import (
+            _begin_workspace_journal,
+            _finish_workspace_journal,
+            _guard_chat_id,
+        )
 
         validated, rejection = _guard_chat_id("host_save_note", chat_id)
         if rejection is not None:
             return rejection
         notes_file = _resolve_notes_file(validated)
-        notes_file.parent.mkdir(parents=True, exist_ok=True)
         line = f"{datetime.now(timezone.utc).isoformat()} {cleaned}\n"
+        journal_details = {
+            "path": str(notes_file),
+            "bytes_written": len(line.encode("utf-8")),
+        }
+        journal_op = _begin_workspace_journal(
+            "host_save_note", validated, journal_details
+        )
+        notes_file.parent.mkdir(parents=True, exist_ok=True)
         with notes_file.open("a", encoding="utf-8") as handle:
             handle.write(line)
+        _finish_workspace_journal(
+            "host_save_note",
+            validated,
+            journal_op,
+            ok=True,
+            details=journal_details,
+        )
         return tool_success(
             f"Note saved to {notes_file}",
             path=str(notes_file),
-            bytes_written=len(line.encode("utf-8")),
+            bytes_written=journal_details["bytes_written"],
         )
     except Exception as exc:
+        if journal_op and validated:
+            from app.tools.host import _finish_workspace_journal
+
+            _finish_workspace_journal(
+                "host_save_note",
+                validated,
+                journal_op,
+                ok=False,
+                details={"error_type": type(exc).__name__},
+            )
         return to_tool_error(exc)
 
 

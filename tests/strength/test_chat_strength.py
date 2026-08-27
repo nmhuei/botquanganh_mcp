@@ -741,6 +741,7 @@ def test_rest_jobs_endpoints_soak_mixed_params_wellformed():
     }
     proc = subprocess.run(
         [sys.executable, "-c", _SOAK_CODE],
+        check=False,
         env=env,
         capture_output=True,
         text=True,

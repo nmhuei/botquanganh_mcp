@@ -36,6 +36,24 @@ NOTES_NAME = "notes"
 
 PAYLOAD_STRING_LIMIT_BYTES = 49152
 PAYLOAD_EXCERPT_CHARS = 16384
+JOURNAL_SCHEMA_VERSION = 2
+JOURNAL_DATASET = "bqa.workspace"
+JOURNAL_SOURCE = "workspace_journal"
+
+# OpenTelemetry-compatible severity numbers for the subset emitted by the
+# workspace journal. The journal keeps the human-readable text too so the CLI
+# never needs to reverse-map numbers just to display a row.
+_SEVERITY_NUMBERS = {"DEBUG": 5, "INFO": 9, "WARN": 13, "ERROR": 17}
+_SENSITIVE_KEY_RE = re.compile(
+    r"(?i)(?:^|[_-])(authorization|cookie|password|passwd|secret|session(?:[_-]?id)?|token|api[_-]?key)(?:$|[_-])"
+)
+_BEARER_RE = re.compile(r"(?i)\b(Bearer\s+)[A-Za-z0-9._~+/=-]+")
+_SECRET_ASSIGN_RE = re.compile(
+    r"(?i)\b([A-Za-z0-9_]*(?:api[_-]?key|authorization|password|passwd|secret|session[_-]?id|token)[A-Za-z0-9_]*\s*=\s*)([^\s'\"]+)"
+)
+_SECRET_FLAG_RE = re.compile(
+    r"(?i)(--(?:api-key|authorization|password|passwd|secret|session-id|token)(?:=|\s+))([^\s'\"]+)"
+)
 
 _BIND_POLL_SECONDS = 0.01
 
@@ -232,8 +250,21 @@ def validate_chat_id(chat_id: Any) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _redact_sensitive_text(value: str) -> str:
+    redacted = _BEARER_RE.sub(r"\1<redacted>", value)
+    redacted = _SECRET_ASSIGN_RE.sub(r"\1<redacted>", redacted)
+    return _SECRET_FLAG_RE.sub(r"\1<redacted>", redacted)
+
+
 def sanitize_payload(value: Any) -> Any:
+    """Redact obvious secrets and cap large strings before display/storage.
+
+    Key-based redaction is deliberately conservative and recursive. String
+    redaction handles common bearer/assignment/CLI-flag forms so command and
+    query metadata cannot trivially leak credentials into the workspace log.
+    """
     if isinstance(value, str):
+        value = _redact_sensitive_text(value)
         raw = value.encode("utf-8", errors="replace")
         if len(raw) <= PAYLOAD_STRING_LIMIT_BYTES:
             return value
@@ -242,10 +273,174 @@ def sanitize_payload(value: Any) -> Any:
         dropped = len(raw) - len(kept)
         return f"{excerpt}...<truncated {dropped} bytes>"
     if isinstance(value, dict):
-        return {key: sanitize_payload(item) for key, item in value.items()}
+        clean: dict[Any, Any] = {}
+        for key, item in value.items():
+            if isinstance(key, str) and _SENSITIVE_KEY_RE.search(key):
+                clean[key] = "<redacted>"
+            elif isinstance(key, str) and key.lower() == "command" and isinstance(item, str):
+                # Match the executor/audit posture: commands may contain
+                # positional secrets that no redaction regex can reliably
+                # identify. Preserve the key for backwards-compatible display
+                # while replacing its value with a marker plus correlation hash.
+                clean[key] = "<redacted>"
+                clean["command_sha256"] = hashlib.sha256(item.encode("utf-8")).hexdigest()
+            else:
+                clean[key] = sanitize_payload(item)
+        return clean
     if isinstance(value, (list, tuple)):
         return [sanitize_payload(item) for item in value]
     return value
+
+
+def _event_category(kind: str) -> str:
+    if kind in {"host_read_file", "host_list_directory"}:
+        return "file"
+    if kind in {"host_write_file", "host_append_file", "host_replace_in_file", "host_make_directory"}:
+        return "file"
+    if kind == "host_search_text":
+        return "file"
+    if kind in {"host_run_command", "host_check_command"}:
+        return "process"
+    if kind == "host_knowledge":
+        return "host"
+    if kind.startswith("host_workspace_") or kind == "host_save_note":
+        return "session"
+    if kind.startswith("config"):
+        return "configuration"
+    return "api"
+
+
+def _duration_ms(started_ts: Any, finished_ts: Any) -> float | None:
+    if not isinstance(started_ts, str) or not isinstance(finished_ts, str):
+        return None
+    try:
+        started = datetime.fromisoformat(started_ts.replace("Z", "+00:00"))
+        finished = datetime.fromisoformat(finished_ts.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=timezone.utc)
+    if finished.tzinfo is None:
+        finished = finished.replace(tzinfo=timezone.utc)
+    return max(0.0, round((finished - started).total_seconds() * 1000.0, 3))
+
+
+def normalize_journal_record(
+    record: Mapping[str, Any],
+    *,
+    inherited_kind: str | None = None,
+    started_ts: str | None = None,
+) -> dict[str, Any]:
+    """Return a redacted, classification-rich view of one journal record.
+
+    The field layout intentionally follows useful pieces of OpenTelemetry/ECS
+    without claiming wire compatibility: severity uses OTel's normalized
+    numbers, ``event_dataset`` identifies the stable source, ``event_category``
+    describes what happened, and high-cardinality correlation stays in
+    ``interaction_id`` rather than becoming a stream/category dimension.
+    """
+    item = dict(record)
+    kind = str(item.get("kind") or inherited_kind or "unknown")
+    event_type = str(item.get("type") or "event")
+    ok_value = item.get("ok")
+    if event_type == "op_started":
+        severity_text = "DEBUG"
+        outcome = "unknown"
+        phase = "started"
+    elif event_type == "op_result" and ok_value is True:
+        severity_text = "INFO"
+        outcome = "success"
+        phase = "result"
+    elif event_type == "op_result" and ok_value is False:
+        severity_text = "ERROR"
+        outcome = "failure"
+        phase = "result"
+    else:
+        severity_text = "INFO"
+        outcome = "unknown"
+        phase = event_type.removeprefix("op_") or "event"
+
+    item["journal_schema"] = JOURNAL_SCHEMA_VERSION
+    item["log_source"] = JOURNAL_SOURCE
+    item["event_dataset"] = JOURNAL_DATASET
+    item["event_name"] = f"workspace.operation.{phase}"
+    item["event_category"] = _event_category(kind)
+    item["event_action"] = kind
+    item["event_outcome"] = outcome
+    item["operation_phase"] = phase
+    item["severity_text"] = severity_text
+    item["severity_number"] = _SEVERITY_NUMBERS[severity_text]
+    if kind != "unknown":
+        item.setdefault("kind", kind)
+    if isinstance(item.get("op"), str):
+        item["interaction_id"] = item["op"]
+    duration = _duration_ms(started_ts, item.get("ts")) if phase == "result" else None
+    if duration is not None:
+        item["event_duration_ms"] = duration
+    if "payload" in item:
+        item["payload"] = sanitize_payload(item["payload"])
+    return item
+
+
+def normalize_journal_records(events: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Normalize a journal stream while correlating start/result pairs.
+
+    Historical result records did not persist ``kind``. Correlating by ``op``
+    repairs their action/category at read time and also derives operation
+    duration without rewriting old journal files.
+    """
+    normalized: list[dict[str, Any]] = []
+    starts: dict[str, tuple[str, str | None]] = {}
+    for event in events:
+        op = event.get("op")
+        event_type = event.get("type")
+        inherited_kind: str | None = None
+        started_ts: str | None = None
+        if isinstance(op, str) and event_type == "op_result":
+            inherited_kind, started_ts = starts.get(op, (None, None))
+        item = normalize_journal_record(
+            event,
+            inherited_kind=inherited_kind,
+            started_ts=started_ts,
+        )
+        normalized.append(item)
+        if not isinstance(op, str):
+            continue
+        if event_type == "op_started":
+            kind = str(item.get("kind") or "unknown")
+            ts = item.get("ts") if isinstance(item.get("ts"), str) else None
+            starts[op] = (kind, ts)
+        elif event_type == "op_result":
+            starts.pop(op, None)
+    return normalized
+
+
+def summarize_journal_records(events: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    normalized = normalize_journal_records(events)
+    categories: dict[str, int] = {}
+    severities: dict[str, int] = {}
+    outcomes: dict[str, int] = {}
+    actions: dict[str, int] = {}
+    for item in normalized:
+        category = str(item.get("event_category") or "api")
+        severity = str(item.get("severity_text") or "INFO")
+        outcome = str(item.get("event_outcome") or "unknown")
+        action = str(item.get("event_action") or "unknown")
+        categories[category] = categories.get(category, 0) + 1
+        severities[severity] = severities.get(severity, 0) + 1
+        outcomes[outcome] = outcomes.get(outcome, 0) + 1
+        actions[action] = actions.get(action, 0) + 1
+    operations = sum(1 for item in normalized if item.get("operation_phase") == "result")
+    failures = sum(1 for item in normalized if item.get("event_outcome") == "failure")
+    return {
+        "events": len(normalized),
+        "operations": operations,
+        "failures": failures,
+        "categories": dict(sorted(categories.items())),
+        "severities": dict(sorted(severities.items())),
+        "outcomes": dict(sorted(outcomes.items())),
+        "actions": dict(sorted(actions.items())),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -336,7 +531,7 @@ def read_journal_records(ws_dir: Path) -> list[dict[str, Any]]:
                 continue
             if isinstance(item, dict):
                 records.append(item)
-    return records
+    return normalize_journal_records(records)
 
 
 def pending_operations(events: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -381,7 +576,7 @@ def last_activity(ws_dir: Path) -> datetime | None:
 
 
 def render_state_md(meta: Mapping[str, Any], events: Iterable[Mapping[str, Any]]) -> str:
-    event_list = [dict(event) for event in events]
+    event_list = normalize_journal_records(events)
     event_list.sort(key=lambda item: item["seq"] if isinstance(item.get("seq"), int) else float("inf"))
 
     def cell(value: Any) -> str:
@@ -394,7 +589,30 @@ def render_state_md(meta: Mapping[str, Any], events: Iterable[Mapping[str, Any]]
         )
         lines.append(f"- {cell(key)}: {cell(shown)}")
 
-    lines.extend(["", "## Pending Operations", ""])
+    summary = summarize_journal_records(event_list)
+    category_text = ", ".join(
+        f"{name}={count}" for name, count in summary["categories"].items()
+    ) or "none"
+    severity_text = ", ".join(
+        f"{name}={count}" for name, count in summary["severities"].items()
+    ) or "none"
+    outcome_text = ", ".join(
+        f"{name}={count}" for name, count in summary["outcomes"].items()
+    ) or "none"
+    lines.extend(
+        [
+            "",
+            "## Log Summary",
+            "",
+            f"- events: {summary['events']}",
+            f"- categories: {category_text}",
+            f"- severities: {severity_text}",
+            f"- outcomes: {outcome_text}",
+            "",
+            "## Pending Operations",
+            "",
+        ]
+    )
     pending = pending_operations(event_list)
     if not pending:
         lines.append("(none)")
@@ -413,21 +631,24 @@ def render_state_md(meta: Mapping[str, Any], events: Iterable[Mapping[str, Any]]
             "",
             "## Events",
             "",
-            "| seq | ts | type | op | kind | ok |",
-            "| --- | --- | --- | --- | --- | --- |",
+            "| seq | ts | type | op | kind | ok | severity | category | outcome |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
         ]
     )
     for item in event_list:
         ok_value = item.get("ok")
         ok_cell = "" if ok_value is None else cell(bool(ok_value)).lower()
         lines.append(
-            "| {seq} | {ts} | {etype} | {op} | {kind} | {okc} |".format(
+            "| {seq} | {ts} | {etype} | {op} | {kind} | {okc} | {severity} | {category} | {outcome} |".format(
                 seq=cell(item.get("seq", "?")),
                 ts=cell(item.get("ts", "?")),
                 etype=cell(item.get("type", "?")),
                 op=cell(item.get("op", "?")),
                 kind=cell(item.get("kind", "?")),
                 okc=ok_cell,
+                severity=cell(item.get("severity_text", "INFO")),
+                category=cell(item.get("event_category", "api")),
+                outcome=cell(item.get("event_outcome", "unknown")),
             )
         )
     return "\n".join(lines) + "\n"
@@ -665,6 +886,8 @@ class WorkspaceManager:
         op_id: str,
         ok: bool,
         payload: Mapping[str, Any] | None = None,
+        *,
+        kind: str | None = None,
     ) -> dict[str, Any]:
         base = {
             "type": "op_result",
@@ -672,6 +895,8 @@ class WorkspaceManager:
             "ok": bool(ok),
             "payload": sanitize_payload({} if payload is None else payload),
         }
+        if kind is not None:
+            base["kind"] = str(kind)
         return self._append_op(chat_id, base, rotates=False)
 
     def _append_op(self, chat_id: str, base: dict[str, Any], *, rotates: bool) -> dict[str, Any]:

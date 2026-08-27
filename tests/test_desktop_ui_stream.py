@@ -8,19 +8,27 @@ from app.cli.desktop_ui import (
     STREAM_JOBS_PATH,
     STREAM_STATUS_GLYPHS,
     StreamRow,
+    WorkspaceLogRow,
     clip_text,
     filter_stream_rows,
+    filter_workspace_log_rows,
     format_stream_details,
     format_stream_time,
+    format_workspace_log_details,
+    format_workspace_log_time,
     make_stream_jobs_reader,
     normalize_stream_chip,
+    normalize_workspace_log_chip,
+    parse_sse_lines,
     reduce_stream_view,
     shifted_selection,
     stream_copy_line,
+    stream_error_message,
     stream_row_from_mapping,
     stream_rows_from_payload,
-    stream_error_message,
     stream_status_glyph,
+    workspace_log_row_from_mapping,
+    workspace_log_row_matches_chip,
 )
 
 
@@ -314,3 +322,125 @@ def test_fetch_error_path_reduces_cached_rows_to_muted_state(monkeypatch):
     assert visible == []
     assert "Không đọc được luồng job" in notice
     assert "connection refused" in notice
+
+
+# ---------------------------------------------------------------------------
+# Workspace log stream helpers.
+# ---------------------------------------------------------------------------
+
+
+def test_workspace_log_row_model_and_filters():
+    row = workspace_log_row_from_mapping(
+        {
+            "ts": "2026-08-26T18:00:00+00:00",
+            "severity_text": "ERROR",
+            "event_category": "process",
+            "event_action": "host_run_command",
+            "event_outcome": "failure",
+            "operation_phase": "result",
+            "chat_id": "chat-alpha",
+            "event_duration_ms": "12.5",
+            "interaction_id": "op-1",
+            "event_dataset": "bqa.workspace",
+            "log_source": "workspace_journal",
+            "payload": {"command": "<redacted>"},
+        },
+        event_id="evt-1",
+    )
+    assert row == WorkspaceLogRow(
+        event_id="evt-1",
+        timestamp="2026-08-26T18:00:00+00:00",
+        severity="ERROR",
+        category="process",
+        action="host_run_command",
+        outcome="failure",
+        phase="result",
+        chat_id="chat-alpha",
+        duration_ms=12.5,
+        interaction_id="op-1",
+        dataset="bqa.workspace",
+        source="workspace_journal",
+        payload={"command": "<redacted>"},
+    )
+    assert workspace_log_row_matches_chip(row, "all") is True
+    assert workspace_log_row_matches_chip(row, "error") is True
+    assert workspace_log_row_matches_chip(row, "process") is True
+    assert workspace_log_row_matches_chip(row, "file") is False
+    assert filter_workspace_log_rows([row], chip="all", chat_filter="ALPHA") == [row]
+    assert filter_workspace_log_rows([row], chip="all", chat_filter="other") == []
+    assert normalize_workspace_log_chip(" ERROR ") == "error"
+    assert normalize_workspace_log_chip("bogus") is None
+
+
+def test_workspace_log_detail_and_time_are_copy_safe():
+    row = WorkspaceLogRow(
+        event_id="evt-2",
+        timestamp="2026-08-26T18:01:02+00:00",
+        severity="INFO",
+        category="file",
+        action="host_read_file",
+        outcome="success",
+        phase="result",
+        chat_id="chat-beta",
+        duration_ms=1.25,
+        interaction_id="op-2",
+        dataset="bqa.workspace",
+        source="workspace_journal",
+        payload={"path": "repo/README.md"},
+    )
+    assert format_workspace_log_time(row.timestamp) == "2026-08-26 18:01:02"
+    details = format_workspace_log_details(row)
+    assert "Severity: INFO" in details
+    assert "Action: host_read_file" in details
+    assert "1.250 ms" in details
+    assert '"path": "repo/README.md"' in details
+
+
+def test_parse_sse_lines_handles_retry_comments_ids_and_multiline_data():
+    lines = iter(
+        [
+            "retry: 2000",
+            "",
+            ": heartbeat",
+            "id: abc123",
+            "event: workspace_log",
+            'data: {"severity_text":"INFO",',
+            'data: "event_category":"file"}',
+            "",
+        ]
+    )
+    events = list(parse_sse_lines(lines))
+    assert events == [
+        {
+            "id": "abc123",
+            "event": "workspace_log",
+            "data": {"severity_text": "INFO", "event_category": "file"},
+        }
+    ]
+
+
+def test_workspace_log_stream_reset_clears_stale_cursor_and_cache():
+    from types import SimpleNamespace
+
+    from app.cli.desktop_ui import _DesktopDashboard
+
+    rendered = []
+    dashboard = SimpleNamespace(
+        closed=False,
+        workspace_log_last_event_id="stale-id",
+        workspace_log_selected_id="selected-id",
+        workspace_log_rows_all=[WorkspaceLogRow(event_id="old")],
+        workspace_log_connection_status="live",
+        render_workspace_logs=lambda: rendered.append(True),
+    )
+
+    _DesktopDashboard._accept_workspace_log_control(
+        dashboard,
+        {"event": "stream_reset", "data": {"reason": "cursor_not_found"}},
+    )
+
+    assert dashboard.workspace_log_last_event_id is None
+    assert dashboard.workspace_log_selected_id is None
+    assert dashboard.workspace_log_rows_all == []
+    assert dashboard.workspace_log_connection_status == "reset"
+    assert rendered == [True]

@@ -43,6 +43,7 @@ def _probe_version(path: str, args: Iterable[str]) -> str | None:
             text=True,
             timeout=2,
             env=dict(os.environ),
+            check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
         return None

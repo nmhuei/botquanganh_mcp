@@ -11,7 +11,6 @@ from starlette.routing import Route
 from app.config import (
     MCP_JSON_RESPONSE,
     MCP_STATELESS_HTTP,
-    TRUST_PROXY_HEADERS,
     VERSION,
     HOST_WORKSPACE_DIR,
     HOST_DEFAULT_DIR,

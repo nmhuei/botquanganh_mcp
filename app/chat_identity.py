@@ -1,16 +1,15 @@
 """Per-chat identity binding and workspace registry (Wave 1B foundation).
 
-This module is intentionally inert this wave: nothing in the request path
-calls it yet.  It provides the primitives later waves build on:
+The request path uses this module to validate and bind chat identities,
+annotate host operations, and enforce attribution policy. It provides:
 
 - verbatim chat-id validation (no trimming, no case folding),
 - ContextVar-based binding that mirrors ``app.request_context`` conventions,
 - a thread-safe LRU registry of known chats,
-- defensive access to the future ``ATTRIBUTION_MODE`` configuration value.
+- defensive access to the ``ATTRIBUTION_MODE`` configuration value.
 
-The config attribute may not exist yet (it lands in a concurrent change), so
-every read goes through ``getattr`` and unknown or missing values fall back to
-"off", which makes :func:`annotate` a strict no-op.
+Configuration reads stay defensive through ``getattr`` so tests and partial
+embedders without newer settings still fall back safely to ``off``.
 """
 
 from __future__ import annotations
@@ -19,9 +18,10 @@ import re
 import threading
 import time
 from collections import OrderedDict
+from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
-from typing import Any, Iterator
+from typing import Any
 
 CHAT_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{5,63}$")
 
@@ -36,7 +36,7 @@ KNOWN_ATTRIBUTION_MODES = frozenset({"off", "on", "tag", "strict", "enforce"})
 _CHAT_ID: ContextVar[str | None] = ContextVar("bqa_chat_id", default=None)
 
 _REGISTRY_LOCK = threading.Lock()
-_REGISTRY: "OrderedDict[str, dict[str, int]]" = OrderedDict()
+_REGISTRY: OrderedDict[str, dict[str, int]] = OrderedDict()
 
 
 class InvalidChatId(ValueError):
@@ -74,7 +74,7 @@ def bound_chat(chat_id: str) -> Iterator[str]:
         _CHAT_ID.reset(token)
 
 
-def touch_chat(chat_id: str, *, now: int | float | None = None) -> dict[str, int]:
+def touch_chat(chat_id: str, *, now: float | None = None) -> dict[str, int]:
     """Register a chat or refresh its ``last_seen``, returning a copy.
 
     Entries are kept in least-recently-used order inside a lock; touching an

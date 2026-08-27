@@ -63,7 +63,12 @@ bqa knowledge overview|guide|tools|search|all # guides + catalog tool (--query �
 bqa logs <server|tunnel|launcher|audit|follow> [-n 100] [-f] [--since 10m] [--grep TEXT]
 bqa logs all [-n 100] [-f] [--since 10m] [--grep TEXT]   # gộp cả 4 nguồn log, tiền tố [source]
 bqa chats list                                # liệt kê chat workspace cục bộ theo hoạt động gần nhất
-bqa chats show <chat_id>                      # xem một workspace: đường dẫn, đầu STATE.md, thống kê journal
+bqa chats show <chat_id>                      # xem path, STATE.md và thống kê journal
+bqa chats logs <chat_id> [--min-severity warn] [--category process]  # log phân loại/redact
+bqa chats archive|restore <chat_id>            # quản lý vòng đời workspace
+bqa chats delete <chat_id> --yes               # xóa vĩnh viễn workspace đã archive
+bqa chats prune [--apply]                      # dry-run/apply lifecycle sweep
+bqa chats stats                                # số lượng và dung lượng workspace
 # Files & commands
 bqa fs ls [path] --max 500                    # liệt kê thư mục (mặc định workspace root)
 bqa fs cat <path> --lines 1:50                # đọc file UTF-8 (--max-bytes N)
@@ -85,7 +90,7 @@ bqa version
 bqa help [command]
 ```
 
-Khi cần debug, chỉ cần nhìn hai nơi: `bqa logs all` gộp toàn bộ log server, tunnel, launcher và audit thành một dòng lệnh duy nhất; REST `GET /api/v1/logs/tail` trả cùng bản chụp đó qua HTTP — không phải đi tìm từng file log.
+Khi cần debug runtime, `bqa logs all` gộp log server, tunnel, launcher và audit; REST `GET /api/v1/logs/tail` trả cùng bản chụp qua HTTP. Với log theo chat/workspace, dùng `bqa chats logs <chat_id>` hoặc live SSE `GET /api/v1/activity/stream`; Control Center có tab `Workspace Logs` dùng chính stream này.
 
 Chat workspace cục bộ mặc định nằm dưới `~/Downloads/bqa-workspaces`.
 

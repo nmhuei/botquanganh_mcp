@@ -8,7 +8,6 @@ from app.host.paths import host_workspace_dir
 from app.mcp_server import mcp
 from app.security import format_error_response
 
-
 _VALID_SECTIONS = {"overview", "guide", "tools", "search", "all"}
 
 
@@ -151,14 +150,17 @@ def host_knowledge(
             except Exception as exc:
                 return format_error_response(exc)
     from app.tools.host import (
+        _begin_workspace_journal,
+        _finish_workspace_journal,
         _guard_chat_id,
         _record_tool_call,
-        _record_workspace_journal,
     )
 
     validated, rejection = _guard_chat_id("host_knowledge", chat_id)
     if rejection is not None:
         return rejection
+    journal_details = {"section": section, "query": query}
+    journal_op = _begin_workspace_journal("host_knowledge", validated, journal_details)
     try:
         result = _knowledge_payload(
             section,
@@ -172,10 +174,11 @@ def host_knowledge(
     except Exception as exc:
         result = format_error_response(exc)
     _record_tool_call("host_knowledge", validated)
-    _record_workspace_journal(
+    _finish_workspace_journal(
         "host_knowledge",
         validated,
-        {"section": section, "query": query},
+        journal_op,
         ok=isinstance(result, dict) and bool(result.get("ok", False)),
+        details=journal_details,
     )
     return result

@@ -221,37 +221,92 @@ def _record_tool_call(
         log_audit_event("HOST_TOOL_CALL", {"tool": tool, **payload})
 
 
+def _journal_error(tool: str, chat_id: str, phase: str, exc: Exception) -> None:
+    """Surface best-effort journal failures without leaking exception details."""
+    log_audit_event(
+        "WORKSPACE_JOURNAL_ERROR",
+        {
+            "tool": tool,
+            "chat_id": chat_id,
+            "phase": phase,
+            "error_type": type(exc).__name__,
+        },
+    )
+
+
+def _begin_workspace_journal(
+    tool: str,
+    chat_id: Optional[str],
+    details: Optional[dict[str, Any]] = None,
+) -> str | None:
+    """Write the durable op_started record before the host operation begins."""
+    if not chat_id:
+        return None
+    from app import config as config_module
+
+    if not getattr(config_module, "HOST_CHAT_WORKSPACES", False):
+        return None
+    root_val = getattr(config_module, "HOST_CHAT_ROOT", "")
+    if not root_val:
+        return None
+    root = Path(root_val)
+    ws_dir = root / chat_id
+    if not (ws_dir / "meta.json").is_file():
+        return None
+    try:
+        import uuid
+
+        from app.chat_workspace import WorkspaceManager, rebuild_state
+
+        op_id = f"op-{uuid.uuid4().hex[:8]}"
+        WorkspaceManager(root).append_op_started(chat_id, op_id, tool, details or {})
+        # STATE.md is a cache, but refreshing it before execution makes crash
+        # recovery immediately show the operation as pending.
+        rebuild_state(ws_dir)
+        return op_id
+    except Exception as exc:
+        _journal_error(tool, chat_id, "start", exc)
+        return None
+
+
+def _finish_workspace_journal(
+    tool: str,
+    chat_id: Optional[str],
+    op_id: str | None,
+    *,
+    ok: bool,
+    details: Optional[dict[str, Any]] = None,
+) -> None:
+    """Pair a prior op_started record with its durable completion result."""
+    if not chat_id or not op_id:
+        return
+    from app import config as config_module
+
+    root_val = getattr(config_module, "HOST_CHAT_ROOT", "")
+    if not root_val:
+        return
+    root = Path(root_val)
+    ws_dir = root / chat_id
+    try:
+        from app.chat_workspace import WorkspaceManager, rebuild_state
+
+        WorkspaceManager(root).append_op_result(
+            chat_id, op_id, ok, details or {}, kind=tool
+        )
+        rebuild_state(ws_dir)
+    except Exception as exc:
+        _journal_error(tool, chat_id, "result", exc)
+
+
 def _record_workspace_journal(
     tool: str,
     chat_id: Optional[str],
     details: Optional[dict[str, Any]] = None,
     ok: bool = True,
 ) -> None:
-    """Record operation to session workspace journal and refresh STATE.md."""
-    if not chat_id:
-        return
-    from app import config as config_module
-
-    if not getattr(config_module, "HOST_CHAT_WORKSPACES", False):
-        return
-    root_val = getattr(config_module, "HOST_CHAT_ROOT", "")
-    if not root_val:
-        return
-    root = Path(root_val)
-    ws_dir = root / chat_id
-    if not (ws_dir / "meta.json").is_file():
-        return
-    try:
-        import uuid
-        from app.chat_workspace import WorkspaceManager, rebuild_state
-
-        mgr = WorkspaceManager(root)
-        op_id = f"op-{uuid.uuid4().hex[:8]}"
-        mgr.append_op_started(chat_id, op_id, tool, details or {})
-        mgr.append_op_result(chat_id, op_id, ok, details or {})
-        rebuild_state(ws_dir)
-    except Exception:
-        pass
+    """Compatibility helper for call sites that cannot yet bracket execution."""
+    op_id = _begin_workspace_journal(tool, chat_id, details)
+    _finish_workspace_journal(tool, chat_id, op_id, ok=ok, details=details)
 
 
 def _normalize_intent(intent: Optional[str]) -> Optional[str]:
@@ -277,16 +332,21 @@ def host_list_directory(
     validated, rejection = _guard_chat_id("host_list_directory", chat_id)
     if rejection is not None:
         return rejection
+    journal_details = {"path": path, "max_entries": max_entries}
+    journal_op = _begin_workspace_journal(
+        "host_list_directory", validated, journal_details
+    )
     try:
         result = list_directory(path, max_entries=max_entries)
     except Exception as exc:
         result = format_error_response(exc)
     _record_tool_call("host_list_directory", validated)
-    _record_workspace_journal(
+    _finish_workspace_journal(
         "host_list_directory",
         validated,
-        {"path": path},
+        journal_op,
         ok=isinstance(result, dict) and bool(result.get("ok", False)),
+        details=journal_details,
     )
     return result
 
@@ -309,6 +369,13 @@ def host_read_file(
     validated, rejection = _guard_chat_id("host_read_file", chat_id)
     if rejection is not None:
         return rejection
+    journal_details = {
+        "path": path,
+        "start_line": start_line,
+        "end_line": end_line,
+        "max_bytes": max_bytes,
+    }
+    journal_op = _begin_workspace_journal("host_read_file", validated, journal_details)
     try:
         result = read_text_file(
             path,
@@ -319,11 +386,12 @@ def host_read_file(
     except Exception as exc:
         result = format_error_response(exc)
     _record_tool_call("host_read_file", validated)
-    _record_workspace_journal(
+    _finish_workspace_journal(
         "host_read_file",
         validated,
-        {"path": path},
+        journal_op,
         ok=isinstance(result, dict) and bool(result.get("ok", False)),
+        details=journal_details,
     )
     return result
 
@@ -346,6 +414,13 @@ def host_write_file(
     validated, rejection = _guard_chat_id("host_write_file", chat_id)
     if rejection is not None:
         return rejection
+    journal_details = {
+        "path": path,
+        "size_bytes": len(content.encode("utf-8")),
+        "overwrite": overwrite,
+        "create_parents": create_parents,
+    }
+    journal_op = _begin_workspace_journal("host_write_file", validated, journal_details)
     try:
         result = write_text_file(
             path,
@@ -356,11 +431,12 @@ def host_write_file(
     except Exception as exc:
         result = format_error_response(exc)
     _record_tool_call("host_write_file", validated)
-    _record_workspace_journal(
+    _finish_workspace_journal(
         "host_write_file",
         validated,
-        {"path": path, "size_bytes": len(content.encode("utf-8"))},
+        journal_op,
         ok=isinstance(result, dict) and bool(result.get("ok", False)),
+        details=journal_details,
     )
     return result
 
@@ -382,6 +458,10 @@ def host_replace_in_file(
     validated, rejection = _guard_chat_id("host_replace_in_file", chat_id)
     if rejection is not None:
         return rejection
+    journal_details = {"path": path, "expected_count": expected_count}
+    journal_op = _begin_workspace_journal(
+        "host_replace_in_file", validated, journal_details
+    )
     try:
         result = replace_text_in_file(
             path,
@@ -392,11 +472,12 @@ def host_replace_in_file(
     except Exception as exc:
         result = format_error_response(exc)
     _record_tool_call("host_replace_in_file", validated)
-    _record_workspace_journal(
+    _finish_workspace_journal(
         "host_replace_in_file",
         validated,
-        {"path": path},
+        journal_op,
         ok=isinstance(result, dict) and bool(result.get("ok", False)),
+        details=journal_details,
     )
     return result
 
@@ -413,16 +494,19 @@ def host_append_file(
     validated, rejection = _guard_chat_id("host_append_file", chat_id)
     if rejection is not None:
         return rejection
+    journal_details = {"path": path, "size_bytes": len(content.encode("utf-8"))}
+    journal_op = _begin_workspace_journal("host_append_file", validated, journal_details)
     try:
         result = append_text_file(path, content)
     except Exception as exc:
         result = format_error_response(exc)
     _record_tool_call("host_append_file", validated)
-    _record_workspace_journal(
+    _finish_workspace_journal(
         "host_append_file",
         validated,
-        {"path": path},
+        journal_op,
         ok=isinstance(result, dict) and bool(result.get("ok", False)),
+        details=journal_details,
     )
     return result
 
@@ -443,16 +527,21 @@ def host_make_directory(
     validated, rejection = _guard_chat_id("host_make_directory", chat_id)
     if rejection is not None:
         return rejection
+    journal_details = {"path": path, "parents": parents}
+    journal_op = _begin_workspace_journal(
+        "host_make_directory", validated, journal_details
+    )
     try:
         result = make_directory(path, parents=parents)
     except Exception as exc:
         result = format_error_response(exc)
     _record_tool_call("host_make_directory", validated)
-    _record_workspace_journal(
+    _finish_workspace_journal(
         "host_make_directory",
         validated,
-        {"path": path},
+        journal_op,
         ok=isinstance(result, dict) and bool(result.get("ok", False)),
+        details=journal_details,
     )
     return result
 
@@ -474,6 +563,13 @@ def host_search_text(
     validated, rejection = _guard_chat_id("host_search_text", chat_id)
     if rejection is not None:
         return rejection
+    journal_details = {
+        "query": query,
+        "path": path,
+        "case_sensitive": case_sensitive,
+        "max_results": max_results,
+    }
+    journal_op = _begin_workspace_journal("host_search_text", validated, journal_details)
     try:
         result = search_text(
             query,
@@ -484,11 +580,12 @@ def host_search_text(
     except Exception as exc:
         result = format_error_response(exc)
     _record_tool_call("host_search_text", validated)
-    _record_workspace_journal(
+    _finish_workspace_journal(
         "host_search_text",
         validated,
-        {"query": query, "path": path},
+        journal_op,
         ok=isinstance(result, dict) and bool(result.get("ok", False)),
+        details=journal_details,
     )
     return result
 
@@ -507,16 +604,21 @@ def host_check_command(
     validated, rejection = _guard_chat_id("host_check_command", chat_id)
     if rejection is not None:
         return rejection
+    journal_details = {"command": command}
+    journal_op = _begin_workspace_journal(
+        "host_check_command", validated, journal_details
+    )
     try:
         result = {"ok": True, **inspect_host_command(command)}
     except Exception as exc:
         result = format_error_response(exc)
     _record_tool_call("host_check_command", validated)
-    _record_workspace_journal(
+    _finish_workspace_journal(
         "host_check_command",
         validated,
-        {"command": command},
+        journal_op,
         ok=isinstance(result, dict) and bool(result.get("ok", False)),
+        details=journal_details,
     )
     return result
 
@@ -540,6 +642,15 @@ def host_run_command(
     if rejection is not None:
         return rejection
     cleaned_intent = _normalize_intent(intent)
+    journal_start = {
+        "command": command,
+        "intent": cleaned_intent,
+        "cwd": cwd,
+        "timeout_seconds": timeout_seconds,
+    }
+    journal_op = _begin_workspace_journal(
+        "host_run_command", validated, journal_start
+    )
     try:
         result = execute_host_command(
             command,
@@ -559,15 +670,17 @@ def host_run_command(
             "command_sha256", hashlib.sha256(command.encode("utf-8")).hexdigest()
         )
         log_audit_event("HOST_TOOL_CALL", {"tool": "host_run_command", **attributed})
-    _record_workspace_journal(
+    journal_result = {
+        "exit_code": result.get("exit_code") if isinstance(result, dict) else None,
+        "stdout_truncated": result.get("stdout_truncated") if isinstance(result, dict) else None,
+        "stderr_truncated": result.get("stderr_truncated") if isinstance(result, dict) else None,
+        "output_incomplete": result.get("output_incomplete") if isinstance(result, dict) else None,
+    }
+    _finish_workspace_journal(
         "host_run_command",
         validated,
-        {
-            "command": command,
-            "intent": cleaned_intent,
-            "cwd": cwd,
-            "exit_code": result.get("exit_code") if isinstance(result, dict) else None,
-        },
+        journal_op,
         ok=isinstance(result, dict) and bool(result.get("ok", False)),
+        details=journal_result,
     )
     return result

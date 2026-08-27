@@ -62,7 +62,6 @@ def _render_mutation(ctx: CLIContext, result: dict, command: str) -> int:
     else:
         renderer = renderer_for(ctx)
         path = str(result.get("path") or command)
-        changed = command in {"append", "replace"} or bool(result.get("overwrote"))
         renderer.result_item("+" if ok else "-", path, "success" if ok else "error")
         if ctx.verbose:
             details = [

@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import argparse
 import sys
-from typing import Optional
 
 from app.cli import VERSION
-from app.cli.errors import CLIError, EXIT_USAGE
+from app.cli.errors import EXIT_USAGE, CLIError
 from app.cli.output import style, wrap_visible
 
 
@@ -58,7 +57,7 @@ class GroupedHelpFormatter(argparse.RawDescriptionHelpFormatter):
 
     def _format_grouped_commands(
         self, action: argparse._SubParsersAction
-    ) -> Optional[str]:
+    ) -> str | None:
         helps = {
             choice.dest: choice.help or ""
             for choice in getattr(action, "_choices_actions", [])
@@ -102,7 +101,7 @@ class GroupedHelpFormatter(argparse.RawDescriptionHelpFormatter):
         return "".join(parts)
 
 
-def parse_line_range(value: str) -> tuple[Optional[int], Optional[int]]:
+def parse_line_range(value: str) -> tuple[int | None, int | None]:
     raw = value.strip()
     if not raw:
         raise argparse.ArgumentTypeError("line range must not be empty")
@@ -522,6 +521,53 @@ Output modes:
         help="Show one workspace's path, state notes, and journal counts",
     )
     chats_show.add_argument("chat_id", help="Chat identifier to inspect")
+    chats_logs = chats_commands.add_parser(
+        "logs", help="Display classified workspace journal events"
+    )
+    chats_logs.add_argument("chat_id", help="Chat identifier to inspect")
+    severity_filters = chats_logs.add_mutually_exclusive_group()
+    severity_filters.add_argument(
+        "--severity",
+        choices=("debug", "info", "warn", "error"),
+        help="Filter by one normalized severity",
+    )
+    severity_filters.add_argument(
+        "--min-severity",
+        choices=("debug", "info", "warn", "error"),
+        help="Keep this severity and anything more severe",
+    )
+    chats_logs.add_argument(
+        "--category",
+        choices=("api", "configuration", "file", "host", "process", "session"),
+        help="Filter by normalized event category",
+    )
+    chats_logs.add_argument(
+        "--outcome",
+        choices=("success", "failure", "unknown"),
+        help="Filter by normalized operation outcome",
+    )
+    chats_logs.add_argument(
+        "--action",
+        help="Filter by exact host tool/action name",
+    )
+    chats_logs.add_argument(
+        "--phase",
+        choices=("started", "result"),
+        help="Filter operation start/result records",
+    )
+    chats_logs.add_argument(
+        "--limit", type=int, default=50, help="Newest events to display (1-1000)"
+    )
+    chats_archive = chats_commands.add_parser("archive", help="Archive one active workspace")
+    chats_archive.add_argument("chat_id", help="Chat identifier to archive")
+    chats_restore = chats_commands.add_parser("restore", help="Restore one archived workspace")
+    chats_restore.add_argument("chat_id", help="Chat identifier to restore")
+    chats_delete = chats_commands.add_parser("delete", help="Permanently delete one archived workspace")
+    chats_delete.add_argument("chat_id", help="Archived chat identifier to delete")
+    chats_delete.add_argument("--yes", action="store_true", help="Confirm permanent deletion")
+    chats_prune = chats_commands.add_parser("prune", help="Plan or apply lifecycle sweep actions")
+    chats_prune.add_argument("--apply", action="store_true", help="Apply planned archive/delete actions")
+    chats_commands.add_parser("stats", help="Show workspace counts and storage usage")
 
     config = commands.add_parser("config", help="Inspect and validate .env")
     config_commands = config.add_subparsers(dest="config_command", required=True)

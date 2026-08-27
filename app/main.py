@@ -18,8 +18,15 @@ import app.tools.workspace_tools  # noqa: E402,F401
 def _shutdown_log() -> None:
     try:
         log_audit_event("SERVER_SHUTDOWN", {"pid": os.getpid()})
-    except Exception:  # nosec B110
-        pass
+    except Exception as exc:  # shutdown logging must never block interpreter exit
+        # Keep the failure observable without recursively calling the audit logger.
+        try:
+            print(
+                f"Audit shutdown event unavailable: {type(exc).__name__}",
+                file=sys.stderr,
+            )
+        except (OSError, ValueError):
+            return
 
 
 is_stdio = not any(

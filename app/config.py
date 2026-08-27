@@ -241,9 +241,10 @@ AUDIT_LOG_MAX_BYTES = max(1024, int(os.getenv("AUDIT_LOG_MAX_BYTES", "10000000")
 AUDIT_LOG_BACKUP_COUNT = max(1, int(os.getenv("AUDIT_LOG_BACKUP_COUNT", "5")))
 AUDIT_MAX_FIELD_CHARS = max(256, int(os.getenv("AUDIT_MAX_FIELD_CHARS", "4000")))
 
-# --- Attribution and chat workspaces (parsed for later waves) ----------------
-# These keys are validated and exposed here; no runtime component consumes them
-# yet. Defaults keep every feature they gate switched off.
+# --- Attribution and chat workspaces -----------------------------------------
+# These settings are consumed by host attribution, workspace binding, lifecycle
+# sweeping, REST activity, and workspace-management CLI paths. Defaults keep
+# the opt-in workspace/isolation behavior disabled for existing installations.
 
 ATTRIBUTION_MODE = os.getenv("ATTRIBUTION_MODE", "off").strip().lower()
 if ATTRIBUTION_MODE not in {"off", "tag", "strict", "enforce"}:

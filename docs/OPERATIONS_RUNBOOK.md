@@ -244,11 +244,11 @@ Health exposes:
 ### Liveness checks under load
 
 Use `/healthz` when checking whether the server is alive under load: it bypasses
-the REST blocking pool and always answers, even during command storms.
-`/api/v1/*` endpoints share the 16-slot blocking limiter, so they may queue
-behind long-running commands and appear unresponsive while the server is
-healthy (**pending fix**: a routing change is expected to move `/api/v1/*` off
-the shared limiter — update this entry once it merges).
+the REST blocking pool and always answers, even during command storms. Cheap
+in-memory REST handlers such as health, capabilities, and jobs also use the
+non-blocking fast path. Filesystem, command, log-tail, and activity requests
+that touch disk or other blocking resources continue to use the shared
+16-slot limiter so expensive work remains bounded.
 
 Audit logs rotate according to:
 
@@ -327,3 +327,16 @@ Before deployment:
 6. Confirm no uncommitted or unreviewed changes.
 7. Confirm request-rate limits and host resources are appropriate for expected parallel load.
 8. Record rollback and recovery commands.
+
+
+### Live workspace journal stream
+
+For per-chat structured operation logs, prefer `/api/v1/activity/stream` over repeatedly tailing `journal.jsonl` by hand. The endpoint is an SSE stream with bounded replay, `Last-Event-ID` resume, reconnect hints, heartbeat comments, and the same workspace classification filters as `/api/v1/activity`.
+
+```bash
+curl -N \
+  -H 'Accept: text/event-stream' \
+  'http://127.0.0.1:18427/api/v1/activity/stream?severity=ERROR&replay=50'
+```
+
+If a reverse proxy is introduced, verify that it does not buffer `text/event-stream`; the application sends `X-Accel-Buffering: no` and `Cache-Control: no-cache, no-transform`. The BQA desktop Control Center reconnects automatically and resumes from the last event id.

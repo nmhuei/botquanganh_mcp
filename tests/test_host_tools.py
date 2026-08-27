@@ -178,3 +178,80 @@ def test_guarded_policy_blocks_nested_and_alternative_privilege_tools(host_works
         result = inspect_host_command(command)
         assert result["allowed"] is False, command
         assert result["rule"] == "privilege_escalation"
+
+
+def test_host_tool_journal_start_is_visible_before_execution_and_result_is_self_describing(
+    monkeypatch, tmp_path
+):
+    from app.chat_workspace import WorkspaceManager
+    from app.tools.host import host_read_file
+
+    chat_root = tmp_path / "chat-root"
+    monkeypatch.setattr(app.config, "HOST_CHAT_WORKSPACES", True, raising=False)
+    monkeypatch.setattr(app.config, "HOST_CHAT_ROOT", chat_root, raising=False)
+    monkeypatch.setattr(app.config, "HOST_CHAT_QUOTA_MB", 16, raising=False)
+    monkeypatch.setattr(app.config, "HOST_CHAT_JOURNAL_MAX_BYTES", 1_000_000, raising=False)
+    WorkspaceManager(chat_root).create_or_bind("journal-live")
+
+    seen = {}
+
+    def fake_read(*_args, **_kwargs):
+        during = WorkspaceManager(chat_root).read_events("journal-live")
+        assert len(during) == 1
+        assert during[0]["operation_phase"] == "started"
+        assert during[0]["event_action"] == "host_read_file"
+        seen["op"] = during[0]["op"]
+        return {"ok": True, "content": "hello"}
+
+    monkeypatch.setattr("app.tools.host.read_text_file", fake_read)
+
+    assert host_read_file("README.md", chat_id="journal-live")["ok"] is True
+    events = WorkspaceManager(chat_root).read_events("journal-live")
+    assert [event["operation_phase"] for event in events] == ["started", "result"]
+    assert events[1]["op"] == seen["op"]
+    assert events[1]["kind"] == "host_read_file"
+    assert events[1]["event_action"] == "host_read_file"
+    assert events[1]["event_category"] == "file"
+    assert events[1]["event_outcome"] == "success"
+
+
+
+def test_host_run_command_never_persists_raw_secret_in_workspace_journal(
+    monkeypatch, tmp_path
+):
+    from app.chat_workspace import WorkspaceManager
+
+    chat_root = tmp_path / "chat-root"
+    monkeypatch.setattr(app.config, "HOST_CHAT_WORKSPACES", True, raising=False)
+    monkeypatch.setattr(app.config, "HOST_CHAT_ROOT", chat_root, raising=False)
+    monkeypatch.setattr(app.config, "HOST_CHAT_QUOTA_MB", 16, raising=False)
+    monkeypatch.setattr(app.config, "HOST_CHAT_JOURNAL_MAX_BYTES", 1_000_000, raising=False)
+    WorkspaceManager(chat_root).create_or_bind("journal-secret")
+
+    monkeypatch.setattr(
+        "app.tools.host.execute_host_command",
+        lambda *_args, **_kwargs: {
+            "ok": True,
+            "exit_code": 0,
+            "stdout": "ok",
+            "stderr": "",
+            "stdout_truncated": False,
+            "stderr_truncated": False,
+            "output_incomplete": False,
+        },
+    )
+
+    secret = "super-secret-value"
+    result = host_run_command(
+        f"GATEWAY_TOKEN={secret} printf ok",
+        chat_id="journal-secret",
+    )
+    assert result["ok"] is True
+
+    raw = (chat_root / "journal-secret" / "journal.jsonl").read_text(encoding="utf-8")
+    assert secret not in raw
+    assert "<redacted>" in raw
+    events = WorkspaceManager(chat_root).read_events("journal-secret")
+    assert [event["operation_phase"] for event in events] == ["started", "result"]
+    assert events[0]["event_category"] == "process"
+    assert events[1]["event_outcome"] == "success"

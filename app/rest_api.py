@@ -1,19 +1,22 @@
 from __future__ import annotations
 
 import functools
+import hashlib
 import json
 import re
 from collections import deque
+from collections.abc import Callable, Mapping
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any
 
 import anyio
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, StreamingResponse
 from starlette.routing import Route
 
 import app.config
+from app.chat_workspace import normalize_journal_records
 from app.error_contract import (
     http_status_for_exception,
     http_status_for_result,
@@ -43,6 +46,17 @@ _ACTIVITY_EVENT_LIMIT = 50
 _JOURNAL_SINGLE_CHAT_LIMIT = 100
 _JOURNAL_AGGREGATE_LIMIT = 200
 _ACTIVITY_INCLUDE_CHOICES = ("journals", "jobs", "all")
+_JOURNAL_SEVERITIES = ("DEBUG", "INFO", "WARN", "ERROR")
+_JOURNAL_CATEGORIES = ("api", "configuration", "file", "host", "process", "session")
+_JOURNAL_OUTCOMES = ("success", "failure", "unknown")
+_JOURNAL_PHASES = ("started", "result")
+_ACTIVITY_STREAM_REPLAY_DEFAULT = 50
+_ACTIVITY_STREAM_REPLAY_MAX = 200
+_ACTIVITY_STREAM_POLL_SECONDS = 0.75
+_ACTIVITY_STREAM_HEARTBEAT_SECONDS = 15.0
+_ACTIVITY_STREAM_SEEN_LIMIT = 4096
+_ACTIVITY_STREAM_SNAPSHOT_LIMIT = 1000
+_ACTIVITY_STREAM_RETRY_MS = 2000
 _ARCHIVE_DIR_NAME = ".archive"
 _JOURNAL_PREVIOUS_NAME = "journal.jsonl.1"
 _JOURNAL_CURRENT_NAME = "journal.jsonl"
@@ -189,7 +203,7 @@ def _read_journal_events(ws_dir: Path) -> list[dict[str, Any]]:
                 continue
             if isinstance(item, dict):
                 events.append(item)
-    return events
+    return normalize_journal_records(events)
 
 
 def _workspace_dirs(root: Path) -> list[Path]:
@@ -233,7 +247,9 @@ def _event_sort_key(event: Mapping[str, Any]) -> tuple[Any, ...]:
     return (ts_part, seq_part)
 
 
-def _journal_activity_records(*, chat_id: str | None) -> list[dict[str, Any]]:
+def _journal_activity_records(
+    *, chat_id: str | None, limit_override: int | None = None
+) -> list[dict[str, Any]]:
     root = _journal_feed_root()
     if root is None:
         return []
@@ -246,6 +262,8 @@ def _journal_activity_records(*, chat_id: str | None) -> list[dict[str, Any]]:
     else:
         candidates = [(ws_dir.name, ws_dir) for ws_dir in _workspace_dirs(root)]
         cap = _JOURNAL_AGGREGATE_LIMIT
+    if limit_override is not None:
+        cap = max(1, int(limit_override))
     records: list[dict[str, Any]] = []
     for record_chat_id, ws_dir in candidates:
         for event in _read_journal_events(ws_dir):
@@ -261,28 +279,211 @@ def _activity_response(
     *,
     chat_id: str | None,
     include: str = "all",
+    severity: str | None = None,
+    category: str | None = None,
+    outcome: str | None = None,
+    action: str | None = None,
+    phase: str | None = None,
 ) -> dict[str, Any]:
     want_jobs = include in {"jobs", "all"}
     want_journals = include in {"journals", "all"}
     activity: list[dict[str, Any]] = []
     sources: list[str] = []
-    if want_jobs:
+    classification_filter = any((severity, category, outcome, action, phase))
+    # Job records do not yet implement the workspace-event taxonomy. When a
+    # classification filter is requested, return only records that can satisfy
+    # it instead of silently mixing unclassified jobs into the result set.
+    if want_jobs and not classification_filter:
         records = get_jobs_registry().list(chat_id=chat_id, limit=_ACTIVITY_EVENT_LIMIT)
         activity.extend(record.as_dict() for record in records)
         sources.append("jobs_registry")
     journal_records = _journal_activity_records(chat_id=chat_id) if want_journals else []
+    if severity:
+        journal_records = [item for item in journal_records if item.get("severity_text") == severity]
+    if category:
+        journal_records = [item for item in journal_records if item.get("event_category") == category]
+    if outcome:
+        journal_records = [item for item in journal_records if item.get("event_outcome") == outcome]
+    if action:
+        journal_records = [item for item in journal_records if item.get("event_action") == action]
+    if phase:
+        journal_records = [item for item in journal_records if item.get("operation_phase") == phase]
     if journal_records:
         # Job records carry no ts/seq, so they keep registry order as a stable
         # block; journal records interleave by their own timestamps.
         activity.extend(journal_records)
         activity.sort(key=_event_sort_key)
         sources.append("journal")
-    return {
+    response = {
         "ok": True,
         "source": "+".join(sources) or "journal",
         "count": len(activity),
         "activity": activity,
     }
+    if classification_filter:
+        response["filters"] = {
+            "severity": severity,
+            "category": category,
+            "outcome": outcome,
+            "action": action,
+            "phase": phase,
+        }
+    return response
+
+
+def _activity_filter_values(request: Request) -> dict[str, str | None]:
+    severity = request.query_params.get("severity", "").strip().upper() or None
+    category = request.query_params.get("category", "").strip().lower() or None
+    outcome = request.query_params.get("outcome", "").strip().lower() or None
+    action = request.query_params.get("action", "").strip() or None
+    phase = request.query_params.get("phase", "").strip().lower() or None
+    if severity is not None and severity not in _JOURNAL_SEVERITIES:
+        raise ValueError(
+            "Query parameter 'severity' must be one of: "
+            + ", ".join(_JOURNAL_SEVERITIES)
+            + "."
+        )
+    if category is not None and category not in _JOURNAL_CATEGORIES:
+        raise ValueError(
+            "Query parameter 'category' must be one of: "
+            + ", ".join(_JOURNAL_CATEGORIES)
+            + "."
+        )
+    if outcome is not None and outcome not in _JOURNAL_OUTCOMES:
+        raise ValueError(
+            "Query parameter 'outcome' must be one of: "
+            + ", ".join(_JOURNAL_OUTCOMES)
+            + "."
+        )
+    if phase is not None and phase not in _JOURNAL_PHASES:
+        raise ValueError(
+            "Query parameter 'phase' must be one of: "
+            + ", ".join(_JOURNAL_PHASES)
+            + "."
+        )
+    return {
+        "severity": severity,
+        "category": category,
+        "outcome": outcome,
+        "action": action,
+        "phase": phase,
+    }
+
+
+def _activity_event_id(record: Mapping[str, Any]) -> str:
+    """Stable opaque SSE id without exposing paths/payload contents."""
+    material = "\x1f".join(
+        str(record.get(key) or "")
+        for key in ("chat_id", "seq", "ts", "interaction_id", "operation_phase")
+    )
+    return hashlib.sha256(material.encode("utf-8", errors="replace")).hexdigest()[:24]
+
+
+def _sse_workspace_log(record: Mapping[str, Any]) -> str:
+    payload = json.dumps(record, ensure_ascii=False, separators=(",", ":"))
+    return (
+        f"id: {_activity_event_id(record)}\n"
+        "event: workspace_log\n"
+        f"data: {payload}\n\n"
+    )
+
+
+def _sse_control(event: str, payload: Mapping[str, Any]) -> str:
+    data = json.dumps(dict(payload), ensure_ascii=False, separators=(",", ":"))
+    return f"event: {event}\ndata: {data}\n\n"
+
+
+async def _activity_stream_snapshot(
+    *, chat_id: str | None, filters: Mapping[str, str | None]
+) -> list[dict[str, Any]]:
+    records = await anyio.to_thread.run_sync(
+        functools.partial(
+            _journal_activity_records,
+            chat_id=chat_id,
+            limit_override=_ACTIVITY_STREAM_SNAPSHOT_LIMIT,
+        ),
+        limiter=_REST_BLOCKING_POOL,
+    )
+    severity = filters.get("severity")
+    category = filters.get("category")
+    outcome = filters.get("outcome")
+    action = filters.get("action")
+    phase = filters.get("phase")
+    if severity:
+        records = [item for item in records if item.get("severity_text") == severity]
+    if category:
+        records = [item for item in records if item.get("event_category") == category]
+    if outcome:
+        records = [item for item in records if item.get("event_outcome") == outcome]
+    if action:
+        records = [item for item in records if item.get("event_action") == action]
+    if phase:
+        records = [item for item in records if item.get("operation_phase") == phase]
+    return records
+
+
+async def _activity_sse_generator(
+    request: Request,
+    *,
+    chat_id: str | None,
+    filters: Mapping[str, str | None],
+    replay: int,
+):
+    """Bounded-poll SSE stream over normalized workspace journal records."""
+    seen_order: deque[str] = deque()
+    seen: set[str] = set()
+
+    def remember(event_id: str) -> None:
+        if event_id in seen:
+            return
+        if len(seen_order) >= _ACTIVITY_STREAM_SEEN_LIMIT:
+            seen.discard(seen_order.popleft())
+        seen_order.append(event_id)
+        seen.add(event_id)
+
+    yield f"retry: {_ACTIVITY_STREAM_RETRY_MS}\n\n"
+    baseline = await _activity_stream_snapshot(chat_id=chat_id, filters=filters)
+    ids = [_activity_event_id(item) for item in baseline]
+    last_event_id = request.headers.get("last-event-id", "").strip()
+    if last_event_id and last_event_id in ids:
+        start = ids.index(last_event_id) + 1
+        initial = baseline[start:]
+    else:
+        initial = baseline[-replay:] if replay else []
+        if last_event_id:
+            yield _sse_control(
+                "stream_reset",
+                {
+                    "reason": "cursor_not_found",
+                    "requested_last_event_id": last_event_id,
+                    "replay": len(initial),
+                },
+            )
+    for event_id in ids:
+        remember(event_id)
+    for item in initial:
+        yield _sse_workspace_log(item)
+
+    last_heartbeat = anyio.current_time()
+    while True:
+        await anyio.sleep(_ACTIVITY_STREAM_POLL_SECONDS)
+        if await request.is_disconnected():
+            return
+        snapshot = await _activity_stream_snapshot(chat_id=chat_id, filters=filters)
+        emitted = False
+        for item in snapshot:
+            event_id = _activity_event_id(item)
+            if event_id in seen:
+                continue
+            remember(event_id)
+            emitted = True
+            yield _sse_workspace_log(item)
+        now = anyio.current_time()
+        if emitted:
+            last_heartbeat = now
+        elif now - last_heartbeat >= _ACTIVITY_STREAM_HEARTBEAT_SECONDS:
+            yield f": heartbeat {datetime.now(timezone.utc).isoformat()}\n\n"
+            last_heartbeat = now
 
 
 def _log_line_timestamp(line: str) -> str | None:
@@ -412,6 +613,7 @@ async def api_index(_request: Request) -> JSONResponse:
                 {"method": "GET", "path": f"{API_PREFIX}/knowledge"},
                 {"method": "GET", "path": f"{API_PREFIX}/jobs"},
                 {"method": "GET", "path": f"{API_PREFIX}/activity"},
+                {"method": "GET", "path": f"{API_PREFIX}/activity/stream"},
                 {"method": "GET", "path": f"{API_PREFIX}/logs/tail"},
             ],
         }
@@ -621,15 +823,47 @@ async def api_activity(request: Request) -> JSONResponse:
                 + ", ".join(_ACTIVITY_INCLUDE_CHOICES)
                 + "."
             )
+        filters = _activity_filter_values(request)
         # Journal reads are the only disk work here; without them the handler
         # stays a cheap in-memory registry read and keeps the inline path.
-        touches_disk = include in {"journals", "all"} and (
-            _journal_feed_root() is not None
-        )
+        touches_disk = include in {"journals", "all"} and (_journal_feed_root() is not None)
         runner = _call if touches_disk else _call_nowait
-        return await runner(_activity_response, chat_id=chat_id, include=include)
+        return await runner(
+            _activity_response,
+            chat_id=chat_id,
+            include=include,
+            **filters,
+        )
     except Exception as exc:
         return JSONResponse(format_error_response(exc), status_code=_error_status(exc))
+
+
+async def api_activity_stream(request: Request):
+    """Live normalized workspace journal feed using Server-Sent Events."""
+    try:
+        chat_id = request.query_params.get("chat_id", "").strip() or None
+        filters = _activity_filter_values(request)
+        replay = _query_int(request, "replay", _ACTIVITY_STREAM_REPLAY_DEFAULT)
+        replay = _ACTIVITY_STREAM_REPLAY_DEFAULT if replay is None else replay
+        if replay < 0 or replay > _ACTIVITY_STREAM_REPLAY_MAX:
+            raise ValueError(
+                f"Query parameter 'replay' must be between 0 and {_ACTIVITY_STREAM_REPLAY_MAX}."
+            )
+    except Exception as exc:
+        return JSONResponse(format_error_response(exc), status_code=_error_status(exc))
+    return StreamingResponse(
+        _activity_sse_generator(
+            request,
+            chat_id=chat_id,
+            filters=filters,
+            replay=replay,
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 async def api_logs_tail(request: Request) -> JSONResponse:
@@ -705,7 +939,8 @@ def openapi_document() -> dict[str, Any]:
             f"{API_PREFIX}/commands/run": {"post": {"summary": "Run a host command", "requestBody": {"required": True, "content": {"application/json": {"schema": json_object}}}, "responses": {"200": {"description": "Execution result"}, **error_responses}}},
             f"{API_PREFIX}/knowledge": {"get": {"summary": "Read host guides and tool inventory", "parameters": [{"name": "section", "in": "query", "schema": {"type": "string", "default": "overview"}}, {"name": "query", "in": "query", "schema": {"type": "string"}}], "responses": {"200": {"description": "Knowledge result"}, **error_responses}}},
             f"{API_PREFIX}/jobs": {"get": {"summary": "List tracked jobs", "parameters": [{"name": "job_id", "in": "query", "schema": {"type": "string"}}, {"name": "chat_id", "in": "query", "schema": {"type": "string"}}, {"name": "status", "in": "query", "schema": {"type": "string", "enum": ["queued", "running", "done", "error"]}}, {"name": "limit", "in": "query", "schema": {"type": "integer", "default": 50, "maximum": 200}}], "responses": {"200": {"description": "Job listing or single job"}, **error_responses}}},
-            f"{API_PREFIX}/activity": {"get": {"summary": "Recent activity feed", "parameters": [{"name": "chat_id", "in": "query", "schema": {"type": "string"}}, {"name": "include", "in": "query", "schema": {"type": "string", "enum": ["journals", "jobs", "all"], "default": "all"}}], "responses": {"200": {"description": "Recent activity events"}, **error_responses}}},
+            f"{API_PREFIX}/activity": {"get": {"summary": "Recent activity feed", "parameters": [{"name": "chat_id", "in": "query", "schema": {"type": "string"}}, {"name": "include", "in": "query", "schema": {"type": "string", "enum": ["journals", "jobs", "all"], "default": "all"}}, {"name": "severity", "in": "query", "schema": {"type": "string", "enum": list(_JOURNAL_SEVERITIES)}}, {"name": "category", "in": "query", "schema": {"type": "string", "enum": list(_JOURNAL_CATEGORIES)}}, {"name": "outcome", "in": "query", "schema": {"type": "string", "enum": list(_JOURNAL_OUTCOMES)}}, {"name": "action", "in": "query", "schema": {"type": "string"}}, {"name": "phase", "in": "query", "schema": {"type": "string", "enum": list(_JOURNAL_PHASES)}}], "responses": {"200": {"description": "Recent activity events"}, **error_responses}}},
+            f"{API_PREFIX}/activity/stream": {"get": {"summary": "Live workspace activity stream", "description": "Server-Sent Events stream of normalized workspace journal records. Supports Last-Event-ID resume, bounded replay, automatic reconnect hints, and heartbeat comments.", "parameters": [{"name": "chat_id", "in": "query", "schema": {"type": "string"}}, {"name": "severity", "in": "query", "schema": {"type": "string", "enum": list(_JOURNAL_SEVERITIES)}}, {"name": "category", "in": "query", "schema": {"type": "string", "enum": list(_JOURNAL_CATEGORIES)}}, {"name": "outcome", "in": "query", "schema": {"type": "string", "enum": list(_JOURNAL_OUTCOMES)}}, {"name": "action", "in": "query", "schema": {"type": "string"}}, {"name": "phase", "in": "query", "schema": {"type": "string", "enum": list(_JOURNAL_PHASES)}}, {"name": "replay", "in": "query", "schema": {"type": "integer", "default": _ACTIVITY_STREAM_REPLAY_DEFAULT, "minimum": 0, "maximum": _ACTIVITY_STREAM_REPLAY_MAX}}], "responses": {"200": {"description": "Live workspace log events", "content": {"text/event-stream": {"schema": {"type": "string"}}}}, **error_responses}}},
             f"{API_PREFIX}/logs/tail": {"get": {"summary": "Tail service log files", "description": "Snapshot-only tail of fixed server-side log sources (" + ", ".join(_LOG_TAIL_SOURCES) + "). Stateless endpoint: follow streaming is not supported; request again for fresh lines. Paths are resolved server-side and cannot be chosen by the caller.", "parameters": [{"name": "sources", "in": "query", "description": "Comma-separated subset of: " + ", ".join(_LOG_TAIL_SOURCES) + "; 'all' selects every source that exists on disk.", "schema": {"type": "string", "default": "all"}}, {"name": "lines", "in": "query", "schema": {"type": "integer", "default": 100, "maximum": 500}}, {"name": "grep", "in": "query", "schema": {"type": "string"}, "description": "Substring filter applied before the per-source line cap."}], "responses": {"200": {"description": "Log tail snapshot"}, **error_responses}}},
             f"{API_PREFIX}/openapi.json": {"get": {"summary": "OpenAPI document", "security": [], "responses": {"200": {"description": "OpenAPI 3.1 document"}}}},
         },
@@ -733,6 +968,7 @@ def rest_routes() -> list[Route]:
         Route(f"{API_PREFIX}/knowledge", api_knowledge, methods=["GET"]),
         Route(f"{API_PREFIX}/jobs", api_jobs, methods=["GET"]),
         Route(f"{API_PREFIX}/activity", api_activity, methods=["GET"]),
+        Route(f"{API_PREFIX}/activity/stream", api_activity_stream, methods=["GET"]),
         Route(f"{API_PREFIX}/logs/tail", api_logs_tail, methods=["GET"]),
         Route(f"{API_PREFIX}/openapi.json", api_openapi, methods=["GET"]),
     ]

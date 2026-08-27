@@ -3,8 +3,6 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-import pytest
-
 from app.error_contract import ServiceBusyError
 from app.host.executor import CommandCapacity
 

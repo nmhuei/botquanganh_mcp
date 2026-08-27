@@ -229,3 +229,268 @@ def test_show_without_any_root_still_reports_not_found(monkeypatch, tmp_path):
 @pytest.mark.parametrize("command", ["chats", "status", "health", "logs"])
 def test_top_level_help_still_lists_inspection_commands(command):
     assert command in build_parser().format_help()
+
+
+def test_workspace_management_subcommands_parse():
+    parser = build_parser()
+    assert parser.parse_args(["chats", "archive", "abc123"]).chats_command == "archive"
+    assert parser.parse_args(["chats", "restore", "abc123"]).chats_command == "restore"
+    logs = parser.parse_args(
+        ["chats", "logs", "abc123", "--severity", "error", "--category", "process", "--limit", "25"]
+    )
+    assert logs.chats_command == "logs"
+    assert (logs.severity, logs.category, logs.limit) == ("error", "process", 25)
+    deleted = parser.parse_args(["chats", "delete", "abc123", "--yes"])
+    assert deleted.chats_command == "delete" and deleted.yes is True
+    pruned = parser.parse_args(["chats", "prune", "--apply"])
+    assert pruned.chats_command == "prune" and pruned.apply is True
+    assert parser.parse_args(["chats", "stats"]).chats_command == "stats"
+
+
+def test_archive_then_restore_workspace(monkeypatch, tmp_path, capsys):
+    root = _configure(monkeypatch, tmp_path)
+    source = _make_workspace(root, "manage-1", state_md="# State\n")
+
+    assert main(["chats", "archive", "manage-1", "--json"]) == 0
+    archived_result = json.loads(capsys.readouterr().out)
+    archived = root / ".archive" / "manage-1"
+    assert archived_result["status"] == "archived"
+    assert not source.exists()
+    assert archived.is_dir()
+
+    assert main(["chats", "restore", "manage-1", "--json"]) == 0
+    restored_result = json.loads(capsys.readouterr().out)
+    assert restored_result["status"] == "restored"
+    assert source.is_dir()
+    assert not archived.exists()
+
+
+def test_delete_requires_confirmation_and_only_deletes_archived(monkeypatch, tmp_path, capsys):
+    root = _configure(monkeypatch, tmp_path)
+    active = _make_workspace(root, "delete-active")
+    archived = _make_workspace(root, "delete-old", archived=True)
+
+    assert main(["chats", "delete", "delete-old"]) == 2
+    assert "requires --yes" in capsys.readouterr().err
+    assert archived.exists()
+
+    assert main(["chats", "delete", "delete-active", "--yes"]) == 6
+    assert "No archived workspace found" in capsys.readouterr().err
+    assert active.exists()
+
+    assert main(["chats", "delete", "delete-old", "--yes", "--json"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "deleted"
+    assert not archived.exists()
+    assert active.exists()
+
+
+def test_stats_reports_counts_and_total_bytes(monkeypatch, tmp_path, capsys):
+    root = _configure(monkeypatch, tmp_path)
+    active = _make_workspace(root, "stats-active")
+    archived = _make_workspace(root, "stats-archived", archived=True)
+    (active / "payload.bin").write_bytes(b"abc")
+    (archived / "payload.bin").write_bytes(b"12345")
+
+    expected_bytes = sum(
+        path.stat().st_size
+        for workspace in (active, archived)
+        for path in workspace.rglob("*")
+        if path.is_file()
+    )
+    assert main(["chats", "stats", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {
+        "active": 1,
+        "archived": 1,
+        "total": 2,
+        "bytes": expected_bytes,
+        "root": str(root),
+    }
+
+
+def test_prune_defaults_to_dry_run_and_apply_mutates(monkeypatch, tmp_path, capsys):
+    root = _configure(monkeypatch, tmp_path)
+    workspace = _make_workspace(root, "idle-prune", mtime=1_000_000_000)
+    monkeypatch.setattr("app.config.HOST_CHAT_IDLE_ARCHIVE_HOURS", 0)
+    monkeypatch.setattr("app.config.HOST_CHAT_RETENTION_DAYS", 999999)
+    monkeypatch.setattr("app.config.HOST_CHAT_MAX_WORKSPACES", 128)
+    monkeypatch.setattr("app.config.HOST_CHAT_ROOT_MAX_GB", 24)
+
+    assert main(["chats", "prune", "--json"]) == 0
+    dry = json.loads(capsys.readouterr().out)
+    assert dry["apply"] is False
+    assert dry["planned"][0]["action"] == "ARCHIVE_IDLE"
+    assert dry["results"][0]["status"] == "would_archive"
+    assert workspace.is_dir()
+
+    assert main(["chats", "prune", "--apply", "--json"]) == 0
+    applied = json.loads(capsys.readouterr().out)
+    assert applied["apply"] is True
+    assert applied["results"][0]["status"] == "archived"
+    assert not workspace.exists()
+    assert (root / ".archive" / "idle-prune").is_dir()
+
+
+def test_logs_view_normalizes_filters_and_redacts_rotated_records(
+    monkeypatch, tmp_path, capsys
+):
+    root = _configure(monkeypatch, tmp_path)
+    current = json.dumps(
+        {
+            "seq": 2,
+            "ts": "2026-08-26T17:00:01+00:00",
+            "type": "op_result",
+            "op": "op-log1",
+            "ok": False,
+            "payload": {"command": "--token current-secret echo failed"},
+        }
+    )
+    ws = _make_workspace(root, "logs-view", journal_lines=[current])
+    previous = json.dumps(
+        {
+            "seq": 1,
+            "ts": "2026-08-26T17:00:00+00:00",
+            "type": "op_started",
+            "op": "op-log1",
+            "kind": "host_run_command",
+            "payload": {"command": "GATEWAY_TOKEN=old-secret echo start"},
+        }
+    )
+    (ws / "journal.jsonl.1").write_text(previous + "\n", encoding="utf-8")
+
+    assert main(["chats", "logs", "logs-view", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["count"] == 2
+    assert payload["summary"]["categories"] == {"process": 2}
+    assert payload["summary"]["severities"] == {"DEBUG": 1, "ERROR": 1}
+    assert [record["severity_text"] for record in payload["records"]] == [
+        "DEBUG",
+        "ERROR",
+    ]
+    serialized = json.dumps(payload)
+    assert "old-secret" not in serialized
+    assert "current-secret" not in serialized
+    assert serialized.count("command_sha256") == 2
+    assert serialized.count('"command": "<redacted>"') == 2
+
+    assert main(
+        ["chats", "logs", "logs-view", "--severity", "error", "--json"]
+    ) == 0
+    filtered = json.loads(capsys.readouterr().out)
+    assert filtered["count"] == 1
+    assert filtered["records"][0]["event_outcome"] == "failure"
+
+    assert main(
+        ["chats", "logs", "logs-view", "--category", "file", "--json"]
+    ) == 0
+    assert json.loads(capsys.readouterr().out)["count"] == 0
+
+
+def test_show_counts_rotated_and_current_journal_generations(monkeypatch, tmp_path, capsys):
+    root = _configure(monkeypatch, tmp_path)
+    ws = _make_workspace(
+        root,
+        "logs-count",
+        journal_lines=[
+            json.dumps(
+                {
+                    "seq": 2,
+                    "ts": "2026-08-26T17:00:01+00:00",
+                    "type": "op_result",
+                    "op": "op-log2",
+                    "kind": "host_read_file",
+                    "ok": True,
+                    "payload": {},
+                }
+            )
+        ],
+    )
+    (ws / "journal.jsonl.1").write_text(
+        json.dumps(
+            {
+                "seq": 1,
+                "ts": "2026-08-26T17:00:00+00:00",
+                "type": "op_started",
+                "op": "op-log2",
+                "kind": "host_read_file",
+                "payload": {},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    assert main(["chats", "show", "logs-count"]) == 0
+    out = capsys.readouterr().out
+    assert "1 started" in out
+    assert "1 completed" in out
+
+
+def test_logs_view_supports_min_severity_outcome_action_and_phase_filters(
+    monkeypatch, tmp_path, capsys
+):
+    root = _configure(monkeypatch, tmp_path)
+    ws = _make_workspace(
+        root,
+        "logs-filter",
+        journal_lines=[
+            json.dumps(
+                {
+                    "seq": 1,
+                    "ts": "2026-08-26T17:00:00+00:00",
+                    "type": "op_started",
+                    "op": "op-file",
+                    "kind": "host_read_file",
+                    "payload": {"path": "README.md"},
+                }
+            ),
+            json.dumps(
+                {
+                    "seq": 2,
+                    "ts": "2026-08-26T17:00:00.250000+00:00",
+                    "type": "op_result",
+                    "op": "op-file",
+                    "ok": True,
+                    "payload": {"path": "README.md"},
+                }
+            ),
+            json.dumps(
+                {
+                    "seq": 3,
+                    "ts": "2026-08-26T17:00:01+00:00",
+                    "type": "op_started",
+                    "op": "op-cmd",
+                    "kind": "host_run_command",
+                    "payload": {"cwd": "/tmp"},
+                }
+            ),
+            json.dumps(
+                {
+                    "seq": 4,
+                    "ts": "2026-08-26T17:00:02+00:00",
+                    "type": "op_result",
+                    "op": "op-cmd",
+                    "ok": False,
+                    "payload": {"exit_code": 2},
+                }
+            ),
+        ],
+    )
+    assert ws.is_dir()
+
+    assert main(["chats", "logs", "logs-filter", "--min-severity", "error", "--json"]) == 0
+    errors = json.loads(capsys.readouterr().out)
+    assert errors["count"] == 1
+    assert errors["records"][0]["event_action"] == "host_run_command"
+    assert errors["records"][0]["event_duration_ms"] == 1000.0
+
+    assert main(["chats", "logs", "logs-filter", "--outcome", "failure", "--json"]) == 0
+    failures = json.loads(capsys.readouterr().out)
+    assert failures["count"] == 1
+    assert failures["records"][0]["seq"] == 4
+
+    assert main(["chats", "logs", "logs-filter", "--action", "host_read_file", "--phase", "result", "--json"]) == 0
+    file_results = json.loads(capsys.readouterr().out)
+    assert file_results["count"] == 1
+    assert file_results["records"][0]["event_category"] == "file"
+    assert file_results["records"][0]["event_duration_ms"] == 250.0

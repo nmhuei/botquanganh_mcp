@@ -382,6 +382,47 @@ def test_sanitize_payload_handles_nesting_and_scalars():
     assert out["b"] == {"c": "ok"}
 
 
+def test_sanitize_payload_redacts_sensitive_keys_and_inline_secrets():
+    out = cw.sanitize_payload(
+        {
+            "session_token": "raw-session-secret",
+            "nested": {"password": "pw", "safe": "visible"},
+            "command": "GATEWAY_TOKEN=abc curl -H 'Authorization: Bearer bearer123' --token cli456",
+        }
+    )
+    assert out["session_token"] == "<redacted>"
+    assert out["nested"] == {"password": "<redacted>", "safe": "visible"}
+    command = out["command"]
+    assert command == "<redacted>"
+    assert "abc" not in command
+    assert "bearer123" not in command
+    assert "cli456" not in command
+    assert len(out["command_sha256"]) == 64
+
+
+def test_normalize_journal_record_adds_classification_without_mutating_input():
+    source = {
+        "seq": 7,
+        "ts": "2026-08-26T17:00:00+00:00",
+        "type": "op_result",
+        "op": "op-abc123",
+        "kind": "host_run_command",
+        "ok": False,
+        "payload": {"command": "TOKEN=secret-value echo ok"},
+    }
+    normalized = cw.normalize_journal_record(source)
+    assert source["payload"]["command"] == "TOKEN=secret-value echo ok"
+    assert normalized["journal_schema"] == 2
+    assert normalized["event_name"] == "workspace.operation.result"
+    assert normalized["event_category"] == "process"
+    assert normalized["event_action"] == "host_run_command"
+    assert normalized["event_outcome"] == "failure"
+    assert normalized["severity_text"] == "ERROR"
+    assert normalized["severity_number"] == 17
+    assert normalized["interaction_id"] == "op-abc123"
+    assert "secret-value" not in normalized["payload"]["command"]
+
+
 # ---------------------------------------------------------------------------
 # STATE.md rendering and rebuild.
 # ---------------------------------------------------------------------------
@@ -645,3 +686,79 @@ def test_quota_error_matches_chat_errors_fragment_rule():
     assert payload["error"]["message"] == (
         "Chat abcdef is over quota: 2048 of 1024 bytes used."
     )
+
+
+# ---------------------------------------------------------------------------
+# Structured workspace-log classification.
+# ---------------------------------------------------------------------------
+
+
+def test_normalize_journal_stream_correlates_result_kind_and_duration():
+    records = [
+        {
+            "seq": 1,
+            "ts": "2026-08-26T17:00:00+00:00",
+            "type": "op_started",
+            "op": "op-corr",
+            "kind": "host_run_command",
+            "payload": {"cwd": "/tmp"},
+        },
+        {
+            "seq": 2,
+            "ts": "2026-08-26T17:00:01.500000+00:00",
+            "type": "op_result",
+            "op": "op-corr",
+            "ok": False,
+            "payload": {"exit_code": 1},
+        },
+    ]
+
+    started, result = cw.normalize_journal_records(records)
+    assert started["event_dataset"] == "bqa.workspace"
+    assert started["log_source"] == "workspace_journal"
+    assert started["event_category"] == "process"
+    assert started["operation_phase"] == "started"
+    assert started["severity_number"] == 5
+
+    assert result["kind"] == "host_run_command"
+    assert result["event_action"] == "host_run_command"
+    assert result["event_category"] == "process"
+    assert result["operation_phase"] == "result"
+    assert result["event_outcome"] == "failure"
+    assert result["severity_text"] == "ERROR"
+    assert result["severity_number"] == 17
+    assert result["event_duration_ms"] == 1500.0
+
+
+def test_sanitize_payload_hashes_raw_command_and_redacts_nested_secrets():
+    payload = cw.sanitize_payload(
+        {
+            "command": "python tool.py positional-super-secret",
+            "headers": {"Authorization": "Bearer top-secret"},
+            "note": "token=another-secret",
+        }
+    )
+
+    assert payload["command"] == "<redacted>"
+    assert len(payload["command_sha256"]) == 64
+    assert payload["headers"]["Authorization"] == "<redacted>"
+    assert "another-secret" not in payload["note"]
+    serialized = json.dumps(payload)
+    assert "positional-super-secret" not in serialized
+    assert "top-secret" not in serialized
+
+
+def test_summarize_journal_records_reports_operations_failures_and_actions():
+    records = [
+        {"type": "op_started", "op": "a", "kind": "host_read_file"},
+        {"type": "op_result", "op": "a", "ok": True},
+        {"type": "op_started", "op": "b", "kind": "host_run_command"},
+        {"type": "op_result", "op": "b", "ok": False},
+    ]
+
+    summary = cw.summarize_journal_records(records)
+    assert summary["events"] == 4
+    assert summary["operations"] == 2
+    assert summary["failures"] == 1
+    assert summary["categories"] == {"file": 2, "process": 2}
+    assert summary["actions"] == {"host_read_file": 2, "host_run_command": 2}
