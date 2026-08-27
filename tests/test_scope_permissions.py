@@ -139,15 +139,15 @@ def _config_snapshot(extra_env: dict[str, str]) -> dict:
     return json.loads(proc.stdout)
 
 
-def test_new_settings_default_to_workspace_and_off():
+def test_new_settings_default_to_workspace_and_enforce():
     snap = _config_snapshot({})
     assert snap["read"] == snap["ws"]
     assert snap["write"] == snap["ws"]
     assert snap["read_set"] is False
     assert snap["write_set"] is False
     assert snap["deny"] == []
-    assert snap["attribution"] == "off"
-    assert snap["chat_workspaces"] is False
+    assert snap["attribution"] == "enforce"
+    assert snap["chat_workspaces"] is True
     assert snap["chat_root"] == str(Path.home() / "Downloads" / "bqa-workspaces")
     assert snap["idle_hours"] == 72
     assert snap["retention"] == 30

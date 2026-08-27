@@ -61,13 +61,17 @@ def test_config_accepts_enforce_and_normalizes(raw):
     assert proc.stdout.strip() == "enforce"
 
 
-def test_config_default_remains_off():
-    import os
-
-    env_copy = dict(os.environ)
-    env_copy.pop("ATTRIBUTION_MODE", None)
-    fallback = env_copy.get("ATTRIBUTION_MODE", "off").strip().lower()
-    assert fallback == "off"
+def test_config_default_is_enforce():
+    proc = subprocess.run(
+        [sys.executable, "-c", "import os; env = dict(os.environ); env.pop('ATTRIBUTION_MODE', None); import subprocess; print(subprocess.check_output([r'" + sys.executable + r"', '-c', 'import app.config as c; print(c.ATTRIBUTION_MODE)'], env=env).decode().strip())"],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=str(REPO_ROOT),
+        timeout=120,
+    )
+    assert proc.returncode == 0
+    assert proc.stdout.strip() == "enforce"
 
 
 @pytest.mark.parametrize(

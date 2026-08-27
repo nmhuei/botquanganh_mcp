@@ -145,7 +145,7 @@ def annotate(record: dict[str, Any]) -> dict[str, Any]:
     bound in the current context, nothing can be attributed and the record is
     likewise returned unchanged.
     """
-    if attribution_mode() == DEFAULT_ATTRIBUTION_MODE:
+    if attribution_mode() == "off":
         return record
     chat_id = get_chat_id()
     if not chat_id:

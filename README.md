@@ -47,8 +47,8 @@ Toàn bộ cấu hình nằm trong `.env` ở thư mục repo, được nạp kh
 | `ALLOWED_ORIGINS` | *(trống)* | Danh sách CORS origin cho phép qua HTTP API |
 | `TRUST_PROXY_HEADERS` | `false` | Tin cậy header proxy khi đứng sau Cloudflare Tunnel / reverse proxy |
 | `HOST_TOOL_CACHE_SECONDS` | `300` | Thời gian cache catalog tool |
-| `ATTRIBUTION_MODE` | `off` | Gán thao tác host về chat: `off` / `tag` / `strict` / `enforce` |
-| `HOST_CHAT_WORKSPACES` | `false` | Bật tính năng tạo workspace riêng cho từng chat |
+| `ATTRIBUTION_MODE` | `enforce` | Gán thao tác host về chat: `off` / `tag` / `strict` / `enforce` (mặc định yêu cầu bind ID trước khi thao tác) |
+| `HOST_CHAT_WORKSPACES` | `true` | Bật tính năng tạo workspace riêng cho từng chat |
 | `HOST_CHAT_ROOT` | `~/Downloads/bqa-workspaces` | Thư mục gốc chứa các chat workspace |
 | `HOST_CHAT_ISOLATE` | `false` | Khóa ghi: không cho ghi ra ngoài workspace riêng của chat |
 | `HOST_CHAT_QUOTA_MB` | `2048` | Dung lượng tối đa của một chat workspace (MB) |

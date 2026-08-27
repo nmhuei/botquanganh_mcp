@@ -118,7 +118,7 @@ def redact_sensitive_data(data: Any) -> Any:
 
 
 # Mirrors the validated values in app.config; unknown settings degrade to "off".
-ATTRIBUTION_MODES = frozenset({"off", "tag", "strict"})
+ATTRIBUTION_MODES = frozenset({"off", "tag", "strict", "enforce"})
 
 
 def effective_attribution_mode() -> str:

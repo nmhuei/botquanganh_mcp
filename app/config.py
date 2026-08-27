@@ -246,13 +246,13 @@ AUDIT_MAX_FIELD_CHARS = max(256, int(os.getenv("AUDIT_MAX_FIELD_CHARS", "4000"))
 # sweeping, REST activity, and workspace-management CLI paths. Defaults keep
 # the opt-in workspace/isolation behavior disabled for existing installations.
 
-ATTRIBUTION_MODE = os.getenv("ATTRIBUTION_MODE", "off").strip().lower()
+ATTRIBUTION_MODE = os.getenv("ATTRIBUTION_MODE", "enforce").strip().lower()
 if ATTRIBUTION_MODE not in {"off", "tag", "strict", "enforce"}:
     raise ValueError(
         "ATTRIBUTION_MODE must be one of 'off', 'tag', 'strict', 'enforce'"
     )
 
-HOST_CHAT_WORKSPACES = os.getenv("HOST_CHAT_WORKSPACES", "false").lower() == "true"
+HOST_CHAT_WORKSPACES = os.getenv("HOST_CHAT_WORKSPACES", "true").lower() == "true"
 HOST_CHAT_ROOT = _resolve_config_path(
     os.getenv("HOST_CHAT_ROOT", "").strip(),
     Path("~/Downloads/bqa-workspaces"),

@@ -16,8 +16,8 @@ Toàn bộ nằm trong `.env`, nạp khi khởi động (xem thêm bảng chung 
 
 | Khóa | Mặc định | Ý nghĩa |
 | --- | --- | --- |
-| `ATTRIBUTION_MODE` | `off` | Gán thao tác host về chat: `off` tắt; `tag` gắn nhãn `chat_id` vào log/kết quả; `strict` từ chối thao tác ghi không mang `chat_id` hợp lệ; `enforce` từ chối toàn bộ thao tác (kể cả đọc) nếu chưa bind |
-| `HOST_CHAT_WORKSPACES` | `false` | Công tắc bật/tắt cả tính năng workspace theo chat |
+| `ATTRIBUTION_MODE` | `enforce` | Gán thao tác host về chat: `off` tắt; `tag` gắn nhãn `chat_id` vào log/kết quả; `strict` từ chối thao tác ghi không mang `chat_id` hợp lệ; `enforce` từ chối toàn bộ thao tác (kể cả đọc) nếu chưa bind |
+| `HOST_CHAT_WORKSPACES` | `true` | Công tắc bật/tắt cả tính năng workspace theo chat |
 | `HOST_CHAT_ROOT` | `~/Downloads/bqa-workspaces` | Thư mục gốc chứa mọi workspace |
 | `HOST_CHAT_IDLE_ARCHIVE_HOURS` | `72` | Số giờ không hoạt động trước khi workspace bị archive |
 | `HOST_CHAT_RETENTION_DAYS` | `30` | Số ngày giữ (kể cả đã archive) trước khi xóa vĩnh viễn |
