@@ -529,6 +529,7 @@ def test_activity_sse_generator_replays_and_resumes(monkeypatch):
         return records
 
     monkeypatch.setattr(rest, "_activity_stream_snapshot", snapshot)
+    monkeypatch.setattr(rest, "_ACTIVITY_STREAM_POLL_SECONDS", 0)
 
     class FakeRequest:
         def __init__(self, last_event_id=""):
@@ -547,15 +548,26 @@ def test_activity_sse_generator_replays_and_resumes(monkeypatch):
         )
         async for chunk in generator:
             chunks.append(chunk)
-            if len(chunks) == 2:
+            if len(chunks) == 4:
                 break
         await generator.aclose()
         return chunks
 
     replayed = anyio.run(first_replay)
     assert replayed[0] == f"retry: {rest._ACTIVITY_STREAM_RETRY_MS}\n\n"
-    assert '"seq":2' in replayed[1]
-    assert '"seq":1' not in replayed[1]
+    assert "event: stream_replay" in replayed[1]
+    assert json.loads(replayed[1].split("data: ", 1)[1]) == {
+        "phase": "start",
+        "baseline": True,
+        "count": 1,
+    }
+    assert '"seq":2' in replayed[2]
+    assert '"seq":1' not in replayed[2]
+    assert "event: stream_replay" in replayed[3]
+    assert json.loads(replayed[3].split("data: ", 1)[1]) == {
+        "phase": "complete",
+        "baseline": True,
+    }
 
     first_id = rest._activity_event_id(records[0])
 

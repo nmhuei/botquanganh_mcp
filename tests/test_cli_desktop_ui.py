@@ -1,11 +1,18 @@
 import json
+import inspect
 import os
+from pathlib import Path
+import queue
+import subprocess
+import threading
 
 import pytest
 
 from app.cli.context import CLIContext
+from app.cli.desktop_views.i18n import DesktopTranslator
 from app.cli.desktop_ui import (
     BQA_UI_DAEMON_ENV,
+    DESKTOP_APP_NAME,
     DesktopUIAlreadyRunning,
     _runtime_summary,
     backend_badge,
@@ -15,7 +22,17 @@ from app.cli.desktop_ui import (
     graphical_session_available,
     launch_desktop_ui_detached,
 )
+from app.cli.desktop_ui import _DesktopDashboard
 from app.cli.main import main
+
+
+def test_desktop_ui_removes_retired_workflow_stream_contract():
+    import app.cli.desktop_ui as desktop_ui
+
+    assert not hasattr(desktop_ui, "StreamRow")
+    assert not hasattr(desktop_ui, "make_stream_jobs_reader")
+    assert not hasattr(desktop_ui._DesktopDashboard, "_build_runtime_tab")
+    assert "stream_reader" not in inspect.signature(desktop_ui.run_desktop_ui).parameters
 
 
 def test_graphical_session_detection_is_explicit():
@@ -24,19 +41,150 @@ def test_graphical_session_detection_is_explicit():
     assert graphical_session_available({}) is False
 
 
+def test_desktop_display_name_is_rebranded_without_changing_the_bqa_command():
+    assert DESKTOP_APP_NAME == "UCS-SecretAgent"
+
+
+def test_desktop_launcher_installs_ucs_name_and_icon(tmp_path):
+    repo_root = Path(__file__).resolve().parents[1]
+    fake_bqa = tmp_path / "bqa"
+    fake_bqa.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    fake_bqa.chmod(0o755)
+    data_home = tmp_path / "data"
+
+    completed = subprocess.run(
+        ["bash", "scripts/install_desktop_launcher.sh"],
+        cwd=repo_root,
+        env={**os.environ, "BQA_BIN": str(fake_bqa), "XDG_DATA_HOME": str(data_home)},
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    desktop_entry = (data_home / "applications" / "ucs-secretagent.desktop").read_text()
+    assert "Name=UCS-SecretAgent" in desktop_entry
+    assert "Icon=ucs-secretagent" in desktop_entry
+    assert (data_home / "icons/hicolor/512x512/apps/ucs-secretagent.png").is_file()
+    assert completed.returncode == 0
+
+
 def test_desktop_runtime_summary_covers_ready_degraded_and_stopped():
-    assert _runtime_summary({"ok": True})[0] == "Sẵn sàng"
-    assert _runtime_summary({"server": {"running": True}})[0] == "Cần kiểm tra"
-    assert _runtime_summary({})[0] == "Đã dừng"
+    assert _runtime_summary({"ok": True})[0] == "Ready"
+    assert _runtime_summary({"server": {"running": True}})[0] == "Needs attention"
+    assert _runtime_summary({})[0] == "Stopped"
 
 
 def test_backend_badge_reflects_server_liveness():
     assert backend_badge({"server": {"running": True}}) == (
         "backend: ● alive",
-        "#147a45",
+        "#4ade80",
     )
     assert backend_badge({"server": {"running": False}})[0] == "backend: ○ down"
     assert backend_badge({})[0] == "backend: ○ down"
+
+
+def test_dashboard_activates_and_focuses_a_session_when_new_activity_arrives():
+    """A post-startup command must reveal its hidden session and pop up the view."""
+
+    class ActivityView:
+        def __init__(self):
+            self.calls = []
+
+        def activate_session(self, chat_id):
+            self.calls.append(("activate", chat_id))
+            return True
+
+        def focus(self):
+            self.calls.append(("focus",))
+
+    dashboard = object.__new__(_DesktopDashboard)
+    dashboard.activity_view = ActivityView()
+    dashboard.translator = DesktopTranslator("en")
+    dashboard.seen_activity_notification_ids = set()
+    messages = []
+    dashboard._set_message = lambda kind, message: messages.append((kind, message))
+    notification = type(
+        "Notification", (), {"chat_id": "chat-a", "operation_id": "op-shared"}
+    )()
+
+    dashboard._on_workspace_activity(notification)
+    dashboard._on_workspace_activity(notification)
+
+    assert dashboard.activity_view.calls == [("activate", "chat-a"), ("focus",)]
+    assert messages and messages[0][0] == "success"
+
+
+def test_dashboard_language_change_persists_then_relabels_every_live_view(monkeypatch, tmp_path):
+    class Variable:
+        def __init__(self, value):
+            self.value = value
+
+        def get(self):
+            return self.value
+
+        def set(self, value):
+            self.value = value
+
+    class Bindings:
+        def __init__(self):
+            self.translators = []
+
+        def set_translator(self, translator):
+            self.translators.append(translator)
+
+    class Notebook:
+        def __init__(self):
+            self.calls = []
+
+        def tab(self, tab, **values):
+            self.calls.append((tab, values))
+
+    class View:
+        def __init__(self):
+            self.translators = []
+
+        def set_translator(self, translator):
+            self.translators.append(translator)
+
+    dashboard = object.__new__(_DesktopDashboard)
+    dashboard.ctx = type("Context", (), {"repo_root": tmp_path, "values": {}})()
+    dashboard.translator = DesktopTranslator("en")
+    dashboard.header_bindings = Bindings()
+    dashboard.language_display_var = Variable("Tiếng Việt")
+    dashboard.language_combo = None
+    dashboard.language_choices = {"English": "en", "Tiếng Việt": "vi"}
+    dashboard.notebook = Notebook()
+    dashboard.notebook_tabs = {
+        "runtime": "runtime-tab",
+        "workspace_logs": "logs-tab",
+        "gpt_activity": "activity-tab",
+    }
+    dashboard.runtime_view = View()
+    dashboard.activity_view = View()
+    dashboard.workspace_log_view = View()
+    messages = []
+    dashboard._set_message = lambda kind, message: messages.append((kind, message))
+    persisted = []
+    monkeypatch.setattr(
+        "app.cli.desktop_ui.set_desktop_ui_language",
+        lambda root, language: persisted.append((root, language)) or {"BQA_UI_LANGUAGE": language},
+    )
+
+    dashboard.change_language()
+
+    assert persisted == [(tmp_path, "vi")]
+    assert dashboard.ctx.values["BQA_UI_LANGUAGE"] == "vi"
+    assert dashboard.notebook.calls == [
+        ("runtime-tab", {"text": "Runtime"}),
+        ("logs-tab", {"text": "Nhật ký Workspace"}),
+        ("activity-tab", {"text": "Hoạt động GPT"}),
+    ]
+    assert all(view.translators[-1].language == "vi" for view in (
+        dashboard.runtime_view,
+        dashboard.activity_view,
+        dashboard.workspace_log_view,
+    ))
+    assert messages == [("success", "Đã đổi ngôn ngữ sang Tiếng Việt.")]
 
 
 def test_completion_fingerprint_tracks_runtime_fields_only():
@@ -68,12 +216,63 @@ def test_completion_toast_gate_is_one_shot_and_transition_only():
     assert completion_toast_due(12.0, None, "bbb", None) is True
 
 
+def test_lifecycle_worker_delivers_result_through_main_thread_queue():
+    main_thread = threading.get_ident()
+    completed = threading.Event()
+
+    class Root:
+        def __init__(self):
+            self.after_threads = []
+            self.callbacks = []
+
+        def after(self, _delay, callback):
+            self.after_threads.append(threading.get_ident())
+            self.callbacks.append(callback)
+            return len(self.callbacks)
+
+        def after_cancel(self, _job):
+            pass
+
+        def run_next(self):
+            self.callbacks.pop(0)()
+
+    class RuntimeView:
+        def set_message(self, _message):
+            pass
+
+        def set_busy(self, _busy):
+            pass
+
+    dashboard = object.__new__(_DesktopDashboard)
+    dashboard.root = Root()
+    dashboard.closed = False
+    dashboard.busy = False
+    dashboard.action_queue = queue.Queue()
+    dashboard.action_drain_job = None
+    dashboard.action_started_at = None
+    dashboard.action_start_fingerprint = None
+    dashboard.latest_status_data = {}
+    dashboard.runtime_view = RuntimeView()
+    dashboard.translator = DesktopTranslator()
+    dashboard._finish_action = lambda kind, text, elapsed_seconds: completed.set()
+
+    dashboard._run_action("start", lambda: completed.clear() or {"ok": True})
+    assert completed.wait(timeout=1) is False
+    assert dashboard.action_queue.qsize() == 1
+    assert dashboard.root.after_threads == [main_thread]
+
+    dashboard.root.run_next()
+
+    assert completed.is_set()
+    assert all(thread_id == main_thread for thread_id in dashboard.root.after_threads)
+
+
 def test_ui_command_uses_desktop_window(monkeypatch):
     called = []
     monkeypatch.delenv(BQA_UI_DAEMON_ENV, raising=False)
     monkeypatch.setattr("app.cli.desktop_ui.run_desktop_ui", lambda ctx: called.append(ctx) or 0)
 
-    assert main(["ui", "--foreground"]) == 0
+    assert main(["ui", "--inline"]) == 0
     assert len(called) == 1
     assert isinstance(called[0], CLIContext)
 
@@ -126,6 +325,19 @@ def test_default_ui_detaches_instead_of_opening_inline(monkeypatch, capsys):
     assert main(["ui", "--quiet"]) == 0
     assert capsys.readouterr().out.strip() == "2468"
     assert opened_inline == []
+
+
+def test_foreground_ui_is_a_detached_compatibility_alias(monkeypatch, capsys):
+    started = []
+    monkeypatch.setattr("app.cli.desktop_ui.graphical_session_available", lambda: True)
+    monkeypatch.setattr(
+        "app.cli.desktop_ui.launch_desktop_ui_detached",
+        lambda _ctx: started.append(True) or 1357,
+    )
+
+    assert main(["ui", "--foreground", "--quiet"]) == 0
+    assert capsys.readouterr().out.strip() == "1357"
+    assert started == [True]
 
 
 def test_launch_writes_pid_file_and_env_marker(monkeypatch, tmp_path):
@@ -212,15 +424,33 @@ def test_daemon_child_registers_and_releases_the_pid_file(monkeypatch, tmp_path)
     monkeypatch.setenv(BQA_UI_DAEMON_ENV, "1")
     monkeypatch.setattr("app.cli.desktop_ui.run_desktop_ui", fake_run_desktop_ui)
 
-    assert main(["ui", "--foreground"]) == 0
+    assert main(["ui"]) == 0
     assert observed["content"] == str(real_pid)
     assert not desktop_ui_pid_path(tmp_path).exists()
 
 
-def test_foreground_without_env_marker_never_touches_the_pid_file(monkeypatch, tmp_path):
+def test_inline_ui_without_env_marker_never_touches_the_pid_file(monkeypatch, tmp_path):
     monkeypatch.setattr("app.cli.context.repo_root", lambda: tmp_path)
     monkeypatch.delenv(BQA_UI_DAEMON_ENV, raising=False)
     monkeypatch.setattr("app.cli.desktop_ui.run_desktop_ui", lambda _ctx: 0)
 
-    assert main(["ui", "--foreground"]) == 0
+    assert main(["ui", "--inline"]) == 0
     assert not desktop_ui_pid_path(tmp_path).exists()
+
+
+def test_desktop_activity_root_uses_host_chat_root(tmp_path):
+    configured = tmp_path / "real-chat-workspaces"
+    dashboard = object.__new__(_DesktopDashboard)
+    dashboard.ctx = type(
+        "Context",
+        (),
+        {
+            "repo_root": tmp_path / "repo",
+            "values": {
+                "HOST_CHAT_ROOT": str(configured),
+                "BQA_CHAT_WORKSPACES_DIR": str(tmp_path / "wrong-root"),
+            },
+        },
+    )()
+
+    assert dashboard.chat_workspaces_root() == configured

@@ -73,7 +73,15 @@ def test_host_mcp_command_marks_result_for_the_local_activity_journal(monkeypatc
 
     assert host_run_command("printf ok", timeout_seconds=5, cwd=".") == {"ok": True}
     assert calls == [
-        (("printf ok",), {"cwd": ".", "timeout_seconds": 5, "activity_source": "mcp"})
+        (
+            ("printf ok",),
+            {
+                "cwd": ".",
+                "timeout_seconds": 5,
+                "activity_source": "mcp",
+                "activity_chat_id": None,
+            },
+        )
     ]
 
 
@@ -255,3 +263,34 @@ def test_host_run_command_never_persists_raw_secret_in_workspace_journal(
     assert [event["operation_phase"] for event in events] == ["started", "result"]
     assert events[0]["event_category"] == "process"
     assert events[1]["event_outcome"] == "success"
+
+
+def test_host_run_command_reuses_the_workspace_journal_operation_for_activity(
+    monkeypatch, tmp_path
+):
+    from app.chat_workspace import WorkspaceManager
+
+    chat_root = tmp_path / "chat-root"
+    monkeypatch.setattr(app.config, "HOST_CHAT_WORKSPACES", True, raising=False)
+    monkeypatch.setattr(app.config, "HOST_CHAT_ROOT", chat_root, raising=False)
+    monkeypatch.setattr(app.config, "HOST_CHAT_QUOTA_MB", 16, raising=False)
+    monkeypatch.setattr(app.config, "HOST_CHAT_JOURNAL_MAX_BYTES", 1_000_000, raising=False)
+    WorkspaceManager(chat_root).create_or_bind("journal-shared-op")
+    calls = []
+    monkeypatch.setattr(
+        "app.tools.host.execute_host_command",
+        lambda *_args, **kwargs: calls.append(kwargs) or {
+            "ok": True,
+            "exit_code": 0,
+            "stdout": "",
+            "stderr": "",
+            "stdout_truncated": False,
+            "stderr_truncated": False,
+            "output_incomplete": False,
+        },
+    )
+
+    assert host_run_command("pwd", chat_id="journal-shared-op")["ok"] is True
+
+    journal_operation = WorkspaceManager(chat_root).read_events("journal-shared-op")[0]["op"]
+    assert calls[0]["activity_operation_id"] == journal_operation

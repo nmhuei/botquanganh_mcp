@@ -413,10 +413,22 @@ def _dispatch(ctx: CLIContext, args) -> int:
             run_desktop_ui,
         )
 
-        if not getattr(args, "foreground", False):
-            # Detached by default; `--detach` remains an explicit legacy alias.
+        is_daemon_child = os.environ.get(BQA_UI_DAEMON_ENV) == "1"
+        if is_daemon_child:
+            # The launcher marks its child explicitly.  This check must happen
+            # before the normal detached path, otherwise `bqa ui` recursively
+            # launches a new child instead of ever creating the Tk window.
+            register_desktop_ui_pid(ctx.repo_root, os.getpid())
+            try:
+                return run_desktop_ui(ctx)
+            finally:
+                release_desktop_ui_pid(ctx.repo_root, os.getpid())
+
+        if not getattr(args, "inline", False):
+            # `bqa ui`, `bqa ui --detach`, and the requested compatibility form
+            # `bqa ui --foreground` all return to the terminal immediately.
             if not graphical_session_available():
-                raise CLIError("Không có graphical display để mở BQA Control Center.")
+                raise CLIError("Không có graphical display để mở UCS-SecretAgent.")
             try:
                 pid = launch_desktop_ui_detached(ctx)
             except DesktopUIAlreadyRunning as running:
@@ -428,12 +440,12 @@ def _dispatch(ctx: CLIContext, args) -> int:
                     emit_quiet(running.pid)
                 else:
                     renderer = renderer_for(ctx)
-                    renderer.header("BQA Control Center", "Đã có cửa sổ nền đang chạy")
+                    renderer.header("UCS-SecretAgent", "Đã có cửa sổ nền đang chạy")
                     renderer.blank()
                     renderer.status(
-                        "success", f"BQA Control Center đã chạy nền (PID {running.pid})"
+                        "success", f"UCS-SecretAgent đã chạy nền (PID {running.pid})"
                     )
-                    renderer.hint("bqa ui --foreground", "Mở cửa sổ trong phiên này")
+                    renderer.hint("bqa ui --inline", "Chạy UI gắn với terminal bằng")
                 return 0
             if ctx.json_output:
                 emit_json({"ok": True, "status": "started", "pid": pid})
@@ -441,21 +453,13 @@ def _dispatch(ctx: CLIContext, args) -> int:
                 emit_quiet(pid)
             else:
                 renderer = renderer_for(ctx)
-                renderer.header("BQA Control Center", "Detached desktop window")
+                renderer.header("UCS-SecretAgent", "Detached desktop window")
                 renderer.blank()
                 renderer.status("success", f"Đã mở nền (PID {pid})")
                 renderer.blank()
                 renderer.hint("bqa logs launcher -n 100", "Theo dõi service với")
             return 0
         try:
-            # Detached children announce themselves through the env marker so
-            # they open the window directly and own the pid file.
-            if os.environ.get(BQA_UI_DAEMON_ENV) == "1":
-                register_desktop_ui_pid(ctx.repo_root, os.getpid())
-                try:
-                    return run_desktop_ui(ctx)
-                finally:
-                    release_desktop_ui_pid(ctx.repo_root, os.getpid())
             return run_desktop_ui(ctx)
         except DesktopUIUnavailable:
             if interactive_terminal():

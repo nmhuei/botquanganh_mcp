@@ -48,6 +48,7 @@ Toàn bộ cấu hình nằm trong `.env` ở thư mục repo, được nạp kh
 | `TRUST_PROXY_HEADERS` | `false` | Tin cậy header proxy khi đứng sau Cloudflare Tunnel / reverse proxy |
 | `HOST_TOOL_CACHE_SECONDS` | `300` | Thời gian cache catalog tool |
 | `ATTRIBUTION_MODE` | `enforce` | Gán thao tác host về chat: `off` / `tag` / `strict` / `enforce` (mặc định yêu cầu bind ID trước khi thao tác) |
+| `BQA_UI_LANGUAGE` | `en` | Ngôn ngữ `bqa ui`: `en` (mặc định) hoặc `vi`; chỉ ảnh hưởng desktop UI |
 | `HOST_CHAT_WORKSPACES` | `true` | Bật tính năng tạo workspace riêng cho từng chat |
 | `HOST_CHAT_ROOT` | `~/Downloads/bqa-workspaces` | Thư mục gốc chứa các chat workspace |
 | `HOST_CHAT_ISOLATE` | `false` | Khóa ghi: không cho ghi ra ngoài workspace riêng của chat |
@@ -55,6 +56,10 @@ Toàn bộ cấu hình nằm trong `.env` ở thư mục repo, được nạp kh
 | `HOST_CHAT_IDLE_ARCHIVE_HOURS` | `72` | Số giờ không hoạt động trước khi tự động archive workspace |
 | `HOST_CHAT_RETENTION_DAYS` | `30` | Số ngày lưu giữ workspace trước khi dọn dẹp vĩnh viễn |
 | `HOST_CHAT_MAX_WORKSPACES` | `128` | Giới hạn số lượng workspace tồn tại đồng thời |
+
+`BQA_UI_LANGUAGE` là tuỳ chọn chính thức cho desktop UI; `bqa ui` mặc định
+tiếng Anh và Language selector ghi giá trị `en`/`vi` vào `.env`. Nếu biến này
+đã được export trong môi trường hiện tại, selector sẽ từ chối ghi đè `.env`.
 
 ## Cách dùng
 
@@ -69,8 +74,9 @@ bqa server restart     # chỉ restart bridge cục bộ
 bqa server status      # trạng thái riêng của bridge
 bqa url                # in URL connector (--quiet: chỉ chuỗi URL)
 # Interface
-bqa ui                 # BQA Control Center trên desktop
-bqa ui --detach        # mở cửa sổ desktop tách khỏi terminal
+bqa ui                 # UCS-SecretAgent trên desktop, chạy nền
+bqa ui --foreground    # tương thích: vẫn mở UI chạy nền
+bqa ui --inline         # giữ UI gắn với terminal cho đến khi đóng cửa sổ
 bqa tui                # bản TUI trong terminal (dùng khi SSH/headless)
 # Inspection
 bqa status             # trạng thái runtime tổng thể
