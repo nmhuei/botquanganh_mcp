@@ -445,6 +445,7 @@ async def _activity_sse_generator(
     baseline = await _activity_stream_snapshot(chat_id=chat_id, filters=filters)
     ids = [_activity_event_id(item) for item in baseline]
     last_event_id = request.headers.get("last-event-id", "").strip()
+    baseline_replay = not last_event_id
     if last_event_id and last_event_id in ids:
         start = ids.index(last_event_id) + 1
         initial = baseline[start:]
@@ -461,8 +462,15 @@ async def _activity_sse_generator(
             )
     for event_id in ids:
         remember(event_id)
+    if initial and baseline_replay:
+        yield _sse_control(
+            "stream_replay",
+            {"phase": "start", "baseline": True, "count": len(initial)},
+        )
     for item in initial:
         yield _sse_workspace_log(item)
+    if initial and baseline_replay:
+        yield _sse_control("stream_replay", {"phase": "complete", "baseline": True})
 
     last_heartbeat = anyio.current_time()
     while True:

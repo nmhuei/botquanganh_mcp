@@ -652,12 +652,15 @@ def host_run_command(
         "host_run_command", validated, journal_start
     )
     try:
-        result = execute_host_command(
-            command,
-            cwd=cwd,
-            timeout_seconds=timeout_seconds,
-            activity_source="mcp",
-        )
+        execute_kwargs: dict[str, Any] = {
+            "cwd": cwd,
+            "timeout_seconds": timeout_seconds,
+            "activity_source": "mcp",
+            "activity_chat_id": validated,
+        }
+        if journal_op:
+            execute_kwargs["activity_operation_id"] = journal_op
+        result = execute_host_command(command, **execute_kwargs)
     except Exception as exc:
         result = format_error_response(exc)
     attributed: dict[str, Any] = {}

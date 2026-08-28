@@ -31,6 +31,9 @@ _ENV_DQ_ESCAPES = re.compile(r"\\[\\'\"abfnrtv]")
 _ENV_VARIABLE = re.compile(r"\$\{(?P<name>[^\}:]*)(?::-(?P<default>[^\}]*))?\}")
 
 
+_DOTENV_LOADED_VALUES: dict[str, str] = {}
+
+
 class _EnvParseError(Exception):
     pass
 
@@ -120,6 +123,12 @@ def _load_env_file(path: Path | str) -> None:
     for key, value in parsed.items():
         if key not in os.environ and value is not None:
             os.environ[key] = value
+            _DOTENV_LOADED_VALUES[key] = value
+
+
+def value_loaded_from_dotenv(key: str) -> bool:
+    """Return whether the current value was written by this module's `.env` loader."""
+    return key in _DOTENV_LOADED_VALUES and os.environ.get(key) == _DOTENV_LOADED_VALUES[key]
 
 
 def _find_dotenv(start: Path) -> Path | None:

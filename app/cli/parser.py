@@ -223,12 +223,17 @@ Output modes:
     ui.add_argument(
         "--foreground",
         action="store_true",
-        help="Run attached to this terminal instead of detaching to background",
+        help="Compatibility alias: open the UI detached in the background",
     )
     ui.add_argument(
         "--detach",
         action="store_true",
-        help="Legacy alias: launch detached (now the default behavior)",
+        help="Open the UI detached in the background (the default)",
+    )
+    ui.add_argument(
+        "--inline",
+        action="store_true",
+        help="Run attached to this terminal until the UI window is closed",
     )
     commands.add_parser("tui", help="Open the terminal control center")
     help_parser = commands.add_parser("help", help="Show help information")
