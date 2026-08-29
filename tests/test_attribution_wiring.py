@@ -174,7 +174,14 @@ def test_intent_is_recorded_alongside_the_command_and_capped_at_200(
     result = host_run_command("printf ok", intent="  fix   the\ndoor\t" + "y" * 300)
 
     assert result["ok"] is True
-    assert calls == [{"cwd": None, "timeout_seconds": 30, "activity_source": "mcp"}]
+    assert calls == [
+        {
+            "cwd": None,
+            "timeout_seconds": 30,
+            "activity_source": "mcp",
+            "activity_chat_id": None,
+        }
+    ]
     assert len(audit_events) == 1
     event_type, details = audit_events[0]
     assert event_type == "HOST_TOOL_CALL"
