@@ -604,14 +604,19 @@ class _DesktopDashboard:
         if identity in self.seen_activity_notification_ids:
             return
         self.seen_activity_notification_ids.add(identity)
-        if self.activity_view is not None and self.activity_view.activate_session(notification.chat_id):
+        if self.activity_view is None:
+            return
+        should_focus = self.activity_view.reveal_session_for_activity(
+            notification.chat_id
+        )
+        if should_focus:
             self.activity_view.focus()
-            self._set_message(
-                "success",
-                self.translator.text(
-                    "message.session_reopened", session=notification.chat_id
-                ),
-            )
+        self._set_message(
+            "success",
+            self.translator.text(
+                "message.session_activity", session=notification.chat_id
+            ),
+        )
 
     def _set_sse_status(self, state: str) -> None:
         self.sse_var.set(f"SSE: {state.upper()}")

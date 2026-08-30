@@ -401,3 +401,76 @@ def test_activity_compact_mode_auto_collapses_and_restores_session_rail(tmp_path
     assert view.sessions_collapsed is False
     assert view.compact_auto_collapsed is False
     assert calls == ["toggle", "toggle"]
+
+
+def test_workspace_sessions_are_sorted_by_creation_time_not_recent_activity(tmp_path):
+    older = tmp_path / "chat-older"
+    newer = tmp_path / "chat-newer"
+    older.mkdir()
+    newer.mkdir()
+    (older / "meta.json").write_text(
+        '{"created_at":"2026-08-30T00:00:01+00:00"}',
+        encoding="utf-8",
+    )
+    (newer / "meta.json").write_text(
+        '{"created_at":"2026-08-30T00:00:02+00:00"}',
+        encoding="utf-8",
+    )
+    # Recent activity in the older session must not move it below the newer one.
+    (older / "journal.jsonl").write_text("recent activity\n", encoding="utf-8")
+
+    sessions = discover_workspace_sessions(tmp_path)
+
+    assert [session.chat_id for session in sessions] == ["chat-older", "chat-newer"]
+    assert sessions[0].created_at < sessions[1].created_at
+
+
+def test_new_activity_reveals_session_without_stealing_current_selection_or_filter(tmp_path):
+    class Filter:
+        def __init__(self, value):
+            self.value = value
+
+        def get(self):
+            return self.value
+
+        def set(self, value):
+            self.value = value
+
+    view = ActivityView(
+        root=None,
+        tk=None,
+        ttk=None,
+        parent=None,
+        workspace_root=lambda: tmp_path,
+        on_message=lambda *_args: None,
+        on_refresh=lambda: None,
+    )
+    view.sessions = [
+        WorkspaceSession("chat-1", tmp_path / "chat-1", 10.0, 1.0),
+        WorkspaceSession("chat-2", tmp_path / "chat-2", 20.0, 2.0),
+    ]
+    view.visible_session_ids = {"chat-1"}
+    view.session_selected_id = "chat-1"
+    view.workplace_filter_var = Filter("chat-1")
+
+    assert view.reveal_session_for_activity("chat-2") is False
+
+    assert view.session_selected_id == "chat-1"
+    assert view.visible_session_ids == {"chat-1", "chat-2"}
+    assert view.workplace_filter_var.get() == "chat-1"
+
+
+def test_new_activity_selects_first_session_only_when_nothing_is_selected(tmp_path):
+    view = ActivityView(
+        root=None,
+        tk=None,
+        ttk=None,
+        parent=None,
+        workspace_root=lambda: tmp_path,
+        on_message=lambda *_args: None,
+        on_refresh=lambda: None,
+    )
+
+    assert view.reveal_session_for_activity("chat-1") is True
+    assert view.session_selected_id == "chat-1"
+    assert view.visible_session_ids == {"chat-1"}

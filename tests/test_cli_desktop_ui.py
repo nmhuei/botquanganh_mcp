@@ -83,15 +83,15 @@ def test_backend_badge_reflects_server_liveness():
     assert backend_badge({})[0] == "backend: ○ down"
 
 
-def test_dashboard_activates_and_focuses_a_session_when_new_activity_arrives():
-    """A post-startup command must reveal its hidden session and pop up the view."""
+def test_dashboard_reveals_and_focuses_when_new_activity_has_no_current_selection():
+    """A first post-startup command may reveal its session and focus the view."""
 
     class ActivityView:
         def __init__(self):
             self.calls = []
 
-        def activate_session(self, chat_id):
-            self.calls.append(("activate", chat_id))
+        def reveal_session_for_activity(self, chat_id):
+            self.calls.append(("reveal", chat_id))
             return True
 
         def focus(self):
@@ -110,8 +110,34 @@ def test_dashboard_activates_and_focuses_a_session_when_new_activity_arrives():
     dashboard._on_workspace_activity(notification)
     dashboard._on_workspace_activity(notification)
 
-    assert dashboard.activity_view.calls == [("activate", "chat-a"), ("focus",)]
-    assert messages and messages[0][0] == "success"
+    assert dashboard.activity_view.calls == [("reveal", "chat-a"), ("focus",)]
+    assert messages == [("success", "New command in session chat-a.")]
+
+
+def test_dashboard_does_not_focus_when_another_session_is_already_selected():
+    class ActivityView:
+        def __init__(self):
+            self.calls = []
+
+        def reveal_session_for_activity(self, chat_id):
+            self.calls.append(("reveal", chat_id))
+            return False
+
+        def focus(self):
+            self.calls.append(("focus",))
+
+    dashboard = object.__new__(_DesktopDashboard)
+    dashboard.activity_view = ActivityView()
+    dashboard.translator = DesktopTranslator("en")
+    dashboard.seen_activity_notification_ids = set()
+    dashboard._set_message = lambda *_args: None
+    notification = type(
+        "Notification", (), {"chat_id": "chat-b", "operation_id": "op-b"}
+    )()
+
+    dashboard._on_workspace_activity(notification)
+
+    assert dashboard.activity_view.calls == [("reveal", "chat-b")]
 
 
 def test_dashboard_language_change_persists_then_relabels_every_live_view(monkeypatch, tmp_path):

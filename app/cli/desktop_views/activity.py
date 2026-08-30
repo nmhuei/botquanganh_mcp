@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 import hashlib
 import json
 import math
@@ -34,6 +35,7 @@ class WorkspaceSession:
     chat_id: str
     path: Path
     last_changed: float
+    created_at: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -44,8 +46,29 @@ class ActivityNotification:
     operation_id: str
 
 
+def _workspace_created_at(child: Path, fallback: float) -> float:
+    """Return a stable session creation timestamp, preferring workspace metadata."""
+    meta_path = child / "meta.json"
+    try:
+        payload = json.loads(meta_path.read_text(encoding="utf-8"))
+        raw_created_at = str(payload.get("created_at") or "").strip()
+        if raw_created_at:
+            parsed = datetime.fromisoformat(raw_created_at.replace("Z", "+00:00"))
+            return parsed.timestamp()
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        pass
+    try:
+        stat_result = child.stat()
+        birth_time = getattr(stat_result, "st_birthtime", None)
+        if birth_time is not None:
+            return float(birth_time)
+    except OSError:
+        pass
+    return fallback
+
+
 def discover_workspace_sessions(root: Path) -> list[WorkspaceSession]:
-    """List direct workplace folders, newest first, without entering archives."""
+    """List direct workplace folders in stable creation order, oldest first."""
     try:
         children = list(root.iterdir())
     except OSError:
@@ -57,9 +80,11 @@ def discover_workspace_sessions(root: Path) -> list[WorkspaceSession]:
         try:
             if not child.is_dir():
                 continue
-            last_changed = child.stat().st_mtime
+            child_stat = child.stat()
+            last_changed = child_stat.st_mtime
         except OSError:
             continue
+        created_at = _workspace_created_at(child, last_changed)
         for name in ("journal.jsonl", "meta.json"):
             try:
                 last_changed = max(last_changed, (child / name).stat().st_mtime)
@@ -70,9 +95,10 @@ def discover_workspace_sessions(root: Path) -> list[WorkspaceSession]:
                 chat_id=child.name,
                 path=child,
                 last_changed=last_changed,
+                created_at=created_at,
             )
         )
-    return sorted(sessions, key=lambda item: (-item.last_changed, item.chat_id))
+    return sorted(sessions, key=lambda item: (item.created_at, item.chat_id))
 
 
 def filter_activity_records_for_session(
@@ -422,7 +448,7 @@ class ActivityView:
         self._render_records()
 
     def activate_session(self, chat_id: str) -> bool:
-        """Reveal, select, and focus a workplace after a new command arrives."""
+        """Reveal and explicitly select a workplace after a user-driven action."""
         if not chat_id:
             return False
         if self.workplace_filter_var is not None:
@@ -436,6 +462,29 @@ class ActivityView:
         self._render_sessions()
         self._render_records()
         return True
+
+    def reveal_session_for_activity(self, chat_id: str) -> bool:
+        """Reveal a session for new activity without stealing another selection.
+
+        Returns True only when there was no valid current selection and the new
+        session therefore became the initial selection.  Callers may use that
+        signal to focus the Activity tab without interrupting a user who is
+        already inspecting another session.
+        """
+        if not chat_id:
+            return False
+        current_selection = self.session_selected_id
+        self.closed_session_ids.discard(chat_id)
+        self.disabled_session_ids.discard(chat_id)
+        self.visible_session_ids.add(chat_id)
+
+        should_select = current_selection is None
+        if should_select:
+            self.session_selected_id = chat_id
+
+        self._render_sessions()
+        self._render_records()
+        return should_select
 
     def reopen_session(self, chat_id: str) -> bool:
         """Reopen a manually closed session; report whether state changed."""

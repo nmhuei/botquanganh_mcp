@@ -171,8 +171,12 @@ The `GPT Activity` tab is a Burp-style command-inspection view. A vertical
 `HOST_CHAT_ROOT` configured for host chat workspaces, excluding `.archive`.
 The rail starts empty: its initial journal snapshot and Workspace Logs SSE
 replay are only a baseline and do not open historical host-chat folders. Each
-command received after that baseline reveals or restores its session, selects
-it, and focuses this activity tab.
+command received after that baseline reveals or restores its session, but it
+does **not** steal selection from a workplace the user is already inspecting.
+A new session is auto-selected/focused only when there is no current selection.
+The rail itself is stable: visible workplaces are ordered by the session
+`created_at` stored in `meta.json` (oldest first), so later command activity
+updates RUNNING/LAST state without moving rows up or down.
 Selecting a workplace filters the command table to that chat id; `Disable`
 keeps the folder but marks its UI tab off, while `Close tab` hides it until the
 next command for that session arrives.

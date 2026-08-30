@@ -53,6 +53,14 @@ def test_real_tk_dashboard_exercises_ui_without_real_lifecycle(
     chat_root.mkdir()
     (chat_root / "chat-alpha").mkdir()
     (chat_root / "chat-beta").mkdir()
+    (chat_root / "chat-alpha" / "meta.json").write_text(
+        '{"created_at":"2026-08-30T00:00:01+00:00"}',
+        encoding="utf-8",
+    )
+    (chat_root / "chat-beta" / "meta.json").write_text(
+        '{"created_at":"2026-08-30T00:00:02+00:00"}',
+        encoding="utf-8",
+    )
     values = {
         "HOST_WORKSPACE_DIR": str(tmp_path),
         "HOST_CHAT_ROOT": str(chat_root),
@@ -164,6 +172,40 @@ def test_real_tk_dashboard_exercises_ui_without_real_lifecycle(
         _spin(root, lambda: len(dashboard.workspace_log_view.rows) >= 2)
         dashboard.activity_view.show_all_sessions()
         assert len(dashboard.activity_view.activity_tree.get_children()) == 2
+        session_iids = dashboard.activity_view.session_tree.get_children()
+        assert [
+            dashboard.activity_view.session_rows_by_iid[iid].chat_id
+            for iid in session_iids
+        ] == ["chat-alpha", "chat-beta"]
+
+        # Select chat-alpha explicitly, then simulate a new command arriving in
+        # chat-beta. The rail may reveal/update beta, but selection and command
+        # inspection must stay pinned to the session the user is reading.
+        alpha_iid = next(
+            iid
+            for iid, row in dashboard.activity_view.session_rows_by_iid.items()
+            if row.chat_id == "chat-alpha"
+        )
+        dashboard.activity_view.session_tree.selection_set(alpha_iid)
+        dashboard.activity_view.show_selected_session()
+        assert dashboard.activity_view.session_selected_id == "chat-alpha"
+        dashboard._on_workspace_activity(
+            type(
+                "Notification",
+                (),
+                {"chat_id": "chat-beta", "operation_id": "new-beta-command"},
+            )()
+        )
+        root.update()
+        assert dashboard.activity_view.session_selected_id == "chat-alpha"
+        selected_iid = dashboard.activity_view.session_tree.selection()[0]
+        assert (
+            dashboard.activity_view.session_rows_by_iid[selected_iid].chat_id
+            == "chat-alpha"
+        )
+
+        # Continue the broader filter checks in all-session mode.
+        dashboard.activity_view.show_all_sessions()
         dashboard.activity_view.command_filter_var.set("git status")
         dashboard.activity_view._apply_local_filter()
         assert len(dashboard.activity_view.activity_tree.get_children()) == 1
