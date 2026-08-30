@@ -281,7 +281,12 @@ class _DesktopDashboard:
         self.compact_layout: bool | None = None
         self.brand_subtitle: Any = None
         self.status_workspace_label: Any = None
+        self.status_bar: Any = None
+        self.feedback_slot: Any = None
         self.message_label: Any = None
+        self.feedback_display_var = tk.StringVar(value="")
+        self.feedback_full_text = ""
+        self.feedback_max_pixels = 410
         self.feedback_until = 0.0
         self.runtime_view = RuntimeView(
             tk,
@@ -445,6 +450,7 @@ class _DesktopDashboard:
         )
         status_bar = self.ttk.Frame(container, style="App.TFrame")
         status_bar.grid(row=2, column=0, sticky="ew")
+        self.status_bar = status_bar
         status_bar.columnconfigure(4, weight=1)
         self.backend_label = self.ttk.Label(
             status_bar,
@@ -473,17 +479,31 @@ class _DesktopDashboard:
             textvariable=self.sse_var,
             style="Subtle.TLabel",
         ).grid(row=0, column=3, sticky="w", padx=(14, 0))
-        self.message_label = self.ttk.Label(
+        self.feedback_slot = self.ttk.Frame(
             status_bar,
-            textvariable=self.message_var,
-            style="Feedback.TLabel",
-            wraplength=420,
+            style="App.TFrame",
+            width=420,
+            height=self._feedback_slot_height(),
         )
-        self.message_label.grid(
+        self.feedback_slot.grid(
             row=0,
             column=4,
             sticky="e",
             padx=(14, 0),
+        )
+        self.feedback_slot.grid_propagate(False)
+        self.message_label = self.ttk.Label(
+            self.feedback_slot,
+            textvariable=self.feedback_display_var,
+            style="Feedback.TLabel",
+            wraplength=0,
+            anchor="e",
+        )
+        self.message_label.place(
+            relx=1.0,
+            rely=0.5,
+            anchor="e",
+            relwidth=1.0,
         )
         active_tab = str(self.window_state.get("active_tab") or "runtime")
         if active_tab in self.notebook_tabs:
@@ -493,6 +513,63 @@ class _DesktopDashboard:
             self._set_message(*initial_message)
         self._bind_shortcuts()
         self.root.bind("<Configure>", self._on_resize)
+
+    def _feedback_slot_height(self) -> int:
+        """Reserve one stable status line using the active system caption font."""
+        try:
+            linespace = int(
+                self.root.tk.call(
+                    "font",
+                    "metrics",
+                    "TkSmallCaptionFont",
+                    "-linespace",
+                )
+            )
+        except Exception:
+            linespace = 16
+        return max(20, linespace + 6)
+
+    def _feedback_text(self, text: str) -> str:
+        """Normalize to one line and ellipsize against the real system font."""
+        normalized = " ".join(str(text or "").split())
+        if not normalized:
+            return ""
+        max_pixels = max(80, int(self.feedback_max_pixels))
+        try:
+            def measure(value: str) -> int:
+                return int(
+                    self.root.tk.call(
+                        "font",
+                        "measure",
+                        "TkSmallCaptionFont",
+                        value,
+                    )
+                )
+
+            if measure(normalized) <= max_pixels:
+                return normalized
+            ellipsis = "…"
+            low, high = 0, len(normalized)
+            while low < high:
+                middle = (low + high + 1) // 2
+                candidate = normalized[:middle].rstrip() + ellipsis
+                if measure(candidate) <= max_pixels:
+                    low = middle
+                else:
+                    high = middle - 1
+            return normalized[:low].rstrip() + ellipsis
+        except Exception:
+            limit = 56 if not self.compact_layout else 36
+            return (
+                normalized
+                if len(normalized) <= limit
+                else normalized[: max(1, limit - 1)].rstrip() + "…"
+            )
+
+    def _refresh_feedback_display(self) -> None:
+        self.feedback_display_var.set(
+            self._feedback_text(self.feedback_full_text)
+        )
 
     def _language_options(self) -> dict[str, str]:
         return {
@@ -708,8 +785,11 @@ class _DesktopDashboard:
             self.brand_subtitle.grid_remove() if compact else self.brand_subtitle.grid()
         if self.status_workspace_label is not None:
             self.status_workspace_label.grid_remove() if compact else self.status_workspace_label.grid()
-        if self.message_label is not None:
-            self.message_label.configure(wraplength=260 if compact else 420)
+        if self.feedback_slot is not None:
+            slot_width = 260 if compact else 420
+            self.feedback_max_pixels = slot_width - 10
+            self.feedback_slot.configure(width=slot_width)
+            self._refresh_feedback_display()
         if self.activity_view is not None:
             self.activity_view.set_compact(compact)
         if self.workspace_log_view is not None:
@@ -724,7 +804,9 @@ class _DesktopDashboard:
             "info": PALETTE["text_muted"],
         }
         self.feedback_until = time.monotonic() + 6.0
-        self.runtime_view.set_message(text)
+        self.feedback_full_text = str(text or "")
+        self.runtime_view.set_message(self.feedback_full_text)
+        self._refresh_feedback_display()
         if self.message_label is not None:
             self.message_label.configure(
                 foreground=colors.get(kind, PALETTE["text_muted"])
@@ -765,12 +847,9 @@ class _DesktopDashboard:
         )
         if should_focus:
             self.activity_view.focus()
-        self._set_message(
-            "success",
-            self.translator.text(
-                "message.session_activity", session=notification.chat_id
-            ),
-        )
+        # Routine command activity is already visible in the session rail and
+        # command table. Avoid global transient feedback for every streamed
+        # command so long session IDs cannot churn the status-bar geometry.
 
     def _set_sse_status(self, state: str) -> None:
         self.sse_var.set(f"SSE: {state.upper()}")
@@ -813,7 +892,9 @@ class _DesktopDashboard:
             if self.backend_label is not None:
                 self.backend_label.configure(foreground=badge_color)
             if not self.busy and time.monotonic() >= self.feedback_until:
+                self.feedback_full_text = presentation.summary
                 self.runtime_view.set_message(presentation.summary)
+                self._refresh_feedback_display()
                 if self.message_label is not None:
                     self.message_label.configure(foreground=PALETTE["text_muted"])
             if not self.workspace_selection_dirty:

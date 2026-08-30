@@ -169,6 +169,35 @@ def test_real_tk_dashboard_exercises_ui_without_real_lifecycle(
         assert dashboard.status_label.cget("foreground") == health_color
         assert dashboard.message_label.cget("foreground")
 
+        # Transient feedback must never reflow the dashboard when message
+        # context changes from a short caption to a long session identifier.
+        dashboard._set_message("info", "ok")
+        root.update_idletasks()
+        root.update()
+        short_geometry = (
+            dashboard.status_bar.winfo_height(),
+            dashboard.notebook.winfo_height(),
+            dashboard.feedback_slot.winfo_height(),
+            dashboard.message_label.winfo_height(),
+        )
+        dashboard._set_message(
+            "info",
+            "New command in session "
+            "cw-20260830-auto_download_ctf_challenge-fix-all-follow-5e200043-"
+            "with-an-even-longer-context-that-must-not-wrap-or-resize-the-layout",
+        )
+        root.update_idletasks()
+        root.update()
+        long_geometry = (
+            dashboard.status_bar.winfo_height(),
+            dashboard.notebook.winfo_height(),
+            dashboard.feedback_slot.winfo_height(),
+            dashboard.message_label.winfo_height(),
+        )
+        assert long_geometry == short_geometry
+        assert "\n" not in dashboard.feedback_display_var.get()
+        assert dashboard.feedback_display_var.get().endswith("…")
+
         # Real Treeview/filter/inspector widgets are exercised with fixture
         # events, including the same queue path used by the live SSE reader.
         _spin(root, lambda: len(dashboard.workspace_log_view.rows) >= 2)

@@ -112,7 +112,7 @@ def test_dashboard_reveals_and_focuses_when_new_activity_has_no_current_selectio
     dashboard._on_workspace_activity(notification)
 
     assert dashboard.activity_view.calls == [("reveal", "chat-a"), ("focus",)]
-    assert messages == [("success", "New command in session chat-a.")]
+    assert messages == []
 
 
 def test_dashboard_does_not_focus_when_another_session_is_already_selected():
