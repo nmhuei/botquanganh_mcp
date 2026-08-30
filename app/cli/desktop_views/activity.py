@@ -19,6 +19,7 @@ import time
 from typing import Any
 
 from app.cli.center.controller import CenterController
+from app.cli.center.rendering import TreeRow, reconcile_tree_rows
 from app.cli.center.events import (
     OperationObserved,
     SessionActivityObserved,
@@ -687,13 +688,10 @@ class ActivityView:
             )
 
     def _render_sessions(self) -> None:
-        """Render the workplace rail once its Tk widgets have been attached."""
+        """Incrementally reconcile the workplace rail using stable chat IDs."""
         if self.session_tree is None:
             return
-        existing_items = self.session_tree.get_children()
-        scroll_position = tree_vertical_scroll_position(self.session_tree)
-        for item in existing_items:
-            self.session_tree.delete(item)
+        existing_items = tuple(self.session_tree.get_children())
         self.session_rows_by_iid = {}
         self.session_iids = []
         workspace_filter = (
@@ -706,11 +704,13 @@ class ActivityView:
             for session in self.sessions
             if session.chat_id in self.visible_session_ids
             and workspace_filter in session.chat_id.lower()
+            and session.chat_id not in self.closed_session_ids
         ]
-        for index, session in enumerate(visible_sessions):
-            if session.chat_id in self.closed_session_ids:
-                continue
-            iid = f"workspace-{index}"
+        rows: list[TreeRow] = []
+        for session in visible_sessions:
+            iid = "workspace-" + hashlib.sha256(
+                session.chat_id.encode("utf-8")
+            ).hexdigest()[:20]
             state = (
                 self.translator.text("activity.running")
                 if session.chat_id in self.running_session_ids
@@ -718,6 +718,10 @@ class ActivityView:
                 if session.chat_id in self.disabled_session_ids
                 else self.translator.text("status.enabled")
             )
+            canonical = self.center.state.sessions.by_id.get(session.chat_id)
+            unread = canonical.unread_count if canonical is not None else 0
+            if unread:
+                state = f"{state} · +{unread}"
             tags = (
                 ("running",)
                 if session.chat_id in self.running_session_ids
@@ -725,16 +729,20 @@ class ActivityView:
                 if session.chat_id in self.disabled_session_ids
                 else ()
             )
-            self.session_tree.insert(
-                "",
-                "end",
-                iid=iid,
-                text=clip_text(session.chat_id, 26),
-                values=(state, format_stream_time(session.last_changed).split(" ")[-1]),
-                tags=tags,
+            rows.append(
+                TreeRow(
+                    iid=iid,
+                    text=clip_text(session.chat_id, 26),
+                    values=(
+                        state,
+                        format_stream_time(session.last_changed).split(" ")[-1],
+                    ),
+                    tags=tags,
+                )
             )
             self.session_rows_by_iid[iid] = session
             self.session_iids.append(iid)
+        reconcile_tree_rows(self.session_tree, rows)
         if self.session_selected_id:
             target = next(
                 (
@@ -745,7 +753,9 @@ class ActivityView:
                 None,
             )
             if target:
-                self.session_tree.selection_set(target)
+                current_selection = tuple(self.session_tree.selection())
+                if current_selection != (target,):
+                    self.session_tree.selection_set(target)
                 if not existing_items:
                     self.session_tree.see(target)
         if self.session_notice_var is not None:
@@ -758,7 +768,6 @@ class ActivityView:
                     root=self.workspace_root().name,
                 )
             )
-        restore_tree_vertical_scroll_position(self.session_tree, scroll_position)
 
     def _render_records(self) -> None:
         """Render the command table once its Tk widgets have been attached."""
@@ -807,20 +816,25 @@ class ActivityView:
                     count=len(selected),
                 )
             )
-        existing_items = self.activity_tree.get_children()
-        scroll_position = tree_vertical_scroll_position(self.activity_tree)
-        for item in existing_items:
-            self.activity_tree.delete(item)
+        existing_items = tuple(self.activity_tree.get_children())
         self.activity_rows_by_iid = {}
         self.activity_iids = []
+        rows: list[TreeRow] = []
         seen: set[str] = set()
         for index, record in enumerate(selected):
-            base = str(record.get("event_id") or f"command-{index}")
-            iid = base
-            suffix = 2
+            domain_key = str(
+                record.get("operation_id")
+                or record.get("event_id")
+                or hashlib.sha256(
+                    json.dumps(record, sort_keys=True, default=str).encode("utf-8")
+                ).hexdigest()
+            )
+            base = "operation-" + hashlib.sha256(
+                domain_key.encode("utf-8")
+            ).hexdigest()[:24]
+            iid, suffix = base, 2
             while iid in seen:
-                iid = f"{base}#{suffix}"
-                suffix += 1
+                iid, suffix = f"{base}-{suffix}", suffix + 1
             seen.add(iid)
             timestamp = str(record.get("timestamp", "")).replace("T", " ").replace("+00:00", "Z")
             command = clip_text(record.get("command", ""), 84)
@@ -834,22 +848,23 @@ class ActivityView:
             )
             duration = record.get("duration_ms")
             duration_text = f"{duration}" if duration is not None else "—"
-            self.activity_tree.insert(
-                "",
-                "end",
-                iid=iid,
-                values=(
-                    timestamp,
-                    clip_text(record.get("chat_id") or "shared", 28),
-                    activity_status_label(status, self.translator),
-                    command,
-                    exit_code,
-                    duration_text,
-                ),
-                tags=(status,),
+            rows.append(
+                TreeRow(
+                    iid=iid,
+                    values=(
+                        timestamp,
+                        clip_text(record.get("chat_id") or "shared", 28),
+                        activity_status_label(status, self.translator),
+                        command,
+                        exit_code,
+                        duration_text,
+                    ),
+                    tags=(status,),
+                )
             )
             self.activity_rows_by_iid[iid] = record
             self.activity_iids.append(iid)
+        reconcile_tree_rows(self.activity_tree, rows)
         target = next(
             (
                 iid
@@ -858,21 +873,20 @@ class ActivityView:
             ),
             None,
         )
-        if target is None and self.activity_iids:
+        if target is None and self.activity_iids and not existing_items:
             target = self.activity_iids[0]
         if target is not None:
             self.activity_tree.selection_set(target)
             if not existing_items:
                 self.activity_tree.see(target)
             self.show_selected_activity()
-        else:
+        elif self.activity_selected_event_id is not None:
             self.activity_selected_event_id = None
             self.activity_output_fingerprint = None
             empty = self.translator.text("activity.no_commands")
             self._set_activity_outputs(
                 {"metadata": empty, "stdout": empty, "stderr": empty, "human": empty}
             )
-        restore_tree_vertical_scroll_position(self.activity_tree, scroll_position)
 
     def _schedule_local_filter(self, _event: Any = None) -> None:
         """Debounce local filters on the Tk loop without creating a worker."""
@@ -1237,13 +1251,23 @@ class ActivityView:
         row = self.session_rows_by_iid.get(selected[0]) if selected else None
         if row is None:
             return
-        self.session_selected_id = row.chat_id
+        self.center.dispatch(
+            SessionSelected(chat_id=row.chat_id),
+            notify=False,
+        )
+        self._render_sessions()
         self._render_records()
 
     def show_all_sessions(self) -> None:
-        self.session_selected_id = None
+        for session in self.sessions:
+            self.center.dispatch(
+                SessionRevealed(chat_id=session.chat_id),
+                notify=False,
+            )
+        self.center.dispatch(SessionSelected(chat_id=None), notify=False)
         if self.session_tree is not None:
             self.session_tree.selection_remove(self.session_tree.selection())
+        self._render_sessions()
         self._render_records()
 
     def _selected_session(self) -> WorkspaceSession | None:
@@ -1257,8 +1281,14 @@ class ActivityView:
         if session is None:
             self.on_message("warn", self.translator.text("activity.select_to_enable"))
             return
-        self.disabled_session_ids.discard(session.chat_id)
-        self.session_selected_id = session.chat_id
+        self.center.dispatch(
+            SessionTrackingChanged(chat_id=session.chat_id, enabled=True),
+            notify=False,
+        )
+        self.center.dispatch(
+            SessionSelected(chat_id=session.chat_id),
+            notify=False,
+        )
         self._render_sessions()
         self._render_records()
         self.on_message(
@@ -1271,8 +1301,14 @@ class ActivityView:
         if session is None:
             self.on_message("warn", self.translator.text("activity.select_to_disable"))
             return
-        self.disabled_session_ids.add(session.chat_id)
-        self.session_selected_id = session.chat_id
+        self.center.dispatch(
+            SessionTrackingChanged(chat_id=session.chat_id, enabled=False),
+            notify=False,
+        )
+        self.center.dispatch(
+            SessionSelected(chat_id=session.chat_id),
+            notify=False,
+        )
         self._render_sessions()
         self._render_records()
         self.on_message(
@@ -1285,10 +1321,14 @@ class ActivityView:
         if session is None:
             self.on_message("warn", self.translator.text("activity.select_to_close"))
             return
-        self.closed_session_ids.add(session.chat_id)
-        self.visible_session_ids.discard(session.chat_id)
-        self.disabled_session_ids.discard(session.chat_id)
-        self.session_selected_id = None
+        self.center.dispatch(
+            SessionTrackingChanged(chat_id=session.chat_id, enabled=True),
+            notify=False,
+        )
+        self.center.dispatch(
+            SessionClosed(chat_id=session.chat_id),
+            notify=False,
+        )
         self._render_sessions()
         self._render_records()
         self.on_message(

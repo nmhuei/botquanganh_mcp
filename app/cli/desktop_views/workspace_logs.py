@@ -5,11 +5,18 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import hashlib
 import json
 import queue
 import threading
+import time
 from typing import Any
 
+from app.cli.center.controller import CenterController
+from app.cli.center.events import StreamStateChanged, WorkspaceLogObserved
+from app.cli.center.models import LogRecord
+from app.cli.center.rendering import TreeRow, reconcile_tree_rows
+from app.cli.center.streams import ReconnectBackoff
 from app.cli.desktop_views.activity import (
     clip_text,
     restore_tree_vertical_scroll_position,
@@ -24,7 +31,7 @@ WORKSPACE_LOG_STREAM_PATH = "/api/v1/activity/stream"
 WORKSPACE_LOG_REPLAY = 100
 WORKSPACE_LOG_CACHE_LIMIT = 500
 WORKSPACE_LOG_CHIP_KEYS = ("all", "error", "process", "file", "session")
-WORKSPACE_LOG_RECONNECT_SECONDS = 2.0
+WORKSPACE_LOG_QUEUE_LIMIT = 4096
 
 
 @dataclass(frozen=True)
@@ -271,6 +278,7 @@ class WorkspaceLogView:
         on_message: Callable[[str, str], None] | None = None,
         on_status_change: Callable[[str], None] | None = None,
         translator: DesktopTranslator | None = None,
+        center_controller: CenterController | None = None,
     ) -> None:
         self.on_new_activity = on_new_activity
         self.root = root
@@ -281,10 +289,14 @@ class WorkspaceLogView:
         self.on_status_change = on_status_change or (lambda _state: None)
         self.translator = translator or DesktopTranslator()
         self.bindings = TranslationBindings(self.translator)
+        self.center = center_controller or CenterController()
         self.closed = False
         self.stop_event = threading.Event()
         self.thread: threading.Thread | None = None
-        self.event_queue: queue.Queue[tuple[str, Any]] = queue.Queue()
+        self.event_queue: queue.Queue[tuple[str, Any]] = queue.Queue(
+            maxsize=WORKSPACE_LOG_QUEUE_LIMIT
+        )
+        self.stream_backoff = ReconnectBackoff()
         self.drain_job: Any = None
         self.chip = "all"
         self.rows: list[WorkspaceLogRow] = []
@@ -313,6 +325,34 @@ class WorkspaceLogView:
         self.chip_buttons: dict[str, Any] = {}
         if parent is not None:
             self._build(parent)
+
+    @staticmethod
+    def _row_from_center(record: LogRecord) -> WorkspaceLogRow:
+        return WorkspaceLogRow(
+            event_id=record.event_id,
+            timestamp=record.timestamp,
+            severity=record.severity,
+            category=record.category,
+            action=record.action,
+            outcome=record.outcome,
+            phase=record.phase,
+            chat_id=record.chat_id,
+            duration_ms=record.duration_ms,
+            interaction_id=record.operation_id,
+            source=record.source,
+            payload=record.payload,
+        )
+
+    def sync_from_center(self, *, render: bool = True) -> None:
+        """Refresh the view cache from canonical logs without changing UI filters."""
+        canonical = self.center.state.logs
+        self.rows = [
+            self._row_from_center(canonical.by_id[event_id])
+            for event_id in canonical.order[-WORKSPACE_LOG_CACHE_LIMIT:]
+            if event_id in canonical.by_id
+        ]
+        if render:
+            self.render()
 
     def set_translator(self, translator: DesktopTranslator) -> None:
         """Relabel the visible log view without dropping its stream cache or selection."""
@@ -380,6 +420,16 @@ class WorkspaceLogView:
     def _apply_filter(self) -> None:
         self.filter_job = None
         self.render()
+        self._ensure_user_filter_selection()
+
+    def _ensure_user_filter_selection(self) -> None:
+        """Select the first visible row only after an explicit user filter action."""
+        if self.tree is None or not self.iids or self.tree.selection():
+            return
+        target = self.iids[0]
+        self.tree.selection_set(target)
+        self.tree.see(target)
+        self.show_selected()
 
     def focus_filter(self) -> str:
         if self.chat_filter_entry is not None:
@@ -556,6 +606,7 @@ class WorkspaceLogView:
         self.chip = normalized
         self._restyle_chips()
         self.render()
+        self._ensure_user_filter_selection()
 
     def clear_filters(self) -> None:
         self.chip = "all"
@@ -564,6 +615,7 @@ class WorkspaceLogView:
         self._refresh_outcome_selector("all")
         self._restyle_chips()
         self.render()
+        self._ensure_user_filter_selection()
 
     def _restyle_chips(self) -> None:
         for key, button in self.chip_buttons.items():
@@ -609,18 +661,17 @@ class WorkspaceLogView:
             )
         )
         self.notice_var.set(self._notice(len(display)))
-        existing_items = self.tree.get_children()
-        scroll_position = tree_vertical_scroll_position(self.tree)
-        for item in existing_items:
-            self.tree.delete(item)
+        existing_items = tuple(self.tree.get_children())
         self.rows_by_iid, self.iids = {}, []
+        rows: list[TreeRow] = []
         seen: set[str] = set()
         for index, row in enumerate(display):
             fallback = f"{row.interaction_id}:{row.phase}:{row.timestamp}".strip(":")
-            base = row.event_id or fallback or f"row-{index}"
+            domain_key = row.event_id or fallback or f"row-{index}"
+            base = "log-" + hashlib.sha256(domain_key.encode("utf-8")).hexdigest()[:24]
             iid, suffix = base, 2
             while iid in seen:
-                iid, suffix = f"{base}#{suffix}", suffix + 1
+                iid, suffix = f"{base}-{suffix}", suffix + 1
             seen.add(iid)
             duration = f"{row.duration_ms:.3f}" if row.duration_ms is not None else "—"
             severity = row.severity.upper()
@@ -633,35 +684,38 @@ class WorkspaceLogView:
                 if row.outcome == "success"
                 else ""
             )
-            self.tree.insert(
-                "",
-                "end",
-                iid=iid,
-                values=(
-                    format_workspace_log_time(row.timestamp),
-                    row.severity,
-                    row.category,
-                    clip_text(row.action, 42),
-                    row.outcome,
-                    duration,
-                    clip_text(row.chat_id, 36),
-                ),
-                tags=((tag,) if tag else ()),
+            rows.append(
+                TreeRow(
+                    iid=iid,
+                    values=(
+                        format_workspace_log_time(row.timestamp),
+                        row.severity,
+                        row.category,
+                        clip_text(row.action, 42),
+                        row.outcome,
+                        duration,
+                        clip_text(row.chat_id, 36),
+                    ),
+                    tags=((tag,) if tag else ()),
+                )
             )
             self.rows_by_iid[iid] = row
             self.iids.append(iid)
-        target = next((iid for iid, row in self.rows_by_iid.items() if row.event_id == self.selected_id), None)
-        if target is None and self.iids:
+        reconcile_tree_rows(self.tree, rows)
+        target = next(
+            (iid for iid, row in self.rows_by_iid.items() if row.event_id == self.selected_id),
+            None,
+        )
+        if target is None and self.iids and not existing_items:
             target = self.iids[0]
         if target is not None:
             self.tree.selection_set(target)
             if not existing_items:
                 self.tree.see(target)
             self.show_selected()
-        else:
+        elif self.selected_id is not None:
             self.selected_id = None
             self._set_detail({"summary": "", "metadata": "", "payload": ""})
-        restore_tree_vertical_scroll_position(self.tree, scroll_position)
 
     def accept_event(self, envelope: dict[str, Any]) -> None:
         """Accept one decoded SSE envelope and deliver a new chat transition once."""
@@ -682,9 +736,23 @@ class WorkspaceLogView:
             self.seen_activity_ids.add(activity_key)
         if row.event_id:
             self.last_event_id = row.event_id
-            self.rows = [item for item in self.rows if item.event_id != row.event_id]
-        self.rows.append(row)
-        self.rows = self.rows[-WORKSPACE_LOG_CACHE_LIMIT:]
+        canonical_event_id = row.event_id or seen_key
+        canonical_payload = dict(data) if isinstance(data, dict) else {}
+        if canonical_event_id and "event_id" not in canonical_payload:
+            canonical_payload["event_id"] = canonical_event_id
+        if canonical_event_id:
+            self.center.dispatch(
+                WorkspaceLogObserved(
+                    event_id=canonical_event_id,
+                    payload=canonical_payload,
+                    observed_at=time.monotonic(),
+                ),
+                notify=False,
+            )
+            self.sync_from_center(render=False)
+        else:
+            self.rows.append(row)
+            self.rows = self.rows[-WORKSPACE_LOG_CACHE_LIMIT:]
         self.connection_status, self.connection_error = "live", ""
         self.on_status_change(self.connection_status)
         self.render()
@@ -721,6 +789,16 @@ class WorkspaceLogView:
         self.on_status_change(self.connection_status)
         self.render()
 
+    def _put_stream_item(self, item: tuple[str, Any]) -> bool:
+        """Backpressure the reader instead of allowing an unbounded event queue."""
+        while not self.stop_event.is_set() and not self.closed:
+            try:
+                self.event_queue.put(item, timeout=0.1)
+                return True
+            except queue.Full:
+                continue
+        return False
+
     def start_stream(self) -> None:
         """Start one daemon reader; Tk drains its thread-safe event queue."""
         if self.thread is not None or self.stream_reader is None:
@@ -730,24 +808,41 @@ class WorkspaceLogView:
 
         def worker() -> None:
             while not self.stop_event.is_set():
+                received = False
+                error = ""
                 try:
-                    self.event_queue.put(("connection", ("connecting", "")))
+                    if not self._put_stream_item(("connection", ("connecting", ""))):
+                        return
                     for envelope in self.stream_reader(self.last_event_id):
                         if self.stop_event.is_set() or self.closed:
                             return
-                        if envelope.get("event") == "stream_reset":
-                            self.event_queue.put(("control", envelope))
-                        elif envelope.get("event") == "workspace_log":
-                            self.event_queue.put(("event", envelope))
+                        event_name = envelope.get("event")
+                        if event_name == "stream_reset":
+                            if not self._put_stream_item(("control", envelope)):
+                                return
+                            received = True
+                        elif event_name == "stream_replay":
+                            if not self._put_stream_item(("control", envelope)):
+                                return
+                            received = True
+                        elif event_name == "workspace_log":
+                            if not self._put_stream_item(("event", envelope)):
+                                return
+                            received = True
                     if self.stop_event.is_set() or self.closed:
                         return
-                    self.event_queue.put(("connection", ("reconnecting", "")))
                 except Exception as exc:
                     if self.stop_event.is_set() or self.closed:
                         return
-                    message = f"{type(exc).__name__}: {exc}"
-                    self.event_queue.put(("connection", ("reconnecting", message)))
-                if self.stop_event.wait(WORKSPACE_LOG_RECONNECT_SECONDS):
+                    error = f"{type(exc).__name__}: {exc}"
+                if received:
+                    self.stream_backoff.reset()
+                delay = self.stream_backoff.next_delay()
+                if not self._put_stream_item(
+                    ("connection", ("reconnecting", error))
+                ):
+                    return
+                if self.stop_event.wait(delay):
                     return
 
         self.thread = threading.Thread(target=worker, name="bqa-desktop-workspace-logs", daemon=True)

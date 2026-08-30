@@ -15,6 +15,16 @@ from collections.abc import Callable
 from typing import Any
 
 from app.activity_log import read_mcp_command_activity
+from app.cli.center.controller import CenterController
+from app.cli.center.events import (
+    CompactModeChanged,
+    RuntimeSnapshotFailed,
+    RuntimeSnapshotReceived,
+    StreamStateChanged,
+    TabSelected,
+    UiPreferenceChanged,
+)
+from app.cli.center.scheduler import TkRenderScheduler
 from app.cli.config_view import set_workspace_config
 from app.cli.context import CLIContext
 from app.cli.desktop_views.activity import (
@@ -228,6 +238,12 @@ class _DesktopDashboard:
         self.action_drain_job: Any = None
         self.last_toast_fingerprint: str | None = None
         self.active_toast: Any = None
+        self.center = CenterController()
+        self.center_scheduler = TkRenderScheduler(
+            self.root,
+            drain=self.center.drain,
+            render=self._render_center_state,
+        )
         self.ui_preferences_store = ui_preferences_store or UIPreferencesStore()
         try:
             self.ui_preferences = self.ui_preferences_store.load(
@@ -240,6 +256,10 @@ class _DesktopDashboard:
             initial_language = "en"
             self.ui_preferences_error = str(exc)
         self.translator = DesktopTranslator(initial_language)
+        self.center.dispatch(
+            UiPreferenceChanged(key="language", value=initial_language),
+            notify=False,
+        )
         self.header_bindings = TranslationBindings(self.translator)
         self.language_choices: dict[str, str] = {}
         self.language_display_var = tk.StringVar()
@@ -393,6 +413,7 @@ class _DesktopDashboard:
             on_message=self._set_message,
             on_refresh=self.refresh,
             translator=self.translator,
+            center_controller=self.center,
         )
         self.activity_view.set_activity_tab(notebook, activity_tab)
         self.workspace_log_view = WorkspaceLogView(
@@ -405,6 +426,7 @@ class _DesktopDashboard:
             on_message=self._set_message,
             on_status_change=self._set_sse_status,
             translator=self.translator,
+            center_controller=self.center,
         )
         status_bar = self.ttk.Frame(container, style="App.TFrame")
         status_bar.grid(row=2, column=0, sticky="ew")
@@ -510,6 +532,12 @@ class _DesktopDashboard:
         # trigger, a backend/server lifecycle operation.
         self.translator = DesktopTranslator(language)
         self.ui_preferences["language"] = language
+        center = getattr(self, "center", None)
+        if center is not None:
+            center.dispatch(
+                UiPreferenceChanged(key="language", value=language),
+                notify=False,
+            )
         self.header_bindings.set_translator(self.translator)
         self._refresh_language_selector()
         self._apply_notebook_labels()
@@ -560,6 +588,9 @@ class _DesktopDashboard:
     def select_tab(self, key: str) -> str:
         if self.notebook is not None and key in self.notebook_tabs:
             self.notebook.select(self.notebook_tabs[key])
+            center = getattr(self, "center", None)
+            if center is not None:
+                center.dispatch(TabSelected(tab=key), notify=False)
         return "break"
 
     def _selected_tab_key(self) -> str | None:
@@ -601,6 +632,9 @@ class _DesktopDashboard:
         if compact == self.compact_layout:
             return
         self.compact_layout = compact
+        center = getattr(self, "center", None)
+        if center is not None:
+            center.dispatch(CompactModeChanged(compact=compact), notify=False)
         if self.brand_subtitle is not None:
             self.brand_subtitle.grid_remove() if compact else self.brand_subtitle.grid()
         if self.status_workspace_label is not None:
@@ -633,6 +667,23 @@ class _DesktopDashboard:
             return Path(configured).expanduser()
         return Path.home() / "Downloads" / "bqa-workspaces"
 
+    def _emit_center(self, event: Any) -> None:
+        """Queue a canonical Center event and schedule one bounded Tk render."""
+        center = getattr(self, "center", None)
+        scheduler = getattr(self, "center_scheduler", None)
+        if center is None:
+            return
+        if center.emit(event) and scheduler is not None:
+            scheduler.request(len(center.inbox))
+
+    def _render_center_state(self) -> None:
+        """Render Center-backed view caches on the Tk thread."""
+        if self.workspace_log_view is not None:
+            self.workspace_log_view.sync_from_center(render=True)
+        if self.activity_view is not None:
+            self.activity_view._render_sessions()
+            self.activity_view._render_records()
+
     def _on_workspace_activity(self, notification: ActivityNotification) -> None:
         identity = (notification.chat_id, notification.operation_id)
         if identity in self.seen_activity_notification_ids:
@@ -654,6 +705,23 @@ class _DesktopDashboard:
 
     def _set_sse_status(self, state: str) -> None:
         self.sse_var.set(f"SSE: {state.upper()}")
+        phase = {
+            "connecting": "connecting",
+            "live": "live",
+            "reconnecting": "retry_wait",
+            "reset": "resyncing",
+            "stale": "stale",
+            "offline": "offline",
+        }.get(state.lower(), "offline")
+        center = getattr(self, "center", None)
+        if center is not None:
+            center.dispatch(
+                StreamStateChanged(
+                    phase=phase,
+                    observed_at=time.monotonic(),
+                ),
+                notify=False,
+            )
 
     def refresh(self) -> None:
         if self.closed:
@@ -661,6 +729,12 @@ class _DesktopDashboard:
         self.refresh_job = None
         try:
             data = self.status_reader(self.ctx.repo_root, self.ctx.values)
+            self._emit_center(
+                RuntimeSnapshotReceived(
+                    data=data,
+                    observed_at=time.monotonic(),
+                )
+            )
             presentation = self.runtime_view.render(data)
             self.latest_status_data = data
             if self.status_label is not None:
@@ -676,6 +750,12 @@ class _DesktopDashboard:
             if not self.workspace_selection_dirty:
                 self.workspace_var.set(data.get("workspace", self.workspace_var.get()))
         except Exception as exc:
+            self._emit_center(
+                RuntimeSnapshotFailed(
+                    error=str(exc),
+                    observed_at=time.monotonic(),
+                )
+            )
             self.status_var.set(self.translator.text("status.needs_attention"))
             if self.status_label is not None:
                 self.status_label.configure(foreground=PALETTE["danger"])
