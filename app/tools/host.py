@@ -635,13 +635,14 @@ def host_check_command(
     name="host_run_command",
     description=(
         "Execute a shell command directly on the user's host machine via bash. "
-        "Default timeout is 60 seconds (1 minute). Maximum allowed timeout is 300 seconds (5 minutes). "
-        "Pass timeout_seconds to adjust (up to 300s) or 0 to run without timeout until completion. "
+        "Commands run without timeout by default until completion or exit. "
+        "Optionally pass timeout_seconds to set an explicit deadline in seconds if needed. "
         "Relative cwd values are resolved from the default directory (HOST_DEFAULT_DIR, e.g. ~/Downloads). "
         "The default working directory is HOST_DEFAULT_DIR. Destructive commands are blocked."
     ),
 )
 def host_run_command(
+
     command: str,
     timeout_seconds: Optional[int] = None,
     cwd: Optional[str] = None,

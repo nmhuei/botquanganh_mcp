@@ -171,8 +171,9 @@ def _execute_host_command_impl(
     on_started: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """Execute a command with bounded output, sanitized environment, and cleanup."""
-    max_allowed = getattr(app.config, "MAX_TIMEOUT_SECONDS", 300)
-    default_timeout = getattr(app.config, "DEFAULT_TIMEOUT_SECONDS", 60)
+    max_allowed = getattr(app.config, "MAX_TIMEOUT_SECONDS", 0)
+    default_timeout = getattr(app.config, "DEFAULT_TIMEOUT_SECONDS", 0)
+
 
     if timeout_seconds is None:
         wait_timeout: int | None = min(default_timeout, max_allowed) if max_allowed > 0 else default_timeout
