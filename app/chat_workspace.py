@@ -155,6 +155,8 @@ class BindResult:
     resumed_hint: str | None
     chat_id: str = ""
     session_token: str | None = None
+    auto_hydrated_context: dict[str, Any] | None = None
+
 
 
 def _int_limit(key: str, default: int) -> int:
@@ -855,6 +857,41 @@ class WorkspaceManager:
             quota_bytes=quota_bytes,
         )
 
+    def _write_resume_card(self, ws: Path, chat_id: str, token: str | None = None) -> None:
+        try:
+            resume_file = ws / "RESUME.md"
+            token_line = f"- **Session Token**: `{token}`\n" if token else ""
+            prompt = f"Tiếp tục làm việc trong workspace {chat_id}" + (f" với token {token}" if token else "")
+            content = (
+                f"# Workspace Resume Card\n\n"
+                f"- **Chat ID**: `{chat_id}`\n"
+                f"{token_line}\n"
+                f"## Prompt khôi phục khi chat bị mất:\n"
+                f"```text\n{prompt}\n```\n"
+            )
+            _atomic_write(resume_file, content.encode("utf-8"))
+        except Exception:
+            pass
+
+    def _get_hydrated_context(self, ws: Path) -> dict[str, Any]:
+        notes: list[str] = []
+        notes_file = ws / NOTES_NAME / "log.txt"
+        if notes_file.is_file():
+            try:
+                lines = notes_file.read_text(encoding="utf-8", errors="replace").splitlines()
+                notes = [line.strip() for line in lines if line.strip()][-10:]
+            except Exception:
+                pass
+        events = read_journal_records(ws)
+        summary = summarize_journal_records(events)
+        pending = pending_operations(events)
+        return {
+            "recent_notes": notes,
+            "total_events": summary.get("events", 0),
+            "completed_ops": summary.get("operations", 0),
+            "pending_operations": pending,
+        }
+
     def _initialize(self, chat_id: str, ws: Path) -> BindResult:
         (ws / NOTES_NAME).mkdir(exist_ok=True)
         raw_token, token_hash = generate_session_token()
@@ -877,6 +914,7 @@ class WorkspaceManager:
             os.close(descriptor)
         (ws / JOURNAL_NAME).touch(mode=0o600)
         rebuild_state(ws)
+        self._write_resume_card(ws, chat_id, raw_token)
         self._record_last_session(chat_id)
         return BindResult(
             path=ws,
@@ -884,6 +922,12 @@ class WorkspaceManager:
             resumed_hint=None,
             chat_id=chat_id,
             session_token=raw_token,
+            auto_hydrated_context={
+                "recent_notes": [],
+                "total_events": 0,
+                "completed_ops": 0,
+                "pending_operations": [],
+            },
         )
 
     def _bind_existing(
@@ -917,6 +961,7 @@ class WorkspaceManager:
                             )
                 # Ownership first (squat defense), then quota, before any write.
                 self._enforce_quota(ws, chat_id)
+                self._write_resume_card(ws, chat_id, resume_token)
                 self._record_last_session(chat_id)
                 return BindResult(
                     path=ws,
@@ -924,10 +969,12 @@ class WorkspaceManager:
                     resumed_hint=self._resume_hint(ws),
                     chat_id=chat_id,
                     session_token=resume_token,
+                    auto_hydrated_context=self._get_hydrated_context(ws),
                 )
             if time.monotonic() >= deadline:
                 raise SquatError(f"directory exists without workspace metadata: {ws.name}")
             time.sleep(_BIND_POLL_SECONDS)
+
 
 
     def _resume_hint(self, ws: Path) -> str | None:

@@ -74,16 +74,18 @@ def _workspace_path_from(result: Any) -> Path | None:
 @mcp.tool(
     name="host_workspace_bind",
     description=(
-        "Initialize or re-bind a per-chat host workspace and receive a server-assigned "
-        "chat_id and secret session token. Always call this tool first before using other "
-        "host tools. To create a new workspace, pass an optional label. To resume an "
-        "existing workspace, pass resume_id and resume_token."
+        "Initialize or resume a host workspace. Call this tool ONCE at the start of a session. "
+        "By default, calling without arguments automatically resumes the most recent active workspace. "
+        "To resume a specific workspace by label or ID, pass resume_id='<label_or_id>'. "
+        "To start a brand new workspace, pass new=True and an optional label. "
+        "Once bound, REUSE the returned chat_id for all subsequent host tool calls in this conversation."
     ),
 )
 async def host_workspace_bind(
     label: str | None = None,
     resume_id: str | None = None,
     resume_token: str | None = None,
+    new: bool = False,
     chat_id: str | None = None,
 ) -> dict[str, Any]:
     try:
@@ -100,13 +102,16 @@ async def host_workspace_bind(
             )
         manager = workspace_module.WorkspaceManager(_chat_root())
         target_id = resume_id if resume_id is not None else chat_id
-        if target_id is not None:
+        if target_id is None and not new and label is None:
+            target_id = "latest"
+
+        if target_id is not None and target_id not in {"latest", "@latest"} and not target_id.startswith("latest:"):
             validate_chat_id(target_id)
         bound = manager.create_or_bind(
             target_id,
             label=label,
             resume_token=resume_token,
-            require_token=bool(target_id),
+            require_token=bool(target_id and target_id not in {"latest", "@latest"}),
         )
         workspace_dir = _workspace_path_from(bound)
         if workspace_dir is None:
@@ -118,23 +123,37 @@ async def host_workspace_bind(
         assigned_id = (
             getattr(bound, "chat_id", "")
             or (bound.get("chat_id") if isinstance(bound, dict) else "")
-            or target_id
+            or (target_id if target_id not in {"latest", "@latest"} else "")
             or ""
         )
         session_token = getattr(bound, "session_token", None) if not isinstance(bound, dict) else bound.get("session_token")
+        auto_hydrated = getattr(bound, "auto_hydrated_context", None) if not isinstance(bound, dict) else bound.get("auto_hydrated_context")
 
         message = f"Workspace ready at {resolved}"
         if resumed_hint:
             message = f"{message} ({resumed_hint})"
+
+        resume_prompt_text = f"Tiếp tục làm việc trong workspace {assigned_id}" + (f" với token {session_token}" if session_token else "")
+        resume_badge_md = (
+            f"> 📦 **Workspace Active**: `{assigned_id}`\n"
+            f"> 📋 **Prompt phục hồi khi session chết**:\n"
+            f"> ```text\n> {resume_prompt_text}\n> ```"
+        )
+
         extra_fields: dict[str, Any] = {
             "chat_id": assigned_id,
             "workspace": resolved,
             "created": created,
             "hints": hints,
             "lines": [resolved, *hints],
+            "resume_prompt": resume_prompt_text,
+            "resume_badge_markdown": resume_badge_md,
         }
         if session_token:
             extra_fields["session_token"] = session_token
+        if auto_hydrated is not None:
+            extra_fields["auto_hydrated_context"] = auto_hydrated
+
         # Binding cannot be journaled before authorization/creation without
         # risking writes to an unowned workspace. Record a compact lifecycle
         # event only after a successful bind, never including the session token.
@@ -152,6 +171,7 @@ async def host_workspace_bind(
         )
     except Exception as exc:
         return to_tool_error(exc)
+
 
 
 @mcp.tool(

@@ -484,3 +484,33 @@ def test_save_note_lands_in_real_bound_workspace(tmp_path, monkeypatch):
     assert note["ok"] is True
     assert note["path"] == str(log_file)
     assert read_single_note(log_file) == "real note"
+
+
+# ---------------------------------------------------------------------------
+# Task 2: Auto-hydration, Resume Prompt/Badge, and Idempotent Bind
+# ---------------------------------------------------------------------------
+
+
+def test_host_workspace_bind_auto_hydrates_and_provides_resume_prompt(tmp_path, monkeypatch):
+    _real_workspace_env(tmp_path, monkeypatch)
+
+    # 1. First bind
+    res1 = asyncio.run(host_workspace_bind(label="my-task"))
+    assert res1["ok"] is True
+    chat_id = res1["chat_id"]
+    assert "resume_prompt" in res1
+    assert "resume_badge_markdown" in res1
+    assert (tmp_path / chat_id / "RESUME.md").is_file()
+
+    # 2. Append a note
+    asyncio.run(host_save_note("Step 1 completed: installed deps", chat_id=chat_id))
+
+    # 3. Second bind without arguments (simulating next prompt or new session auto-resume)
+    res2 = asyncio.run(host_workspace_bind())
+    assert res2["ok"] is True
+    assert res2["chat_id"] == chat_id
+    assert res2["created"] is False
+    assert "auto_hydrated_context" in res2
+    notes = res2["auto_hydrated_context"]["recent_notes"]
+    assert any("Step 1 completed" in n for n in notes)
+
