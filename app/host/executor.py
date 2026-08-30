@@ -171,26 +171,20 @@ def _execute_host_command_impl(
     on_started: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """Execute a command with bounded output, sanitized environment, and cleanup."""
-    max_allowed = getattr(app.config, "MAX_TIMEOUT_SECONDS", 0)
-    default_timeout = getattr(app.config, "DEFAULT_TIMEOUT_SECONDS", 0)
-
+    default_timeout = getattr(app.config, "DEFAULT_TIMEOUT_SECONDS", 60)
+    max_allowed = getattr(app.config, "MAX_TIMEOUT_SECONDS", 300)
 
     if timeout_seconds is None:
-        wait_timeout: int | None = min(default_timeout, max_allowed) if max_allowed > 0 else default_timeout
-        if wait_timeout is not None and wait_timeout <= 0:
-            wait_timeout = None
+        wait_timeout = default_timeout
     elif not isinstance(timeout_seconds, int):
         raise TypeError("timeout_seconds must be an integer")
-    elif timeout_seconds < 0:
-        raise ValueError("timeout_seconds cannot be negative (use 0 to disable timeout)")
-    elif timeout_seconds == 0:
-        wait_timeout = None
+    elif timeout_seconds < 1 or timeout_seconds > max_allowed:
+        raise ValueError(
+            f"timeout_seconds must be between 1 and {max_allowed} (default is {default_timeout}s, max is {max_allowed}s)"
+        )
     else:
-        if max_allowed > 0 and timeout_seconds > max_allowed:
-            raise ValueError(
-                f"timeout_seconds must be between 0 and {max_allowed} (0 to disable timeout)"
-            )
         wait_timeout = timeout_seconds
+
 
     policy = require_host_command_allowed(command)
     resolved_cwd = resolve_host_path(
