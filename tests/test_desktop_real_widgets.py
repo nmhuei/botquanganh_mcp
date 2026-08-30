@@ -173,6 +173,13 @@ def test_real_tk_dashboard_exercises_ui_without_real_lifecycle(
         # events, including the same queue path used by the live SSE reader.
         _spin(root, lambda: len(dashboard.workspace_log_view.rows) >= 2)
         dashboard.activity_view.show_all_sessions()
+        assert tuple(dashboard.activity_view.activity_tree["columns"]) == (
+            "time",
+            "status",
+            "command",
+            "exit",
+            "duration",
+        )
         assert len(dashboard.activity_view.activity_tree.get_children()) == 2
         session_iids = dashboard.activity_view.session_tree.get_children()
         assert [

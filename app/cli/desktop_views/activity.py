@@ -663,7 +663,6 @@ class ActivityView:
         if self.activity_tree is not None:
             for key, label_key in (
                 ("time", "activity.utc"),
-                ("workplace", "activity.workplace"),
                 ("status", "activity.status"),
                 ("command", "activity.command_input"),
                 ("exit", "activity.exit"),
@@ -791,7 +790,6 @@ class ActivityView:
         if self.activity_sort_key is not None:
             record_key = {
                 "time": "timestamp",
-                "workplace": "chat_id",
                 "status": "activity_status",
                 "exit": "exit_code",
                 "duration": "duration_ms",
@@ -853,7 +851,6 @@ class ActivityView:
                     iid=iid,
                     values=(
                         timestamp,
-                        clip_text(record.get("chat_id") or "shared", 28),
                         activity_status_label(status, self.translator),
                         command,
                         exit_code,
@@ -1117,13 +1114,12 @@ class ActivityView:
         self.input_panel = inputs
         inputs.columnconfigure(0, weight=1)
         inputs.rowconfigure(0, weight=1)
-        columns = ("time", "workplace", "status", "command", "exit", "duration")
+        columns = ("time", "status", "command", "exit", "duration")
         tree = self.ttk.Treeview(inputs, columns=columns, show="headings", height=10, style="Table.Treeview")
         for key, width in (
             ("time", 142),
-            ("workplace", 130),
             ("status", 108),
-            ("command", 360),
+            ("command", 500),
             ("exit", 58),
             ("duration", 74),
         ):
