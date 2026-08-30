@@ -33,6 +33,9 @@ JOURNAL_ARCHIVE_NAME = "journal.jsonl.1"
 STATE_NAME = "STATE.md"
 META_NAME = "meta.json"
 NOTES_NAME = "notes"
+ARCHIVE_DIR_NAME = ".archive"
+LAST_SESSION_NAME = ".last_session"
+
 
 PAYLOAD_STRING_LIMIT_BYTES = 49152
 PAYLOAD_EXCERPT_CHARS = 16384
@@ -717,6 +720,49 @@ class WorkspaceManager:
                 self._workspace_locks[chat_id] = lock
             return lock
 
+    def get_latest_active_chat_id(self, filter_label: str | None = None) -> str | None:
+        """Find the most recently active workspace ID, optionally matching label."""
+        pointer_file = self.root / LAST_SESSION_NAME
+        if pointer_file.is_file():
+            try:
+                data = json.loads(pointer_file.read_text(encoding="utf-8"))
+                candidate = data.get("chat_id")
+                if isinstance(candidate, str) and is_valid_chat_id(candidate):
+                    if (self.root / candidate).is_dir() or (self.root / ARCHIVE_DIR_NAME / candidate).is_dir():
+                        if filter_label is None or f"-{filter_label}-" in candidate:
+                            return candidate
+            except (OSError, ValueError):
+                pass
+
+        # Scan active and archived workspaces for the newest activity
+        candidates: list[tuple[float, str]] = []
+        for search_dir in (self.root, self.root / ARCHIVE_DIR_NAME):
+            if not search_dir.is_dir():
+                continue
+            for entry in search_dir.iterdir():
+                if not entry.is_dir() or entry.name.startswith("."):
+                    continue
+                if not is_valid_chat_id(entry.name):
+                    continue
+                if filter_label is not None and f"-{filter_label}-" not in entry.name:
+                    continue
+                moment = last_activity(entry)
+                timestamp = moment.timestamp() if moment is not None else entry.stat().st_mtime
+                candidates.append((timestamp, entry.name))
+
+        if candidates:
+            candidates.sort(key=lambda item: item[0], reverse=True)
+            return candidates[0][1]
+        return None
+
+    def _record_last_session(self, chat_id: str) -> None:
+        try:
+            pointer_file = self.root / LAST_SESSION_NAME
+            data = {"chat_id": chat_id, "updated_at": _utc_now_iso()}
+            _atomic_write(pointer_file, _json_line_bytes(data))
+        except Exception:
+            pass
+
     def create_or_bind(
         self,
         chat_id: str | None = None,
@@ -726,6 +772,15 @@ class WorkspaceManager:
         require_token: bool = False,
     ) -> BindResult:
         self.root.mkdir(parents=True, exist_ok=True)
+
+        # Resolve latest / @latest alias
+        if chat_id in {"latest", "@latest"} or (isinstance(chat_id, str) and chat_id.startswith("latest:")):
+            filter_label = chat_id.split(":", 1)[1] if ":" in chat_id else None
+            resolved_id = self.get_latest_active_chat_id(filter_label=filter_label or label)
+            if resolved_id is None:
+                return self.create_or_bind(None, label=label or filter_label)
+            chat_id = resolved_id
+
         if chat_id is None:
             self._enforce_capacity()
             for _ in range(10):
@@ -742,6 +797,15 @@ class WorkspaceManager:
         validated = validate_chat_id(chat_id)
         with self._lock_for(validated):
             ws = self.root / validated
+            archived_ws = self.root / ARCHIVE_DIR_NAME / validated
+
+            # Auto un-archive if workspace was archived
+            if not ws.exists() and archived_ws.is_dir():
+                try:
+                    archived_ws.rename(ws)
+                except OSError:
+                    pass
+
             if not ws.exists():
                 self._enforce_capacity()
             try:
@@ -760,7 +824,7 @@ class WorkspaceManager:
         if max_workspaces <= 0:
             return
         try:
-            count = sum(1 for entry in self.root.iterdir() if entry.is_dir())
+            count = sum(1 for entry in self.root.iterdir() if entry.is_dir() and not entry.name.startswith("."))
         except OSError:
             return
         if count >= max_workspaces:
@@ -813,6 +877,7 @@ class WorkspaceManager:
             os.close(descriptor)
         (ws / JOURNAL_NAME).touch(mode=0o600)
         rebuild_state(ws)
+        self._record_last_session(chat_id)
         return BindResult(
             path=ws,
             created=True,
@@ -834,14 +899,25 @@ class WorkspaceManager:
             if (ws / META_NAME).exists():
                 meta = load_workspace_meta(ws, expected_chat_id=chat_id)
                 token_hash = meta.get("token_hash")
-                if token_hash and (require_token or resume_token is not None):
-                    if not resume_token or not verify_session_token(resume_token, token_hash):
-                        raise ResumeUnauthorizedError(
-                            f"Invalid or missing resume_token for workspace '{chat_id}'.",
-                            chat_id=chat_id,
-                        )
+                auth_mode = getattr(app.config, "HOST_CHAT_AUTH_MODE", "trust_gateway")
+                if token_hash:
+                    if auth_mode == "trust_gateway":
+                        # In trust_gateway mode, if no resume_token is passed, allow resume without token.
+                        # If a resume_token is provided, verify it.
+                        if resume_token is not None and not verify_session_token(resume_token, token_hash):
+                            raise ResumeUnauthorizedError(
+                                f"Invalid resume_token for workspace '{chat_id}'.",
+                                chat_id=chat_id,
+                            )
+                    elif require_token or resume_token is not None:
+                        if not resume_token or not verify_session_token(resume_token, token_hash):
+                            raise ResumeUnauthorizedError(
+                                f"Invalid or missing resume_token for workspace '{chat_id}'.",
+                                chat_id=chat_id,
+                            )
                 # Ownership first (squat defense), then quota, before any write.
                 self._enforce_quota(ws, chat_id)
+                self._record_last_session(chat_id)
                 return BindResult(
                     path=ws,
                     created=False,
@@ -852,6 +928,7 @@ class WorkspaceManager:
             if time.monotonic() >= deadline:
                 raise SquatError(f"directory exists without workspace metadata: {ws.name}")
             time.sleep(_BIND_POLL_SECONDS)
+
 
     def _resume_hint(self, ws: Path) -> str | None:
         minutes = read_limits().resume_hint_minutes

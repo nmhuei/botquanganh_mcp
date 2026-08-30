@@ -273,6 +273,7 @@ HOST_CHAT_RETENTION_DAYS = max(0, int(os.getenv("HOST_CHAT_RETENTION_DAYS", "30"
 HOST_CHAT_MAX_WORKSPACES = max(1, int(os.getenv("HOST_CHAT_MAX_WORKSPACES", "128")))
 HOST_CHAT_QUOTA_MB = max(0, int(os.getenv("HOST_CHAT_QUOTA_MB", "2048")))
 HOST_CHAT_ISOLATE = os.getenv("HOST_CHAT_ISOLATE", "false").lower() == "true"
+HOST_CHAT_AUTH_MODE = os.getenv("HOST_CHAT_AUTH_MODE", "trust_gateway").strip().lower()
 HOST_CHAT_RESUME_HINT_MINUTES = max(
     0, int(os.getenv("HOST_CHAT_RESUME_HINT_MINUTES", "30"))
 )
@@ -280,3 +281,4 @@ HOST_CHAT_ROOT_MAX_GB = max(0.0, float(os.getenv("HOST_CHAT_ROOT_MAX_GB", "24"))
 HOST_CHAT_JOURNAL_MAX_BYTES = max(
     1024, int(os.getenv("HOST_CHAT_JOURNAL_MAX_BYTES", "8388608"))
 )
+

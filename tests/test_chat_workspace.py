@@ -762,3 +762,51 @@ def test_summarize_journal_records_reports_operations_failures_and_actions():
     assert summary["failures"] == 1
     assert summary["categories"] == {"file": 2, "process": 2}
     assert summary["actions"] == {"host_read_file": 2, "host_run_command": 2}
+
+
+# ---------------------------------------------------------------------------
+# Task 1: Auto-unarchive, latest alias, and zero-token resume
+# ---------------------------------------------------------------------------
+
+
+def test_create_or_bind_auto_unarchives_expired_workspace(tmp_path: Path):
+    manager = cw.WorkspaceManager(tmp_path / "chats")
+    # 1. Create a workspace
+    bound = manager.create_or_bind(label="archive-test")
+    chat_id = bound.chat_id
+    assert ((tmp_path / "chats") / chat_id / "meta.json").is_file()
+
+    # 2. Simulate sweeper archiving it to .archive/
+    archive_dir = (tmp_path / "chats") / ".archive"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    ((tmp_path / "chats") / chat_id).rename(archive_dir / chat_id)
+    assert not ((tmp_path / "chats") / chat_id).exists()
+    assert (archive_dir / chat_id).is_dir()
+
+    # 3. Call create_or_bind with the archived chat_id
+    rebound = manager.create_or_bind(chat_id)
+    assert rebound.chat_id == chat_id
+    assert not rebound.created  # Must be resumed, not created fresh
+    assert ((tmp_path / "chats") / chat_id).is_dir()  # Must be restored to active root
+    assert not (archive_dir / chat_id).exists()
+
+
+def test_create_or_bind_latest_alias(tmp_path: Path):
+    manager = cw.WorkspaceManager(tmp_path / "chats")
+    # Create initial workspace
+    bound1 = manager.create_or_bind(label="first")
+    # Resume with "latest"
+    bound2 = manager.create_or_bind("latest")
+    assert bound2.chat_id == bound1.chat_id
+    assert not bound2.created
+
+
+def test_create_or_bind_trust_gateway_allows_resume_without_token(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr(app.config, "HOST_CHAT_AUTH_MODE", "trust_gateway", raising=False)
+    manager = cw.WorkspaceManager(tmp_path / "chats")
+    bound = manager.create_or_bind(label="auth-test")
+    # Re-binding with require_token=True under trust_gateway mode allows resume without token
+    rebound = manager.create_or_bind(bound.chat_id, require_token=True, resume_token=None)
+    assert rebound.chat_id == bound.chat_id
+    assert not rebound.created
+
