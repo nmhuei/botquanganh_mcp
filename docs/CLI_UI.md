@@ -198,39 +198,94 @@ command data.
 
 ### UCS-SecretAgent desktop layout
 
-`bqa ui` opens the native Tkinter **UCS-SecretAgent** console. Its thin header
-contains the UCS icon, a runtime badge, and Start, Restart, and Refresh
-actions. Runtime, Workspace Logs, and GPT Activity use the same notebook
-surface; the fixed status strip reports backend state, selected workspace, last
-refresh, SSE state, and the newest short message. The shared visual language is
-a graphite console (`#10151d` background, layered dark surfaces, blue focus),
-with black notebook rails and green tab captions; the smaller inspector tabs in
-Workspace Logs and GPT Activity use the same active/inactive treatment. Textual
-plus color status indicators cover running, success, warning, and error so
-command state never depends on color alone.
+`bqa ui` opens the native Tkinter **UCS-SecretAgent** console. The global
+header is intentionally small: UCS identity, the runtime-health badge, a visible
+`EN | VI` language switch, and Refresh. Lifecycle controls live in the Runtime
+tab, so Start and **Restart MCP bridge** are not visually confused with global
+navigation or with tunnel lifecycle. The normal window is `1180x760` and the
+layout remains usable down to `900x640`; below roughly 1040 px wide the status
+strip and GPT Activity rail compact without rebuilding live views or dropping
+selection/filter state.
 
-`BQA_UI_LANGUAGE=en` is the official default language preference for this
-desktop UI; set it to `vi` for Vietnamese. The Language selector persists the
-same value to `.env` and applies it to the open desktop window immediately. It
-does not alter terminal CLI output, MCP/API contracts, or journal data. If the
-process already exports `BQA_UI_LANGUAGE`, that environment value wins and the
-selector refuses to write a conflicting `.env` value.
+Runtime, Workspace Logs, and GPT Activity share a graphite operations-console
+visual language (`#10151d` background, layered dark surfaces, blue focus) with
+black notebook rails and green tab captions. Semantic colors distinguish
+running, success, warning, and failure, but every state also has textual
+meaning. Shared widgets use Tk named fonts rather than fixed point sizes, so
+desktop text scaling is inherited. Entry/button focus borders, 30 px table
+rows, larger toolbar padding, and keyboard-accessible controls are part of the
+desktop accessibility contract.
 
-The Runtime tab is a compact property grid. Endpoint can be copied; workspace
-can be selected and then applied without moving lifecycle actions away from the
-header. Workspace Logs keeps up to 500 cached journal rows and exposes category
-chips, a Chat ID filter, an outcome menu, and Clear. Its drag splitter separates
-the table from a Summary, Metadata, and pretty-JSON Payload inspector. A stream
-reset deliberately clears the cursor, cached rows, and selection.
+`BQA_UI_LANGUAGE=en` is the official default language preference; `vi`
+selects Vietnamese. Both choices are always visible as linked `EN`/`VI`
+buttons. Switching persists the same value to `.env` and relabels the live
+window without rebuilding tabs, dropping cached records, changing filters, or
+resetting selection. Terminal CLI output, MCP/API contracts, and journal fields
+remain unchanged. If the process explicitly exports `BQA_UI_LANGUAGE`, that
+environment value wins and the UI refuses a conflicting write.
 
-The GPT activity rail and COMMAND ACTIVITY table filter only the data already cached by
-the client; no keystroke makes a backend request. Column headings sort the
-command table. The OUTPUT inspector separates Metadata, STDOUT, STDERR, and
-Human-readable views, and retains a tab's scroll position when its content has
-not changed. `Copy tab` copies the entire active inspector tab; `Ctrl+C` inside
-an inspector copies only the highlighted text. `/` focuses the input filter,
-`Esc` clears local filters, and `Up`/`Down` moves a selected log row. All major
-buttons retain a visible keyboard-accessible control.
+The Runtime tab is grouped into **Runtime status**, **Connector**,
+**Workspace**, and **Runtime actions**. Endpoint copy and workspace selection are
+kept next to the values they affect. Authentication disabled is a persistent
+warning banner rather than a transient toast. Short feedback such as copied
+text, saved language, or failed UI actions appears in the status strip and must
+never recolor or otherwise falsify the independent runtime-health badge.
+Applying a workspace retains the existing operational behavior: the setting is
+persisted and the bridge action is invoked by the coordinator.
+
+Workspace Logs keeps up to 500 cached journal rows. Category chips, debounced
+chat search, localized outcome selection, and Clear operate on the local cache.
+Error/warning/success rows receive semantic presentation while retaining their
+text columns. At narrow widths the search controls reflow below the chips rather
+than clipping. The vertical splitter separates the table from Summary,
+Metadata, and pretty-JSON Payload inspectors; `Up`/`Down` moves the selected
+row and Enter focuses the inspector. A stream reset deliberately clears the
+cursor, cached rows, and selection.
+
+GPT Activity keeps the session rail, command table, and inspector as separate
+responsibilities. The rail can be collapsed manually and is automatically
+compacted on narrow windows, then restored when the window widens only when the
+collapse was automatic. Search/actions occupy the first toolbar row and the
+current command summary has its own wrapped row, preventing long session/count
+text from competing with controls. The command table still sorts by headings,
+and the inspector separates Metadata, STDOUT, STDERR, and Human-readable views
+while preserving scroll position for unchanged content.
+
+Desktop shortcuts are global and context-aware:
+
+- `Ctrl+1` / `Ctrl+2` / `Ctrl+3`: Runtime / Workspace Logs / GPT Activity.
+- `Ctrl+R`: refresh the current dashboard snapshot.
+- `/`: focus the search field for the selected Logs/Activity tab.
+- `Esc`: clear filters for the selected Logs/Activity tab.
+- `Ctrl+C` inside an inspector: copy highlighted text only; **Copy tab** copies
+  the full active inspector tab.
+
+### Safe desktop verification
+
+UI verification must not require a real lifecycle mutation. Run the actual Tk
+widgets under a disposable display with injected fake Start/Restart callbacks:
+
+```bash
+xvfb-run -a ./.venv/bin/python -m pytest -q tests/test_desktop_real_widgets.py
+```
+
+For screenshot/geometry coverage, `scripts/verify_desktop_ui.py` renders all
+three tabs in both languages and reports clipped/out-of-bounds widgets. It
+always uses a temporary writable repo root and fake lifecycle callbacks:
+
+```bash
+xvfb-run -a -s '-screen 0 2200x1400x24' \
+  ./.venv/bin/python scripts/verify_desktop_ui.py \
+  --screenshots-dir ~/Downloads/bqa-ui-verification
+```
+
+`--tk-scaling 1.75` exercises large-text geometry. `--live-readonly` replaces
+fixture readers with the real runtime status, MCP activity, and local SSE
+stream, while Start/Restart remain fake and workspace writes remain confined to
+the temporary verification root. Verification JSON must report
+`"lifecycle_mutations_executed": false`; operators should additionally compare
+supervisor/server/tunnel PIDs and connector URL before and after a verification
+run.
 
 
 ## Help screens

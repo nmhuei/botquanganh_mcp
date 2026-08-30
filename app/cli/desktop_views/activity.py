@@ -356,6 +356,10 @@ class ActivityView:
         self.input_collapse_button: Any = None
         self.output_collapse_button: Any = None
         self.activity_content: Any = None
+        self.activity_toolbar: Any = None
+        self.toolbar_secondary_widgets: list[Any] = []
+        self.compact = False
+        self.compact_auto_collapsed = False
         if parent is not None:
             self._build(parent)
 
@@ -689,6 +693,25 @@ class ActivityView:
             self.command_filter_entry.focus_set()
         return "break"
 
+    def set_compact(self, compact: bool) -> None:
+        """Adapt the command surface without losing filters, rows, or selection."""
+        if compact == self.compact:
+            return
+        self.compact = compact
+        if compact and not self.sessions_collapsed:
+            self.toggle_sessions_panel()
+            self.compact_auto_collapsed = True
+        elif (
+            not compact
+            and self.compact_auto_collapsed
+            and self.sessions_collapsed
+        ):
+            self.toggle_sessions_panel()
+            self.compact_auto_collapsed = False
+        elif not compact:
+            self.compact_auto_collapsed = False
+        self._apply_collapse_labels()
+
     def sort_records(self, key: str) -> None:
         if key == self.activity_sort_key:
             self.activity_sort_descending = not self.activity_sort_descending
@@ -804,30 +827,50 @@ class ActivityView:
                 count=0,
             )
         )
-        self.ttk.Label(toolbar, textvariable=self.activity_filter_var, style="Subtle.TLabel").grid(
-            row=0, column=0, sticky="w"
+        summary_label = self.ttk.Label(
+            toolbar,
+            textvariable=self.activity_filter_var,
+            style="SurfaceSubtle.TLabel",
+            wraplength=620,
+            justify="left",
+        )
+        summary_label.grid(
+            row=1,
+            column=0,
+            columnspan=5,
+            sticky="w",
+            pady=(6, 0),
         )
         self.command_filter_var = self.tk.StringVar(value="")
-        self.command_filter_entry = self.ttk.Entry(toolbar, textvariable=self.command_filter_var, width=24)
-        self.command_filter_entry.grid(row=0, column=1, sticky="e", padx=(6, 0))
+        self.command_filter_entry = self.ttk.Entry(
+            toolbar,
+            textvariable=self.command_filter_var,
+            width=24,
+        )
+        self.command_filter_entry.grid(
+            row=0,
+            column=0,
+            sticky="ew",
+            padx=(0, 6),
+        )
         self.command_filter_entry.bind("<KeyRelease>", self._schedule_local_filter)
         clear_filters = self.ttk.Button(toolbar, command=self.clear_local_filters)
         self.bindings.bind(clear_filters, "action.clear")
         clear_filters.grid(
-            row=0, column=2, sticky="e", padx=(6, 0)
+            row=0, column=1, sticky="e", padx=(0, 6)
         )
         self.input_collapse_button = self.ttk.Button(
             toolbar, command=self.toggle_input_panel
         )
-        self.input_collapse_button.grid(row=0, column=3, sticky="e", padx=(6, 0))
+        self.input_collapse_button.grid(row=0, column=2, sticky="e", padx=(0, 6))
         self.output_collapse_button = self.ttk.Button(
             toolbar, command=self.toggle_output_panel
         )
-        self.output_collapse_button.grid(row=0, column=4, sticky="e", padx=(6, 0))
+        self.output_collapse_button.grid(row=0, column=3, sticky="e", padx=(0, 6))
         refresh = self.ttk.Button(toolbar, command=self.on_refresh)
         self.bindings.bind(refresh, "action.refresh")
         refresh.grid(
-            row=0, column=5, sticky="e", padx=(6, 0)
+            row=0, column=4, sticky="e"
         )
         self._apply_collapse_labels()
 

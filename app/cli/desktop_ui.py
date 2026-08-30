@@ -226,9 +226,17 @@ class _DesktopDashboard:
         self.header_bindings = TranslationBindings(self.translator)
         self.language_choices: dict[str, str] = {}
         self.language_display_var = tk.StringVar()
+        # language_combo is kept as a compatibility attribute for older callers;
+        # the visible control is now a two-button EN/VI selector.
         self.language_combo: Any = None
+        self.language_buttons: dict[str, Any] = {}
         self.notebook: Any = None
         self.notebook_tabs: dict[str, Any] = {}
+        self.compact_layout: bool | None = None
+        self.brand_subtitle: Any = None
+        self.status_workspace_label: Any = None
+        self.message_label: Any = None
+        self.feedback_until = 0.0
         self.runtime_view = RuntimeView(
             tk,
             (initial_message or ("", ""))[1],
@@ -259,58 +267,80 @@ class _DesktopDashboard:
     ) -> None:
         self.root.title(DESKTOP_APP_NAME)
         self.desktop_icon = load_desktop_icon(self.root, self.tk)
-        self.root.geometry("1120x720")
-        self.root.minsize(980, 680)
+        self.root.geometry("1180x760")
+        self.root.minsize(900, 640)
         style = self.ttk.Style(self.root)
         apply_desktop_theme(style, self.root)
 
-        container = self.ttk.Frame(self.root, style="App.TFrame", padding=(12, 10))
+        container = self.ttk.Frame(self.root, style="App.TFrame", padding=(14, 12))
         container.pack(fill="both", expand=True)
         container.columnconfigure(0, weight=1)
         container.rowconfigure(1, weight=1)
         header = self.ttk.Frame(container, style="App.TFrame")
         header.grid(row=0, column=0, sticky="ew")
         header.columnconfigure(1, weight=1)
+
         brand = self.ttk.Frame(header, style="App.TFrame")
         brand.grid(row=0, column=0, sticky="w")
         brand.columnconfigure(1, weight=1)
         try:
-            self.header_icon = self.desktop_icon.subsample(10, 10) if self.desktop_icon is not None else None
+            self.header_icon = (
+                self.desktop_icon.subsample(10, 10)
+                if self.desktop_icon is not None
+                else None
+            )
         except self.tk.TclError:
             self.header_icon = None
         if self.header_icon is not None:
-            self.ttk.Label(brand, image=self.header_icon, style="Brand.TLabel").grid(
-                row=0, column=0, rowspan=2, sticky="w", padx=(0, 9)
-            )
+            self.ttk.Label(
+                brand,
+                image=self.header_icon,
+                style="Brand.TLabel",
+            ).grid(row=0, column=0, rowspan=2, sticky="w", padx=(0, 10))
         brand_name = self.ttk.Label(brand, style="Header.TLabel")
         self.header_bindings.bind(brand_name, "app.identity")
         brand_name.grid(row=0, column=1, sticky="w")
-        brand_subtitle = self.ttk.Label(brand, style="Subtle.TLabel")
-        self.header_bindings.bind(brand_subtitle, "app.subtitle")
-        brand_subtitle.grid(row=1, column=1, sticky="w")
-        self.status_label = self.ttk.Label(header, textvariable=self.status_var, style="Status.TLabel")
-        self.status_label.grid(row=0, column=1, rowspan=2, sticky="e", padx=(8, 12))
+        self.brand_subtitle = self.ttk.Label(brand, style="Subtle.TLabel")
+        self.header_bindings.bind(self.brand_subtitle, "app.subtitle")
+        self.brand_subtitle.grid(row=1, column=1, sticky="w")
+
+        self.status_label = self.ttk.Label(
+            header,
+            textvariable=self.status_var,
+            style="Status.TLabel",
+        )
+        self.status_label.grid(
+            row=0,
+            column=1,
+            rowspan=2,
+            sticky="e",
+            padx=(12, 14),
+        )
+
         actions = self.ttk.Frame(header, style="App.TFrame")
         actions.grid(row=0, column=2, rowspan=2, sticky="e")
         language_label = self.ttk.Label(actions, style="Subtle.TLabel")
         self.header_bindings.bind(language_label, "label.language")
-        language_label.pack(side="left", padx=(0, 5))
-        self.language_combo = self.ttk.Combobox(
-            actions,
-            textvariable=self.language_display_var,
-            state="readonly",
-            width=11,
-            style="Language.TCombobox",
-        )
+        language_label.pack(side="left", padx=(0, 6))
+        for language, key in (("en", "language.en_short"), ("vi", "language.vi_short")):
+            button = self.ttk.Button(
+                actions,
+                text=self.translator.text(key),
+                style="Language.TButton",
+                command=lambda language=language: self.change_language(language),
+                width=3,
+            )
+            button.pack(side="left", padx=(0, 2))
+            self.language_buttons[language] = button
         self._refresh_language_selector()
-        self.language_combo.bind("<<ComboboxSelected>>", self.change_language)
-        self.language_combo.pack(side="left", padx=(0, 10))
-        self._add_action(actions, "action.start", self.start_service)
-        self._add_action(actions, "action.restart", self.restart_bridge)
-        self._add_action(actions, "action.refresh", self.refresh)
-        close_button = self.ttk.Button(actions, style="Toolbar.TButton", command=self.close)
-        self.header_bindings.bind(close_button, "action.close")
-        close_button.pack(side="left")
+
+        refresh_button = self.ttk.Button(
+            actions,
+            style="Toolbar.TButton",
+            command=self.refresh,
+        )
+        self.header_bindings.bind(refresh_button, "action.refresh")
+        refresh_button.pack(side="left", padx=(10, 0))
 
         notebook = self.ttk.Notebook(container, style="App.TNotebook")
         notebook.grid(row=1, column=0, sticky="nsew", pady=(8, 6))
@@ -334,6 +364,8 @@ class _DesktopDashboard:
             on_copy_endpoint=self.copy_endpoint,
             on_choose_workspace=self.choose_workspace,
             on_apply_workspace=self.apply_workspace,
+            on_start_service=self.start_service,
+            on_restart_bridge=self.restart_bridge,
         )
         self.activity_view = ActivityView(
             root=self.root,
@@ -360,14 +392,49 @@ class _DesktopDashboard:
         status_bar = self.ttk.Frame(container, style="App.TFrame")
         status_bar.grid(row=2, column=0, sticky="ew")
         status_bar.columnconfigure(4, weight=1)
-        self.backend_label = self.ttk.Label(status_bar, textvariable=self.backend_var, style="Subtle.TLabel")
+        self.backend_label = self.ttk.Label(
+            status_bar,
+            textvariable=self.backend_var,
+            style="Subtle.TLabel",
+        )
         self.backend_label.grid(row=0, column=0, sticky="w")
-        self.ttk.Label(status_bar, textvariable=self.workspace_var, style="Subtle.TLabel").grid(row=0, column=1, sticky="w", padx=(14, 0))
-        self.ttk.Label(status_bar, textvariable=self.refresh_var, style="Subtle.TLabel").grid(row=0, column=2, sticky="w", padx=(14, 0))
-        self.ttk.Label(status_bar, textvariable=self.sse_var, style="Subtle.TLabel").grid(row=0, column=3, sticky="w", padx=(14, 0))
-        self.ttk.Label(status_bar, textvariable=self.message_var, style="Subtle.TLabel", wraplength=400).grid(row=0, column=4, sticky="e", padx=(14, 0))
+        self.status_workspace_label = self.ttk.Label(
+            status_bar,
+            textvariable=self.workspace_var,
+            style="Subtle.TLabel",
+        )
+        self.status_workspace_label.grid(
+            row=0,
+            column=1,
+            sticky="w",
+            padx=(14, 0),
+        )
+        self.ttk.Label(
+            status_bar,
+            textvariable=self.refresh_var,
+            style="Subtle.TLabel",
+        ).grid(row=0, column=2, sticky="w", padx=(14, 0))
+        self.ttk.Label(
+            status_bar,
+            textvariable=self.sse_var,
+            style="Subtle.TLabel",
+        ).grid(row=0, column=3, sticky="w", padx=(14, 0))
+        self.message_label = self.ttk.Label(
+            status_bar,
+            textvariable=self.message_var,
+            style="Feedback.TLabel",
+            wraplength=420,
+        )
+        self.message_label.grid(
+            row=0,
+            column=4,
+            sticky="e",
+            padx=(14, 0),
+        )
         if initial_message:
             self._set_message(*initial_message)
+        self._bind_shortcuts()
+        self.root.bind("<Configure>", self._on_resize)
 
     def _language_options(self) -> dict[str, str]:
         return {
@@ -383,6 +450,14 @@ class _DesktopDashboard:
             if language == self.translator.language
         )
         self.language_display_var.set(selected)
+        for language, button in getattr(self, "language_buttons", {}).items():
+            button.configure(
+                style=(
+                    "LanguageActive.TButton"
+                    if language == self.translator.language
+                    else "Language.TButton"
+                )
+            )
         if self.language_combo is not None:
             self.language_combo.configure(values=tuple(self.language_choices))
 
@@ -394,7 +469,11 @@ class _DesktopDashboard:
 
     def change_language(self, _event: Any = None) -> None:
         """Persist and apply the desktop language without resetting live view state."""
-        language = self.language_choices.get(self.language_display_var.get())
+        language = (
+            _event
+            if isinstance(_event, str) and _event in {"en", "vi"}
+            else self.language_choices.get(self.language_display_var.get())
+        )
         if language is None:
             self._refresh_language_selector()
             return
@@ -426,21 +505,93 @@ class _DesktopDashboard:
             ),
         )
 
-    def _add_action(self, parent: Any, text_key: str, command: Callable[[], None]) -> None:
-        button = self.ttk.Button(parent, style="Toolbar.TButton", command=command)
-        self.header_bindings.bind(button, text_key)
-        button.pack(side="left", padx=(0, 7))
-        self.runtime_view.action_buttons.append(button)
+    def _bind_shortcuts(self) -> None:
+        """Install predictable keyboard navigation without stealing text shortcuts."""
+        self.root.bind(
+            "<Control-Key-1>",
+            lambda _event: self.select_tab("runtime"),
+        )
+        self.root.bind(
+            "<Control-Key-2>",
+            lambda _event: self.select_tab("workspace_logs"),
+        )
+        self.root.bind(
+            "<Control-Key-3>",
+            lambda _event: self.select_tab("gpt_activity"),
+        )
+        self.root.bind("<Control-r>", lambda _event: self.refresh() or "break")
+        self.root.bind("/", self.focus_active_search)
+        self.root.bind("<Escape>", self.clear_active_filters)
+
+    def select_tab(self, key: str) -> str:
+        if self.notebook is not None and key in self.notebook_tabs:
+            self.notebook.select(self.notebook_tabs[key])
+        return "break"
+
+    def _selected_tab_key(self) -> str | None:
+        if self.notebook is None:
+            return None
+        try:
+            selected = str(self.notebook.select())
+        except Exception:
+            return None
+        for key, tab in self.notebook_tabs.items():
+            if selected == str(tab):
+                return key
+        return None
+
+    def focus_active_search(self, _event: Any = None) -> str:
+        key = self._selected_tab_key()
+        if key == "workspace_logs" and self.workspace_log_view is not None:
+            return self.workspace_log_view.focus_filter()
+        if key == "gpt_activity" and self.activity_view is not None:
+            return self.activity_view.focus_command_filter()
+        return "break"
+
+    def clear_active_filters(self, _event: Any = None) -> str:
+        key = self._selected_tab_key()
+        if key == "workspace_logs" and self.workspace_log_view is not None:
+            self.workspace_log_view.clear_filters()
+        elif key == "gpt_activity" and self.activity_view is not None:
+            self.activity_view.clear_local_filters()
+        return "break"
+
+    def _on_resize(self, event: Any) -> None:
+        """Apply a small adaptive mode without rebuilding any live view."""
+        if getattr(event, "widget", self.root) is not self.root:
+            return
+        width = int(getattr(event, "width", 0) or 0)
+        if width <= 0:
+            return
+        compact = width < 1040
+        if compact == self.compact_layout:
+            return
+        self.compact_layout = compact
+        if self.brand_subtitle is not None:
+            self.brand_subtitle.grid_remove() if compact else self.brand_subtitle.grid()
+        if self.status_workspace_label is not None:
+            self.status_workspace_label.grid_remove() if compact else self.status_workspace_label.grid()
+        if self.message_label is not None:
+            self.message_label.configure(wraplength=260 if compact else 420)
+        if self.activity_view is not None:
+            self.activity_view.set_compact(compact)
+        if self.workspace_log_view is not None:
+            self.workspace_log_view.set_compact(compact)
 
     def _set_message(self, kind: str, text: str) -> None:
+        """Show transient UI feedback without changing the runtime health badge."""
         colors = {
             "success": PALETTE["success"],
             "warn": PALETTE["warning"],
             "error": PALETTE["danger"],
+            "info": PALETTE["text_muted"],
         }
+        self.feedback_until = time.monotonic() + 6.0
         self.runtime_view.set_message(text)
-        if self.status_label is not None:
-            self.status_label.configure(foreground=colors.get(kind, PALETTE["text_muted"]))
+        if self.message_label is not None:
+            self.message_label.configure(
+                foreground=colors.get(kind, PALETTE["text_muted"])
+            )
 
     def chat_workspaces_root(self) -> Path:
         configured = self.ctx.values.get("HOST_CHAT_ROOT", "").strip()
@@ -479,8 +630,10 @@ class _DesktopDashboard:
             self.backend_var.set(badge_text)
             if self.backend_label is not None:
                 self.backend_label.configure(foreground=badge_color)
-            if not self.busy:
+            if not self.busy and time.monotonic() >= self.feedback_until:
                 self.runtime_view.set_message(presentation.summary)
+                if self.message_label is not None:
+                    self.message_label.configure(foreground=PALETTE["text_muted"])
             if not self.workspace_selection_dirty:
                 self.workspace_var.set(data.get("workspace", self.workspace_var.get()))
         except Exception as exc:
@@ -490,8 +643,9 @@ class _DesktopDashboard:
             self.backend_var.set(BACKEND_DOWN_BADGE[0])
             if self.backend_label is not None:
                 self.backend_label.configure(foreground=BACKEND_DOWN_BADGE[1])
-            self.message_var.set(
-                self.translator.text("message.status_error", error=str(exc))
+            self._set_message(
+                "error",
+                self.translator.text("message.status_error", error=str(exc)),
             )
         finally:
             self.refresh_var.set("refresh: " + time.strftime("%H:%M:%S", time.localtime()))

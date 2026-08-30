@@ -375,3 +375,29 @@ def test_activity_view_collapse_controls_preserve_splitter_membership():
         ("insert", 0, inputs),
         ("add", output),
     ]
+
+
+def test_activity_compact_mode_auto_collapses_and_restores_session_rail(tmp_path):
+    view = ActivityView(
+        root=None,
+        tk=None,
+        ttk=None,
+        parent=None,
+        workspace_root=lambda: tmp_path,
+        on_message=lambda *_args: None,
+        on_refresh=lambda: None,
+    )
+    calls = []
+    view.toggle_sessions_panel = lambda: (
+        calls.append("toggle"),
+        setattr(view, "sessions_collapsed", not view.sessions_collapsed),
+    )
+
+    view.set_compact(True)
+    assert view.sessions_collapsed is True
+    assert view.compact_auto_collapsed is True
+
+    view.set_compact(False)
+    assert view.sessions_collapsed is False
+    assert view.compact_auto_collapsed is False
+    assert calls == ["toggle", "toggle"]

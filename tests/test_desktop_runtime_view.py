@@ -86,7 +86,13 @@ def test_runtime_view_registers_workspace_apply_action_for_busy_state():
         def grid(self, **_kwargs):
             pass
 
+        def grid_remove(self):
+            pass
+
         def columnconfigure(self, *_args, **_kwargs):
+            pass
+
+        def rowconfigure(self, *_args, **_kwargs):
             pass
 
         def configure(self, **_kwargs):
@@ -98,6 +104,9 @@ def test_runtime_view_registers_workspace_apply_action_for_busy_state():
     class Ttk:
         def __init__(self):
             self.buttons = []
+
+        def Frame(self, *_args, **_kwargs):
+            return Widget()
 
         def LabelFrame(self, *_args, **_kwargs):
             return Widget()

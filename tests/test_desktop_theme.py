@@ -38,7 +38,7 @@ def test_desktop_theme_configures_shared_semantic_widget_styles():
     assert PALETTE["accent"] == "#60a5fa"
     assert PALETTE["running"] == "#2dd4bf"
     assert PALETTE["tab_background"] == "#070b0b"
-    assert style.configured["Table.Treeview"]["rowheight"] == 28
+    assert style.configured["Table.Treeview"]["rowheight"] == 30
     assert style.configured["App.TNotebook"]["background"] == "#070b0b"
     assert style.configured["App.TNotebook.Tab"]["foreground"] == PALETTE["tab_green"]
     assert style.configured["Inspector.TNotebook"]["background"] == PALETTE["tab_background"]
@@ -195,3 +195,60 @@ def test_inspector_tabs_copy_tab_keeps_copying_the_entire_active_tab():
     assert messages == [
         ("success", "Copied the visible inspector content to the clipboard.")
     ]
+
+
+def test_desktop_theme_uses_system_fonts_and_visible_focus_styles():
+    class Style:
+        def __init__(self):
+            self.configured = {}
+            self.mapped = {}
+
+        def theme_use(self, _name):
+            pass
+
+        def configure(self, name, **values):
+            self.configured[name] = values
+
+        def map(self, name, **values):
+            self.mapped[name] = values
+
+    class Root:
+        def configure(self, **_values):
+            pass
+
+    style = Style()
+    apply_desktop_theme(style, Root())
+
+    assert style.configured["TLabel"]["font"] == "TkDefaultFont"
+    assert style.configured["Header.TLabel"]["font"] == "TkHeadingFont"
+    assert style.configured["Mono.TLabel"]["font"] == "TkFixedFont"
+    assert ("focus", PALETTE["focus"]) in style.mapped["TEntry"]["bordercolor"]
+    assert ("focus", PALETTE["focus"]) in style.mapped["TButton"]["bordercolor"]
+    assert "LanguageActive.TButton" in style.configured
+    assert "WarningBanner.TFrame" in style.configured
+    assert "Feedback.TLabel" in style.configured
+
+
+def test_desktop_palette_text_contrast_meets_normal_text_target():
+    def rgb(hex_color):
+        value = hex_color.lstrip("#")
+        return tuple(int(value[index:index + 2], 16) / 255 for index in (0, 2, 4))
+
+    def luminance(hex_color):
+        channels = []
+        for channel in rgb(hex_color):
+            channels.append(
+                channel / 12.92
+                if channel <= 0.04045
+                else ((channel + 0.055) / 1.055) ** 2.4
+            )
+        red, green, blue = channels
+        return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+
+    def ratio(foreground, background):
+        high, low = sorted((luminance(foreground), luminance(background)), reverse=True)
+        return (high + 0.05) / (low + 0.05)
+
+    assert ratio(PALETTE["text"], PALETTE["surface"]) >= 4.5
+    assert ratio(PALETTE["text_muted"], PALETTE["app_background"]) >= 4.5
+    assert ratio(PALETTE["tab_green"], PALETTE["tab_background"]) >= 4.5

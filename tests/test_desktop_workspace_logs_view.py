@@ -313,3 +313,28 @@ def test_workspace_log_queue_poller_delivers_events_and_close_cancels_late_deliv
     assert [(notice.chat_id, notice.operation_id) for notice in delivered] == [
         ("chat-a", "evt-1")
     ]
+
+
+def test_workspace_log_outcome_selector_localizes_without_changing_filter_value():
+    class Variable:
+        def __init__(self):
+            self.value = ""
+
+        def get(self):
+            return self.value
+
+        def set(self, value):
+            self.value = value
+
+    view = WorkspaceLogView(
+        on_new_activity=lambda _notice: None,
+        translator=DesktopTranslator("en"),
+    )
+    view.outcome_var = Variable()
+    view._refresh_outcome_selector("failure")
+    assert view._selected_outcome() == "failure"
+    assert view.outcome_var.get() == "Failure"
+
+    view.set_translator(DesktopTranslator("vi"))
+    assert view._selected_outcome() == "failure"
+    assert view.outcome_var.get() == "Thất bại"

@@ -17,7 +17,7 @@ from app.cli.desktop_views.activity import (
 )
 from app.cli.desktop_views.i18n import DesktopTranslator, TranslationBindings
 from app.cli.desktop_views.activity import ActivityNotification
-from app.cli.desktop_views.theme import InspectorTabs
+from app.cli.desktop_views.theme import PALETTE, InspectorTabs
 
 
 WORKSPACE_LOG_STREAM_PATH = "/api/v1/activity/stream"
@@ -301,15 +301,25 @@ class WorkspaceLogView:
         self.inspector: InspectorTabs | None = None
         self.notice_var: Any = None
         self.chat_filter_var: Any = None
+        self.chat_filter_entry: Any = None
         self.outcome_var: Any = None
+        self.outcome_combo: Any = None
+        self.outcome_choices: dict[str, str] = {}
+        self.filter_job: Any = None
+        self.toolbar: Any = None
+        self.chips_frame: Any = None
+        self.filter_box: Any = None
+        self.compact = False
         self.chip_buttons: dict[str, Any] = {}
         if parent is not None:
             self._build(parent)
 
     def set_translator(self, translator: DesktopTranslator) -> None:
         """Relabel the visible log view without dropping its stream cache or selection."""
+        selected_outcome = self._selected_outcome()
         self.translator = translator
         self.bindings.set_translator(translator)
+        self._refresh_outcome_selector(selected_outcome)
         self._apply_tree_labels()
         if self.inspector is not None:
             for key, label_key in (
@@ -324,6 +334,89 @@ class WorkspaceLogView:
                 selection_success=translator.text("inspector.copy_selection_success"),
             )
         self.render()
+
+    def _outcome_options(self) -> dict[str, str]:
+        return {
+            self.translator.text("outcome.all"): "all",
+            self.translator.text("outcome.success"): "success",
+            self.translator.text("outcome.failure"): "failure",
+            self.translator.text("outcome.unknown"): "unknown",
+        }
+
+    def _selected_outcome(self) -> str:
+        if self.outcome_var is None:
+            return "all"
+        raw = str(self.outcome_var.get() or "all")
+        if raw in {"all", "success", "failure", "unknown"}:
+            return raw
+        return self.outcome_choices.get(raw, "all")
+
+    def _refresh_outcome_selector(self, selected: str = "all") -> None:
+        self.outcome_choices = self._outcome_options()
+        display = next(
+            (
+                label
+                for label, value in self.outcome_choices.items()
+                if value == selected
+            ),
+            self.translator.text("outcome.all"),
+        )
+        if self.outcome_var is not None:
+            self.outcome_var.set(display)
+        if self.outcome_combo is not None:
+            self.outcome_combo.configure(values=tuple(self.outcome_choices))
+
+    def _schedule_filter(self, _event: Any = None) -> None:
+        if self.root is None:
+            self.render()
+            return
+        if self.filter_job is not None:
+            try:
+                self.root.after_cancel(self.filter_job)
+            except Exception:
+                pass
+        self.filter_job = self.root.after(120, self._apply_filter)
+
+    def _apply_filter(self) -> None:
+        self.filter_job = None
+        self.render()
+
+    def focus_filter(self) -> str:
+        if self.chat_filter_entry is not None:
+            self.chat_filter_entry.focus_set()
+        return "break"
+
+    def focus_inspector(self) -> str:
+        if self.inspector is not None:
+            try:
+                self.inspector.notebook.focus_set()
+            except Exception:
+                pass
+        return "break"
+
+    def set_compact(self, compact: bool) -> None:
+        """Reflow the toolbar without rebuilding widgets or dropping state."""
+        if compact == self.compact:
+            return
+        self.compact = compact
+        if self.toolbar is None or self.filter_box is None:
+            return
+        if compact:
+            self.filter_box.grid_configure(
+                row=1,
+                column=0,
+                columnspan=2,
+                sticky="ew",
+                pady=(7, 0),
+            )
+        else:
+            self.filter_box.grid_configure(
+                row=0,
+                column=1,
+                columnspan=1,
+                sticky="e",
+                pady=0,
+            )
 
     def _apply_tree_labels(self) -> None:
         if self.tree is None:
@@ -345,8 +438,10 @@ class WorkspaceLogView:
         toolbar = self.ttk.Frame(parent)
         toolbar.grid(row=0, column=0, sticky="ew")
         toolbar.columnconfigure(1, weight=1)
+        self.toolbar = toolbar
         chips = self.ttk.Frame(toolbar)
         chips.grid(row=0, column=0, sticky="w")
+        self.chips_frame = chips
         for key in WORKSPACE_LOG_CHIP_KEYS:
             button = self.ttk.Button(
                 chips,
@@ -358,23 +453,30 @@ class WorkspaceLogView:
             self.chip_buttons[key] = button
         filter_box = self.ttk.Frame(toolbar)
         filter_box.grid(row=0, column=1, sticky="e")
+        self.filter_box = filter_box
         chat_filter_label = self.ttk.Label(filter_box, style="FieldName.TLabel")
-        self.bindings.bind(chat_filter_label, "field.chat_filter")
+        self.bindings.bind(chat_filter_label, "workspace_logs.search")
         chat_filter_label.pack(side="left", padx=(10, 6))
         self.chat_filter_var = self.tk.StringVar(value="")
-        chat_entry = self.ttk.Entry(filter_box, textvariable=self.chat_filter_var, width=28)
+        chat_entry = self.ttk.Entry(
+            filter_box,
+            textvariable=self.chat_filter_var,
+            width=26,
+        )
         chat_entry.pack(side="left")
-        chat_entry.bind("<KeyRelease>", lambda _event: self.render())
-        self.outcome_var = self.tk.StringVar(value="all")
+        chat_entry.bind("<KeyRelease>", self._schedule_filter)
+        self.chat_filter_entry = chat_entry
+        self.outcome_var = self.tk.StringVar(value="")
         outcome = self.ttk.Combobox(
             filter_box,
             textvariable=self.outcome_var,
-            values=("all", "success", "failure", "unknown"),
             state="readonly",
-            width=10,
+            width=14,
         )
         outcome.pack(side="left", padx=(6, 0))
-        outcome.bind("<<ComboboxSelected>>", lambda _event: self.render())
+        outcome.bind("<<ComboboxSelected>>", self._schedule_filter)
+        self.outcome_combo = outcome
+        self._refresh_outcome_selector("all")
         clear = self.ttk.Button(filter_box, command=self.clear_filters)
         self.bindings.bind(clear, "action.clear")
         clear.pack(side="left", padx=(6, 0))
@@ -388,17 +490,35 @@ class WorkspaceLogView:
         table.columnconfigure(0, weight=1)
         table.rowconfigure(0, weight=1)
         columns = ("time", "severity", "category", "action", "outcome", "duration", "chat")
-        tree = self.ttk.Treeview(table, columns=columns, show="headings", height=9, style="Table.Treeview")
-        for key, width in (("time", 145), ("severity", 75), ("category", 82), ("action", 170), ("outcome", 80), ("duration", 70), ("chat", 170)):
+        tree = self.ttk.Treeview(
+            table,
+            columns=columns,
+            show="headings",
+            height=9,
+            style="Table.Treeview",
+        )
+        for key, width in (
+            ("time", 145),
+            ("severity", 75),
+            ("category", 82),
+            ("action", 180),
+            ("outcome", 86),
+            ("duration", 70),
+            ("chat", 175),
+        ):
             tree.heading(key)
             tree.column(key, width=width, stretch=key in {"action", "chat"})
         scrollbar = self.ttk.Scrollbar(table, orient="vertical", command=tree.yview)
         tree.configure(yscrollcommand=scrollbar.set)
+        tree.tag_configure("error", foreground=PALETTE["danger"])
+        tree.tag_configure("warning", foreground=PALETTE["warning"])
+        tree.tag_configure("success", foreground=PALETTE["success"])
         tree.grid(row=0, column=0, sticky="nsew")
         scrollbar.grid(row=0, column=1, sticky="ns")
         tree.bind("<<TreeviewSelect>>", self.show_selected)
         tree.bind("<Up>", lambda _event: self.move_selection(-1) or "break")
         tree.bind("<Down>", lambda _event: self.move_selection(1) or "break")
+        tree.bind("<Return>", lambda _event: self.focus_inspector())
         self.tree = tree
         self._apply_tree_labels()
         holder = self.ttk.LabelFrame(panes, padding=6)
@@ -441,8 +561,7 @@ class WorkspaceLogView:
         self.chip = "all"
         if self.chat_filter_var is not None:
             self.chat_filter_var.set("")
-        if self.outcome_var is not None:
-            self.outcome_var.set("all")
+        self._refresh_outcome_selector("all")
         self._restyle_chips()
         self.render()
 
@@ -478,7 +597,7 @@ class WorkspaceLogView:
         if self.tree is None or self.notice_var is None:
             return
         chat_filter = self.chat_filter_var.get() if self.chat_filter_var is not None else ""
-        outcome = self.outcome_var.get() if self.outcome_var is not None else "all"
+        outcome = self._selected_outcome()
         display = list(
             reversed(
                 filter_workspace_log_rows(
@@ -504,7 +623,31 @@ class WorkspaceLogView:
                 iid, suffix = f"{base}#{suffix}", suffix + 1
             seen.add(iid)
             duration = f"{row.duration_ms:.3f}" if row.duration_ms is not None else "—"
-            self.tree.insert("", "end", iid=iid, values=(format_workspace_log_time(row.timestamp), row.severity, row.category, clip_text(row.action, 42), row.outcome, duration, clip_text(row.chat_id, 36)))
+            severity = row.severity.upper()
+            tag = (
+                "error"
+                if severity in {"ERROR", "CRITICAL"} or row.outcome == "failure"
+                else "warning"
+                if severity in {"WARN", "WARNING"}
+                else "success"
+                if row.outcome == "success"
+                else ""
+            )
+            self.tree.insert(
+                "",
+                "end",
+                iid=iid,
+                values=(
+                    format_workspace_log_time(row.timestamp),
+                    row.severity,
+                    row.category,
+                    clip_text(row.action, 42),
+                    row.outcome,
+                    duration,
+                    clip_text(row.chat_id, 36),
+                ),
+                tags=((tag,) if tag else ()),
+            )
             self.rows_by_iid[iid] = row
             self.iids.append(iid)
         target = next((iid for iid, row in self.rows_by_iid.items() if row.event_id == self.selected_id), None)
@@ -678,3 +821,9 @@ class WorkspaceLogView:
             except Exception:
                 pass
             self.drain_job = None
+        if self.filter_job is not None and self.root is not None:
+            try:
+                self.root.after_cancel(self.filter_job)
+            except Exception:
+                pass
+            self.filter_job = None

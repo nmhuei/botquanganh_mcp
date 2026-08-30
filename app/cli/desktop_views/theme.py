@@ -8,12 +8,15 @@ from typing import Any
 PALETTE = {
     "app_background": "#10151d",
     "surface": "#18212c",
+    "surface_raised": "#1c2735",
     "surface_muted": "#223044",
     "border": "#334155",
+    "border_strong": "#475569",
     "text": "#e5edf7",
     "text_muted": "#b6c4d6",
     "text_subtle": "#8ea1b8",
     "accent": "#60a5fa",
+    "focus": "#93c5fd",
     "success": "#4ade80",
     "warning": "#fbbf24",
     "danger": "#fb7185",
@@ -23,6 +26,15 @@ PALETTE = {
     "tab_green_active": "#a3ff12",
 }
 
+# Named Tk fonts inherit the user's desktop text scaling and accessibility
+# preferences.  Avoid hard-coded point sizes in the shared theme.
+TYPOGRAPHY = {
+    "body": "TkDefaultFont",
+    "heading": "TkHeadingFont",
+    "caption": "TkSmallCaptionFont",
+    "mono": "TkFixedFont",
+}
+
 
 def apply_desktop_theme(style: Any, root: Any) -> None:
     """Configure the shared ttk palette before any desktop view is created."""
@@ -30,9 +42,16 @@ def apply_desktop_theme(style: Any, root: Any) -> None:
         style.theme_use("clam")
     except Exception:
         pass
+
     root.configure(background=PALETTE["app_background"])
+
     style.configure("TFrame", background=PALETTE["surface"])
-    style.configure("TLabel", background=PALETTE["surface"], foreground=PALETTE["text"])
+    style.configure(
+        "TLabel",
+        background=PALETTE["surface"],
+        foreground=PALETTE["text"],
+        font=TYPOGRAPHY["body"],
+    )
     style.configure(
         "TLabelframe",
         background=PALETTE["surface"],
@@ -43,8 +62,8 @@ def apply_desktop_theme(style: Any, root: Any) -> None:
     style.configure(
         "TLabelframe.Label",
         background=PALETTE["surface"],
-        foreground=PALETTE["text_subtle"],
-        font=("TkDefaultFont", 9, "bold"),
+        foreground=PALETTE["text_muted"],
+        font=TYPOGRAPHY["heading"],
     )
     style.configure(
         "TEntry",
@@ -52,36 +71,62 @@ def apply_desktop_theme(style: Any, root: Any) -> None:
         foreground=PALETTE["text"],
         insertcolor=PALETTE["text"],
         bordercolor=PALETTE["border"],
+        lightcolor=PALETTE["border"],
+        darkcolor=PALETTE["border"],
+        padding=(7, 5),
     )
     style.map(
         "TEntry",
         fieldbackground=[("readonly", PALETTE["surface_muted"])],
         foreground=[("readonly", PALETTE["text"])],
+        bordercolor=[("focus", PALETTE["focus"])],
+        lightcolor=[("focus", PALETTE["focus"])],
+        darkcolor=[("focus", PALETTE["focus"])],
     )
     style.configure(
         "TButton",
         background=PALETTE["surface_muted"],
         foreground=PALETTE["text"],
         bordercolor=PALETTE["border"],
-        padding=(8, 4),
+        focuscolor=PALETTE["focus"],
+        focusthickness=1,
+        padding=(10, 5),
+        font=TYPOGRAPHY["body"],
     )
     style.map(
         "TButton",
-        background=[("active", PALETTE["border"]), ("pressed", PALETTE["accent"])],
-        foreground=[("pressed", PALETTE["app_background"])],
+        background=[
+            ("active", PALETTE["border"]),
+            ("pressed", PALETTE["accent"]),
+            ("disabled", PALETTE["surface"]),
+        ],
+        foreground=[
+            ("pressed", PALETTE["app_background"]),
+            ("disabled", PALETTE["text_subtle"]),
+        ],
+        bordercolor=[("focus", PALETTE["focus"])],
     )
+
     style.configure("App.TFrame", background=PALETTE["app_background"])
     style.configure("Surface.TFrame", background=PALETTE["surface"])
+    style.configure("Raised.TFrame", background=PALETTE["surface_raised"])
     style.configure(
         "Header.TLabel",
         background=PALETTE["app_background"],
         foreground=PALETTE["text"],
-        font=("TkDefaultFont", 16, "bold"),
+        font=TYPOGRAPHY["heading"],
     )
     style.configure(
         "Subtle.TLabel",
         background=PALETTE["app_background"],
         foreground=PALETTE["text_muted"],
+        font=TYPOGRAPHY["caption"],
+    )
+    style.configure(
+        "SurfaceSubtle.TLabel",
+        background=PALETTE["surface"],
+        foreground=PALETTE["text_muted"],
+        font=TYPOGRAPHY["caption"],
     )
     style.configure(
         "Brand.TLabel",
@@ -92,88 +137,212 @@ def apply_desktop_theme(style: Any, root: Any) -> None:
         "FieldName.TLabel",
         background=PALETTE["surface"],
         foreground=PALETTE["text_subtle"],
-        font=("TkDefaultFont", 9, "bold"),
+        font=TYPOGRAPHY["heading"],
+    )
+    style.configure(
+        "SectionTitle.TLabel",
+        background=PALETTE["surface"],
+        foreground=PALETTE["text"],
+        font=TYPOGRAPHY["heading"],
+    )
+    style.configure(
+        "Mono.TLabel",
+        background=PALETTE["surface"],
+        foreground=PALETTE["text"],
+        font=TYPOGRAPHY["mono"],
     )
     style.configure(
         "Status.TLabel",
         background=PALETTE["surface_muted"],
         foreground=PALETTE["accent"],
-        padding=(9, 4),
-        font=("TkDefaultFont", 10, "bold"),
+        padding=(10, 5),
+        font=TYPOGRAPHY["heading"],
     )
-    style.configure("Toolbar.TButton", padding=(8, 3))
+    style.configure("Toolbar.TButton", padding=(10, 5))
+    style.configure("Compact.TButton", padding=(8, 4))
+    style.configure(
+        "Primary.TButton",
+        background=PALETTE["accent"],
+        foreground=PALETTE["app_background"],
+        bordercolor=PALETTE["accent"],
+        padding=(12, 6),
+    )
+    style.map(
+        "Primary.TButton",
+        background=[
+            ("active", PALETTE["focus"]),
+            ("pressed", PALETTE["text"]),
+            ("disabled", PALETTE["surface_muted"]),
+        ],
+        foreground=[
+            ("active", PALETTE["app_background"]),
+            ("pressed", PALETTE["app_background"]),
+            ("disabled", PALETTE["text_subtle"]),
+        ],
+        bordercolor=[("focus", PALETTE["focus"])],
+    )
+
+    # A two-option language selector is presented as linked toggle buttons,
+    # rather than a dropdown that hides the available choices.
+    style.configure(
+        "Language.TButton",
+        background=PALETTE["surface_muted"],
+        foreground=PALETTE["text_muted"],
+        bordercolor=PALETTE["border"],
+        padding=(9, 4),
+    )
+    style.configure(
+        "LanguageActive.TButton",
+        background=PALETTE["tab_green"],
+        foreground=PALETTE["app_background"],
+        bordercolor=PALETTE["tab_green"],
+        padding=(9, 4),
+    )
+    style.map(
+        "LanguageActive.TButton",
+        background=[
+            ("active", PALETTE["tab_green_active"]),
+            ("pressed", PALETTE["tab_green_active"]),
+        ],
+        foreground=[
+            ("active", PALETTE["app_background"]),
+            ("pressed", PALETTE["app_background"]),
+        ],
+        bordercolor=[("focus", PALETTE["focus"])],
+    )
+
     style.configure(
         "Language.TCombobox",
         fieldbackground=PALETTE["surface_muted"],
         background=PALETTE["surface_muted"],
         foreground=PALETTE["text"],
         bordercolor=PALETTE["border"],
-        padding=(5, 2),
+        padding=(7, 4),
     )
     style.map(
         "Language.TCombobox",
         fieldbackground=[("readonly", PALETTE["surface_muted"])],
         foreground=[("readonly", PALETTE["text"])],
+        bordercolor=[("focus", PALETTE["focus"])],
     )
-    style.configure("Chip.TButton", padding=(8, 2))
+
+    style.configure("Chip.TButton", padding=(9, 4))
     style.configure(
         "ChipActive.TButton",
-        padding=(8, 2),
+        padding=(9, 4),
         foreground=PALETTE["app_background"],
         background=PALETTE["accent"],
+        bordercolor=PALETTE["accent"],
     )
     style.map(
         "ChipActive.TButton",
-        background=[("active", PALETTE["accent"]), ("pressed", PALETTE["text"])],
+        background=[
+            ("active", PALETTE["focus"]),
+            ("pressed", PALETTE["text"]),
+        ],
         foreground=[("active", PALETTE["app_background"])],
+        bordercolor=[("focus", PALETTE["focus"])],
     )
-    style.configure("App.TNotebook", background=PALETTE["tab_background"], borderwidth=0)
-    style.map("App.TNotebook", background=[("selected", PALETTE["tab_background"])])
+
+    style.configure(
+        "WarningBanner.TFrame",
+        background=PALETTE["surface_muted"],
+        borderwidth=1,
+        relief="solid",
+    )
+    style.configure(
+        "WarningBanner.TLabel",
+        background=PALETTE["surface_muted"],
+        foreground=PALETTE["warning"],
+        font=TYPOGRAPHY["body"],
+    )
+    style.configure(
+        "Feedback.TLabel",
+        background=PALETTE["app_background"],
+        foreground=PALETTE["text_muted"],
+        font=TYPOGRAPHY["caption"],
+    )
+
+    style.configure(
+        "App.TNotebook",
+        background=PALETTE["tab_background"],
+        borderwidth=0,
+    )
+    style.map(
+        "App.TNotebook",
+        background=[("selected", PALETTE["tab_background"])],
+    )
     style.configure(
         "App.TNotebook.Tab",
-        padding=(14, 7),
+        padding=(16, 8),
         background=PALETTE["tab_background"],
         foreground=PALETTE["tab_green"],
-        font=("TkDefaultFont", 10, "bold"),
+        font=TYPOGRAPHY["heading"],
     )
     style.map(
         "App.TNotebook.Tab",
-        foreground=[("selected", PALETTE["tab_green_active"]), ("active", PALETTE["tab_green_active"])],
-        background=[("selected", PALETTE["tab_background"]), ("active", PALETTE["tab_background"])],
+        foreground=[
+            ("selected", PALETTE["tab_green_active"]),
+            ("active", PALETTE["tab_green_active"]),
+        ],
+        background=[
+            ("selected", PALETTE["tab_background"]),
+            ("active", PALETTE["tab_background"]),
+        ],
+        focuscolor=[("focus", PALETTE["focus"])],
     )
+
     style.configure(
         "Table.Treeview",
         background=PALETTE["surface"],
         fieldbackground=PALETTE["surface"],
         foreground=PALETTE["text"],
         bordercolor=PALETTE["border"],
-        rowheight=28,
+        rowheight=30,
+        font=TYPOGRAPHY["body"],
     )
     style.map(
         "Table.Treeview",
         background=[("selected", PALETTE["accent"])],
         foreground=[("selected", PALETTE["app_background"])],
+        bordercolor=[("focus", PALETTE["focus"])],
     )
     style.configure(
         "Table.Treeview.Heading",
         background=PALETTE["surface_muted"],
         foreground=PALETTE["text_muted"],
-        font=("TkDefaultFont", 9, "bold"),
+        font=TYPOGRAPHY["heading"],
         relief="flat",
+        padding=(6, 5),
     )
-    style.configure("Inspector.TNotebook", background=PALETTE["tab_background"], borderwidth=0)
-    style.map("Inspector.TNotebook", background=[("selected", PALETTE["tab_background"])])
+
+    style.configure(
+        "Inspector.TNotebook",
+        background=PALETTE["tab_background"],
+        borderwidth=0,
+    )
+    style.map(
+        "Inspector.TNotebook",
+        background=[("selected", PALETTE["tab_background"])],
+    )
     style.configure(
         "Inspector.TNotebook.Tab",
-        padding=(9, 4),
+        padding=(10, 5),
         background=PALETTE["tab_background"],
         foreground=PALETTE["tab_green"],
-        font=("TkDefaultFont", 9, "bold"),
+        font=TYPOGRAPHY["heading"],
     )
     style.map(
         "Inspector.TNotebook.Tab",
-        foreground=[("selected", PALETTE["tab_green_active"]), ("active", PALETTE["tab_green_active"])],
-        background=[("selected", PALETTE["tab_background"]), ("active", PALETTE["tab_background"])],
+        foreground=[
+            ("selected", PALETTE["tab_green_active"]),
+            ("active", PALETTE["tab_green_active"]),
+        ],
+        background=[
+            ("selected", PALETTE["tab_background"]),
+            ("active", PALETTE["tab_background"]),
+        ],
+        focuscolor=[("focus", PALETTE["focus"])],
     )
 
 
@@ -211,18 +380,24 @@ class InspectorTabs:
                 wrap="none",
                 state="disabled",
                 borderwidth=0,
-                highlightthickness=0,
+                highlightthickness=1,
+                highlightbackground=PALETTE["border"],
+                highlightcolor=PALETTE["focus"],
                 background=PALETTE["surface_muted"],
                 foreground=PALETTE["text"],
                 insertbackground=PALETTE["text"],
                 selectbackground=PALETTE["accent"],
                 selectforeground=PALETTE["app_background"],
+                font=TYPOGRAPHY["mono"],
             )
             yscroll = ttk.Scrollbar(frame, orient="vertical", command=text.yview)
             xscroll = ttk.Scrollbar(frame, orient="horizontal", command=text.xview)
             text.configure(yscrollcommand=yscroll.set, xscrollcommand=xscroll.set)
             text.grid(row=0, column=0, sticky="nsew")
-            text.bind("<Control-c>", lambda _event, text=text: self.copy_selection(text))
+            text.bind(
+                "<Control-c>",
+                lambda _event, text=text: self.copy_selection(text),
+            )
             yscroll.grid(row=0, column=1, sticky="ns")
             xscroll.grid(row=1, column=0, sticky="ew")
             self.notebook.add(frame, text=label)
@@ -261,7 +436,13 @@ class InspectorTabs:
         if frame is not None:
             self.notebook.tab(frame, text=label)
 
-    def set_copy_messages(self, *, empty: str, success: str, selection_success: str) -> None:
+    def set_copy_messages(
+        self,
+        *,
+        empty: str,
+        success: str,
+        selection_success: str,
+    ) -> None:
         """Refresh translatable clipboard feedback without rebuilding the tabs."""
         self.copy_empty_message = empty
         self.copy_success_message = success
