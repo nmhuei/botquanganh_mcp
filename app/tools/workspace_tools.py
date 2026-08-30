@@ -265,17 +265,19 @@ async def host_workspace_list(
             if recent_note:
                 item["recent_note"] = recent_note
             workspaces.append(item)
-            if len(workspaces) >= limit:
-                break
+
+        total_matched = len(workspaces)
+        limited_workspaces = workspaces[:limit]
 
         return tool_success(
-            f"Found {len(workspaces)} workspace(s).",
-            total_count=len(workspaces),
-            workspaces=workspaces,
+            f"Found {total_matched} workspace(s).",
+            total_count=total_matched,
+            workspaces=limited_workspaces,
             suggestion="Call host_workspace_bind(resume_id='<chat_id>') to resume any workspace.",
         )
     except Exception as exc:
         return to_tool_error(exc)
+
 
 
 

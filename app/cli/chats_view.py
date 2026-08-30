@@ -646,8 +646,9 @@ def _token_workspace(ctx: CLIContext, raw_id: str | None, rotate: bool = False) 
         return 0
 
     has_token = bool(meta.get("token_hash"))
-    payload = {"chat_id": chat_id, "has_token": has_token}
+    payload = {"chat_id": chat_id, "locked": has_token}
     if ctx.json_output:
+
         emit_json(payload)
     elif ctx.quiet:
         emit_quiet("locked" if has_token else "unlocked")
