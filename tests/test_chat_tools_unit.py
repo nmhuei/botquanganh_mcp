@@ -514,3 +514,28 @@ def test_host_workspace_bind_auto_hydrates_and_provides_resume_prompt(tmp_path, 
     notes = res2["auto_hydrated_context"]["recent_notes"]
     assert any("Step 1 completed" in n for n in notes)
 
+
+# ---------------------------------------------------------------------------
+# Task 3: Workspace Discovery Tool (host_workspace_list)
+# ---------------------------------------------------------------------------
+
+
+def test_host_workspace_list_returns_recent_workspaces(tmp_path, monkeypatch):
+    _real_workspace_env(tmp_path, monkeypatch)
+
+    # Create two workspaces
+    res1 = asyncio.run(host_workspace_bind(label="crawler-job", new=True))
+    res2 = asyncio.run(host_workspace_bind(label="analysis-job", new=True))
+
+    from app.tools.workspace_tools import host_workspace_list
+
+    list_res = asyncio.run(host_workspace_list(limit=5))
+    assert list_res["ok"] is True
+    assert len(list_res["workspaces"]) >= 2
+    chat_ids = [w["chat_id"] for w in list_res["workspaces"]]
+    assert res1["chat_id"] in chat_ids
+    assert res2["chat_id"] in chat_ids
+    assert "last_active_human" in list_res["workspaces"][0]
+    assert "suggestion" in list_res
+
+

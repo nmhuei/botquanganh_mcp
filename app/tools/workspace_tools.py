@@ -173,6 +173,112 @@ async def host_workspace_bind(
         return to_tool_error(exc)
 
 
+@mcp.tool(
+    name="host_workspace_list",
+    description=(
+        "List recent host workspaces with their chat_id, label, last active time, "
+        "and summary. Use this tool when the user wants to resume an earlier project, "
+        "continue previous work, or find existing workspaces."
+    ),
+)
+async def host_workspace_list(
+    limit: int = 5,
+    include_archived: bool = True,
+    query: str | None = None,
+) -> dict[str, Any]:
+    try:
+        if not _workspaces_enabled():
+            return tool_unavailable(
+                "host_workspace_list", reason="Chat workspaces are disabled."
+            )
+        root = _chat_root()
+        if not root.is_dir():
+            return tool_success(
+                "No workspaces found.",
+                total_count=0,
+                workspaces=[],
+                suggestion="Call host_workspace_bind() to create your first workspace.",
+            )
+
+        candidates: list[tuple[float, Path, bool]] = []
+        import json
+        from datetime import datetime, timezone
+
+        for entry in root.iterdir():
+            if entry.is_dir() and not entry.name.startswith("."):
+                mtime = entry.stat().st_mtime
+                candidates.append((mtime, entry, False))
+        archive_root = root / ".archive"
+        if include_archived and archive_root.is_dir():
+            for entry in archive_root.iterdir():
+                if entry.is_dir() and not entry.name.startswith("."):
+                    mtime = entry.stat().st_mtime
+                    candidates.append((mtime, entry, True))
+
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        now_ts = datetime.now(timezone.utc).timestamp()
+
+        workspaces: list[dict[str, Any]] = []
+        for mtime, entry, archived in candidates:
+            chat_id = entry.name
+            if query and query.lower() not in chat_id.lower():
+                continue
+
+            meta_file = entry / "meta.json"
+            created_at = None
+            if meta_file.is_file():
+                try:
+                    meta_data = json.loads(meta_file.read_text(encoding="utf-8"))
+                    created_at = meta_data.get("created_at")
+                except Exception:
+                    pass
+
+            diff_sec = max(0, int(now_ts - mtime))
+            if diff_sec < 60:
+                human_time = "just now"
+            elif diff_sec < 3600:
+                human_time = f"{diff_sec // 60}m ago"
+            elif diff_sec < 86400:
+                human_time = f"{diff_sec // 3600}h ago"
+            else:
+                human_time = f"{diff_sec // 86400}d ago"
+
+            notes_file = entry / "notes" / "log.txt"
+            notes_count = 0
+            recent_note = None
+            if notes_file.is_file():
+                try:
+                    lines = [ln.strip() for ln in notes_file.read_text(encoding="utf-8", errors="replace").splitlines() if ln.strip()]
+                    notes_count = len(lines)
+                    if lines:
+                        recent_note = lines[-1]
+                except Exception:
+                    pass
+
+            item = {
+                "chat_id": chat_id,
+                "state": "archived" if archived else "active",
+                "last_active_human": human_time,
+                "created_at": created_at,
+                "notes_count": notes_count,
+            }
+            if recent_note:
+                item["recent_note"] = recent_note
+            workspaces.append(item)
+            if len(workspaces) >= limit:
+                break
+
+        return tool_success(
+            f"Found {len(workspaces)} workspace(s).",
+            total_count=len(workspaces),
+            workspaces=workspaces,
+            suggestion="Call host_workspace_bind(resume_id='<chat_id>') to resume any workspace.",
+        )
+    except Exception as exc:
+        return to_tool_error(exc)
+
+
+
 
 @mcp.tool(
     name="host_save_note",

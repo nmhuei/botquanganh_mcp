@@ -63,7 +63,8 @@ def _invalid_chat_id_payload() -> dict[str, Any]:
 
 # Tools exempt from enforce-mode binding: host_workspace_bind IS the way in,
 # so demanding a prior bind from it would deadlock every caller.
-BIND_EXEMPT_TOOLS = frozenset({"host_workspace_bind"})
+BIND_EXEMPT_TOOLS = frozenset({"host_workspace_bind", "host_workspace_list"})
+
 
 
 def _is_enforcing_mode() -> bool:
