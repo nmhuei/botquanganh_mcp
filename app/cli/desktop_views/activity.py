@@ -18,6 +18,17 @@ from pathlib import Path
 import time
 from typing import Any
 
+from app.cli.center.controller import CenterController
+from app.cli.center.events import (
+    OperationObserved,
+    SessionActivityObserved,
+    SessionClosed,
+    SessionDiscovered,
+    SessionRemoved,
+    SessionRevealed,
+    SessionSelected,
+    SessionTrackingChanged,
+)
 from app.cli.desktop_views.i18n import DesktopTranslator, TranslationBindings
 from app.cli.desktop_views.theme import PALETTE, InspectorTabs
 
@@ -330,6 +341,7 @@ class ActivityView:
         on_message: Callable[[str, str], None],
         on_refresh: Callable[[], None],
         translator: DesktopTranslator | None = None,
+        center_controller: CenterController | None = None,
     ) -> None:
         self.root = root
         self.tk = tk
@@ -339,13 +351,9 @@ class ActivityView:
         self.on_refresh = on_refresh
         self.translator = translator or DesktopTranslator()
         self.bindings = TranslationBindings(self.translator)
-        self.sessions: list[WorkspaceSession] = []
-        self.records: list[dict[str, Any]] = []
-        self.running_session_ids: set[str] = set()
-        self.visible_session_ids: set[str] = set()
-        self.closed_session_ids: set[str] = set()
-        self.disabled_session_ids: set[str] = set()
-        self.session_selected_id: str | None = None
+        self.center = center_controller or CenterController()
+        self._records: list[dict[str, Any]] = []
+        self._running_session_ids: set[str] = set()
         self.seen_event_ids: set[str] = set()
         self.activity_snapshot_loaded = False
         self.session_tree: Any = None
@@ -389,6 +397,151 @@ class ActivityView:
         if parent is not None:
             self._build(parent)
 
+    @property
+    def sessions(self) -> list[WorkspaceSession]:
+        """Compatibility projection backed by canonical CenterState sessions."""
+        result: list[WorkspaceSession] = []
+        for chat_id in self.center.state.sessions.order:
+            session = self.center.state.sessions.by_id.get(chat_id)
+            if session is None:
+                continue
+            path = (
+                Path(session.path)
+                if session.path
+                else self.workspace_root() / session.chat_id
+            )
+            result.append(
+                WorkspaceSession(
+                    chat_id=session.chat_id,
+                    path=path,
+                    last_changed=session.last_activity_at,
+                    created_at=session.created_at,
+                )
+            )
+        return result
+
+    @sessions.setter
+    def sessions(self, values: Sequence[WorkspaceSession]) -> None:
+        incoming = {session.chat_id for session in values}
+        existing = set(self.center.state.sessions.by_id)
+        for session in values:
+            self.center.dispatch(
+                SessionDiscovered(
+                    chat_id=session.chat_id,
+                    created_at=session.created_at,
+                    last_activity_at=session.last_changed,
+                    path=str(session.path),
+                ),
+                notify=False,
+            )
+        for chat_id in existing - incoming:
+            self.center.dispatch(SessionRemoved(chat_id=chat_id), notify=False)
+
+    @property
+    def records(self) -> list[dict[str, Any]]:
+        """Presentation cache; canonical lifecycle state is mirrored into CenterState."""
+        return self._records
+
+    @records.setter
+    def records(self, values: Sequence[dict[str, Any]]) -> None:
+        self._records = list(values)
+
+    @property
+    def running_session_ids(self) -> set[str]:
+        canonical = {
+            chat_id
+            for chat_id, session in self.center.state.sessions.by_id.items()
+            if session.running_count > 0
+        }
+        return canonical | set(self._running_session_ids)
+
+    @running_session_ids.setter
+    def running_session_ids(self, values: set[str]) -> None:
+        self._running_session_ids = set(values)
+
+    @property
+    def visible_session_ids(self) -> set[str]:
+        return self.center.state.sessions.visible_ids
+
+    @visible_session_ids.setter
+    def visible_session_ids(self, values: set[str]) -> None:
+        self.center.state.sessions.visible_ids = set(values)
+
+    @property
+    def closed_session_ids(self) -> set[str]:
+        return self.center.state.sessions.closed_ids
+
+    @closed_session_ids.setter
+    def closed_session_ids(self, values: set[str]) -> None:
+        self.center.state.sessions.closed_ids = set(values)
+
+    @property
+    def disabled_session_ids(self) -> set[str]:
+        return self.center.state.sessions.disabled_ids
+
+    @disabled_session_ids.setter
+    def disabled_session_ids(self, values: set[str]) -> None:
+        self.center.state.sessions.disabled_ids = set(values)
+
+    @property
+    def session_selected_id(self) -> str | None:
+        return self.center.state.sessions.selected_id
+
+    @session_selected_id.setter
+    def session_selected_id(self, value: str | None) -> None:
+        self.center.state.sessions.selected_id = value
+
+    @staticmethod
+    def _record_timestamp(record: dict[str, Any]) -> float:
+        raw = record.get("timestamp")
+        if isinstance(raw, (int, float)):
+            return float(raw)
+        text = str(raw or "").strip()
+        if text:
+            try:
+                return datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
+            except ValueError:
+                pass
+        return 0.0
+
+    def _sync_operations_to_center(self, records: Sequence[dict[str, Any]]) -> None:
+        """Mirror projected lifecycle rows into the canonical operation store."""
+        for record in records:
+            operation_id = str(
+                record.get("operation_id")
+                or record.get("event_id")
+                or ""
+            )
+            if not operation_id:
+                continue
+            status = command_activity_status(record)
+            phase = str(record.get("phase") or "")
+            if not phase:
+                phase = "started" if status == "running" else "completed"
+            attributes = dict(record)
+            self.center.dispatch(
+                OperationObserved(
+                    event_id=str(record.get("event_id") or ""),
+                    operation_id=operation_id,
+                    chat_id=str(record.get("chat_id") or ""),
+                    phase=phase,
+                    status=status,
+                    timestamp=self._record_timestamp(record),
+                    command=str(record.get("command") or ""),
+                    cwd=str(record.get("cwd") or ""),
+                    exit_code=record.get("exit_code"),
+                    duration_ms=record.get("duration_ms"),
+                    stdout=str(record.get("stdout") or ""),
+                    stderr=str(record.get("stderr") or ""),
+                    error=str(record.get("error") or ""),
+                    source=str(record.get("source") or ""),
+                    attributes=attributes,
+                    reveal_session=False,
+                    count_unread=False,
+                ),
+                notify=False,
+            )
+
     def refresh(
         self,
         sessions: Sequence[WorkspaceSession],
@@ -397,6 +550,7 @@ class ActivityView:
         """Store both snapshots atomically and return unseen activity chats."""
         self.sessions = list(sessions)
         self.records = project_command_activity_records(records)
+        self._sync_operations_to_center(self.records)
         self.running_session_ids = {
             str(record.get("chat_id"))
             for record in self.records
@@ -455,10 +609,12 @@ class ActivityView:
             current_filter = self.workplace_filter_var.get().strip().lower()
             if current_filter and current_filter not in chat_id.lower():
                 self.workplace_filter_var.set("")
-        self.closed_session_ids.discard(chat_id)
-        self.disabled_session_ids.discard(chat_id)
-        self.visible_session_ids.add(chat_id)
-        self.session_selected_id = chat_id
+        self.center.dispatch(SessionRevealed(chat_id=chat_id), notify=False)
+        self.center.dispatch(
+            SessionTrackingChanged(chat_id=chat_id, enabled=True),
+            notify=False,
+        )
+        self.center.dispatch(SessionSelected(chat_id=chat_id), notify=False)
         self._render_sessions()
         self._render_records()
         return True
@@ -474,14 +630,20 @@ class ActivityView:
         if not chat_id:
             return False
         current_selection = self.session_selected_id
-        self.closed_session_ids.discard(chat_id)
-        self.disabled_session_ids.discard(chat_id)
-        self.visible_session_ids.add(chat_id)
-
+        self.center.dispatch(
+            SessionActivityObserved(
+                chat_id=chat_id,
+                operation_id="",
+                observed_at=time.time(),
+            ),
+            notify=False,
+        )
+        self.center.dispatch(SessionRevealed(chat_id=chat_id), notify=False)
+        self.center.dispatch(
+            SessionTrackingChanged(chat_id=chat_id, enabled=True),
+            notify=False,
+        )
         should_select = current_selection is None
-        if should_select:
-            self.session_selected_id = chat_id
-
         self._render_sessions()
         self._render_records()
         return should_select
