@@ -532,6 +532,137 @@ def _workspace_stats(ctx: CLIContext) -> int:
     return 0
 
 
+def _resolve_target_chat_id(root: Path | None, raw_id: str | None) -> str:
+    if root is None or not root.is_dir():
+        raise NotFoundCLIError("Chat workspaces root directory does not exist.", 1)
+    if raw_id in {None, "latest", "@latest"}:
+        pointer_file = root / ".last_session"
+        if pointer_file.is_file():
+            try:
+                data = json.loads(pointer_file.read_text(encoding="utf-8"))
+                candidate = data.get("chat_id")
+                if isinstance(candidate, str) and (
+                    (root / candidate).is_dir() or (root / ARCHIVE_DIR_NAME / candidate).is_dir()
+                ):
+                    return candidate
+            except Exception:
+                pass
+        entries = _inventory(root)
+        if entries:
+            return entries[0]["chat_id"]
+        raise NotFoundCLIError("No active or archived chat workspaces found.", 1)
+    return _validate_chat_id(raw_id)
+
+
+def _resume_workspace(ctx: CLIContext, raw_id: str | None) -> int:
+    root = _workspaces_root()
+    chat_id = _resolve_target_chat_id(root, raw_id)
+    assert root is not None
+    active_dir = root / chat_id
+    archived_dir = root / ARCHIVE_DIR_NAME / chat_id
+    target_dir = active_dir if active_dir.is_dir() else archived_dir
+    if not target_dir.is_dir():
+        raise NotFoundCLIError(f"Workspace '{chat_id}' not found under {root}.", 1)
+
+    prompt = f"Tiếp tục làm việc trong workspace {chat_id}"
+    payload = {
+        "chat_id": chat_id,
+        "resume_prompt": prompt,
+        "status": "ready",
+        "path": str(target_dir),
+    }
+    if ctx.json_output:
+        emit_json(payload)
+    elif ctx.quiet:
+        emit_quiet(prompt)
+    else:
+        renderer = renderer_for(ctx)
+        renderer.header("Chat workspace resume", chat_id)
+        renderer.summary("Copy this prompt into ChatGPT to continue working in this workspace:")
+        print(f"\n{prompt}\n")
+    return 0
+
+
+def _unlock_workspace(ctx: CLIContext, raw_id: str | None) -> int:
+    root = _workspaces_root()
+    chat_id = _resolve_target_chat_id(root, raw_id)
+    assert root is not None
+    active_dir = root / chat_id
+    archived_dir = root / ARCHIVE_DIR_NAME / chat_id
+    target_dir = active_dir if active_dir.is_dir() else archived_dir
+    if not target_dir.is_dir():
+        raise NotFoundCLIError(f"Workspace '{chat_id}' not found under {root}.", 1)
+
+    meta_file = target_dir / META_NAME
+    if not meta_file.is_file():
+        raise NotFoundCLIError(f"Metadata missing for workspace '{chat_id}'.", 1)
+
+    meta = json.loads(meta_file.read_text(encoding="utf-8"))
+    meta.pop("token_hash", None)
+    meta_file.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+
+    payload = {"chat_id": chat_id, "unlocked": True}
+    if ctx.json_output:
+        emit_json(payload)
+    elif ctx.quiet:
+        emit_quiet(chat_id)
+    else:
+        renderer = renderer_for(ctx)
+        renderer.header("Chat workspace unlock", chat_id)
+        renderer.summary(f"Workspace '{chat_id}' session token requirement removed.")
+    return 0
+
+
+def _token_workspace(ctx: CLIContext, raw_id: str | None, rotate: bool = False) -> int:
+    root = _workspaces_root()
+    chat_id = _resolve_target_chat_id(root, raw_id)
+    assert root is not None
+    active_dir = root / chat_id
+    archived_dir = root / ARCHIVE_DIR_NAME / chat_id
+    target_dir = active_dir if active_dir.is_dir() else archived_dir
+    if not target_dir.is_dir():
+        raise NotFoundCLIError(f"Workspace '{chat_id}' not found under {root}.", 1)
+
+    meta_file = target_dir / META_NAME
+    if not meta_file.is_file():
+        raise NotFoundCLIError(f"Metadata missing for workspace '{chat_id}'.", 1)
+
+    meta = json.loads(meta_file.read_text(encoding="utf-8"))
+    if rotate:
+        from app.chat_workspace import generate_session_token
+
+        raw_token, token_hash = generate_session_token()
+        meta["token_hash"] = token_hash
+        meta_file.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+        payload = {"chat_id": chat_id, "rotated": True, "token": raw_token}
+        if ctx.json_output:
+            emit_json(payload)
+        elif ctx.quiet:
+            emit_quiet(raw_token)
+        else:
+            renderer = renderer_for(ctx)
+            renderer.header("Chat workspace token rotated", chat_id)
+            renderer.facts([("Chat ID", chat_id), ("New Token", raw_token)])
+        return 0
+
+    has_token = bool(meta.get("token_hash"))
+    payload = {"chat_id": chat_id, "has_token": has_token}
+    if ctx.json_output:
+        emit_json(payload)
+    elif ctx.quiet:
+        emit_quiet("locked" if has_token else "unlocked")
+    else:
+        renderer = renderer_for(ctx)
+        renderer.header("Chat workspace token status", chat_id)
+        renderer.facts(
+            [
+                ("Chat ID", chat_id),
+                ("Status", "Token Protected" if has_token else "Public/Unlocked"),
+            ]
+        )
+    return 0
+
+
 def handle_chats(ctx: CLIContext, args) -> int:
     action = getattr(args, "chats_command", None) or "list"
     if action == "show":
@@ -558,4 +689,11 @@ def handle_chats(ctx: CLIContext, args) -> int:
         return _prune_workspaces(ctx, apply=args.apply)
     if action == "stats":
         return _workspace_stats(ctx)
+    if action == "resume":
+        return _resume_workspace(ctx, getattr(args, "chat_id", None))
+    if action == "unlock":
+        return _unlock_workspace(ctx, getattr(args, "chat_id", None))
+    if action == "token":
+        return _token_workspace(ctx, getattr(args, "chat_id", None), rotate=getattr(args, "rotate", False))
     return _list_workspaces(ctx)
+

@@ -219,7 +219,7 @@ Output modes:
     )
     commands.add_parser("status", help="Show runtime status")
     commands.add_parser("url", help="Print the current connector URL")
-    ui = commands.add_parser("ui", help="Open the native Python desktop control center")
+    ui = commands.add_parser("ui", help="Open the Qt Quick/QML desktop control center")
     ui.add_argument(
         "--foreground",
         action="store_true",
@@ -234,6 +234,11 @@ Output modes:
         "--inline",
         action="store_true",
         help="Run attached to this terminal until the UI window is closed",
+    )
+    ui.add_argument(
+        "--classic",
+        action="store_true",
+        help="Use the legacy Tkinter frontend instead of the Qt Quick/QML UI",
     )
     commands.add_parser("tui", help="Open the terminal control center")
     help_parser = commands.add_parser("help", help="Show help information")
@@ -573,6 +578,14 @@ Output modes:
     chats_prune = chats_commands.add_parser("prune", help="Plan or apply lifecycle sweep actions")
     chats_prune.add_argument("--apply", action="store_true", help="Apply planned archive/delete actions")
     chats_commands.add_parser("stats", help="Show workspace counts and storage usage")
+    chats_resume = chats_commands.add_parser("resume", help="Generate ChatGPT resume prompt for a workspace")
+    chats_resume.add_argument("chat_id", nargs="?", default="latest", help="Chat identifier to resume (default: latest)")
+    chats_unlock = chats_commands.add_parser("unlock", help="Remove session token lock to make workspace public to trust_gateway")
+    chats_unlock.add_argument("chat_id", nargs="?", default="latest", help="Chat identifier to unlock (default: latest)")
+    chats_token = chats_commands.add_parser("token", help="Display or rotate token for a workspace")
+    chats_token.add_argument("chat_id", nargs="?", default="latest", help="Chat identifier (default: latest)")
+    chats_token.add_argument("--rotate", action="store_true", help="Rotate and generate a new token")
+
 
     config = commands.add_parser("config", help="Inspect and validate .env")
     config_commands = config.add_subparsers(dest="config_command", required=True)
