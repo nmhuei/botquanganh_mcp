@@ -626,18 +626,20 @@ def host_check_command(
 @mcp.tool(
     name="host_run_command",
     description=(
-        "Execute a shell command directly on the user's host machine. Relative cwd "
-        "values are resolved from the default directory (HOST_DEFAULT_DIR, e.g. ~/Downloads). "
+        "Execute a shell command directly on the user's host machine via bash. "
+        "Default timeout is 300 seconds (5 minutes). Pass timeout_seconds=0 to run without any timeout until completion or exit. "
+        "Relative cwd values are resolved from the default directory (HOST_DEFAULT_DIR, e.g. ~/Downloads). "
         "The default working directory is HOST_DEFAULT_DIR. Destructive commands are blocked."
     ),
 )
 def host_run_command(
     command: str,
-    timeout_seconds: int = 30,
+    timeout_seconds: Optional[int] = None,
     cwd: Optional[str] = None,
     intent: Optional[str] = None,
     chat_id: Optional[str] = None,
 ) -> dict[str, Any]:
+
     validated, rejection = _guard_chat_id("host_run_command", chat_id)
     if rejection is not None:
         return rejection

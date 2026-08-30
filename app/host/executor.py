@@ -167,16 +167,29 @@ def _execute_host_command_impl(
     command: str,
     *,
     cwd: Optional[str] = None,
-    timeout_seconds: int = 30,
+    timeout_seconds: Optional[int] = None,
     on_started: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """Execute a command with bounded output, sanitized environment, and cleanup."""
-    if not isinstance(timeout_seconds, int):
+    max_allowed = getattr(app.config, "MAX_TIMEOUT_SECONDS", 36000)
+    default_timeout = getattr(app.config, "DEFAULT_TIMEOUT_SECONDS", 300)
+
+    if timeout_seconds is None:
+        wait_timeout: int | None = min(default_timeout, max_allowed) if max_allowed > 0 else default_timeout
+        if wait_timeout is not None and wait_timeout <= 0:
+            wait_timeout = None
+    elif not isinstance(timeout_seconds, int):
         raise TypeError("timeout_seconds must be an integer")
-    if timeout_seconds < 1 or timeout_seconds > app.config.MAX_TIMEOUT_SECONDS:
-        raise ValueError(
-            f"timeout_seconds must be between 1 and {app.config.MAX_TIMEOUT_SECONDS}"
-        )
+    elif timeout_seconds < 0:
+        raise ValueError("timeout_seconds cannot be negative (use 0 to disable timeout)")
+    elif timeout_seconds == 0:
+        wait_timeout = None
+    else:
+        if max_allowed > 0 and timeout_seconds > max_allowed:
+            raise ValueError(
+                f"timeout_seconds must be between 0 and {max_allowed} (0 to disable timeout)"
+            )
+        wait_timeout = timeout_seconds
 
     policy = require_host_command_allowed(command)
     resolved_cwd = resolve_host_path(
@@ -219,7 +232,7 @@ def _execute_host_command_impl(
 
     timed_out = False
     try:
-        exit_code = process.wait(timeout=timeout_seconds)
+        exit_code = process.wait(timeout=wait_timeout)
     except subprocess.TimeoutExpired:
         timed_out = True
         exit_code = _terminate_process_group(process)
@@ -270,7 +283,7 @@ def _execute_host_command_impl(
             "ok": False,
             "error": {
                 "code": "TIMEOUT",
-                "message": f"Host command timed out after {timeout_seconds} seconds.",
+                "message": f"Host command timed out after {wait_timeout} seconds.",
             },
             **base_result,
         }
@@ -281,8 +294,9 @@ def execute_host_command(
     command: str,
     *,
     cwd: Optional[str] = None,
-    timeout_seconds: int = 30,
+    timeout_seconds: Optional[int] = None,
     activity_source: str | None = None,
+
     activity_chat_id: str | None = None,
     activity_operation_id: str | None = None,
 ) -> dict[str, Any]:
