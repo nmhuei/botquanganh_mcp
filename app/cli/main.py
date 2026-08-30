@@ -428,7 +428,7 @@ def _dispatch(ctx: CLIContext, args) -> int:
             # `bqa ui`, `bqa ui --detach`, and the requested compatibility form
             # `bqa ui --foreground` all return to the terminal immediately.
             if not graphical_session_available():
-                raise CLIError("Không có graphical display để mở UCS-SecretAgent.")
+                raise CLIError("Không có graphical display để mở BQA Center.")
             try:
                 pid = launch_desktop_ui_detached(ctx)
             except DesktopUIAlreadyRunning as running:
@@ -440,10 +440,10 @@ def _dispatch(ctx: CLIContext, args) -> int:
                     emit_quiet(running.pid)
                 else:
                     renderer = renderer_for(ctx)
-                    renderer.header("UCS-SecretAgent", "Đã có cửa sổ nền đang chạy")
+                    renderer.header("BQA Center", "Đã có cửa sổ nền đang chạy")
                     renderer.blank()
                     renderer.status(
-                        "success", f"UCS-SecretAgent đã chạy nền (PID {running.pid})"
+                        "success", f"BQA Center đã chạy nền (PID {running.pid})"
                     )
                     renderer.hint("bqa ui --inline", "Chạy UI gắn với terminal bằng")
                 return 0
@@ -453,7 +453,7 @@ def _dispatch(ctx: CLIContext, args) -> int:
                 emit_quiet(pid)
             else:
                 renderer = renderer_for(ctx)
-                renderer.header("UCS-SecretAgent", "Detached desktop window")
+                renderer.header("BQA Center", "Detached desktop window")
                 renderer.blank()
                 renderer.status("success", f"Đã mở nền (PID {pid})")
                 renderer.blank()

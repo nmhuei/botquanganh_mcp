@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Safe visual verification runner for the UCS-SecretAgent desktop UI.
+"""Safe visual verification runner for the BQA Center desktop UI.
 
 The runner intentionally injects no-op lifecycle callbacks. --live-readonly may
 read the real runtime/activity/log stream, but Start/Restart/Apply can never
@@ -303,7 +303,7 @@ def main() -> int:
         root = tk.Tk()
         if args.tk_scaling is not None:
             root.tk.call("tk", "scaling", max(0.5, args.tk_scaling))
-        root.title("UCS-SecretAgent — SAFE UI VERIFICATION")
+        root.title("BQA Center — SAFE UI VERIFICATION")
         dashboard = _DesktopDashboard(
             root,
             tk,

@@ -158,7 +158,7 @@ No progress for instant display/streaming operations:
 
 Interactive interfaces (own full screens; no uv progress region):
 
-- `bqa ui` — UCS-SecretAgent desktop control center (native Tkinter window); detaches from the
+- `bqa ui` — BQA Center desktop control center (native Tkinter window); detaches from the
   terminal by default via the background launcher (PID in `logs/desktop-ui.pid`,
   follow with `bqa logs launcher -n 100`); `--foreground` and `--detach` also
   detach for compatibility; use `--inline` to keep it attached to the terminal
@@ -200,9 +200,9 @@ splitter between `INPUT` and `OUTPUT`, to size the boxes directly. This only
 changes the local desktop layout; it never closes a workplace or drops cached
 command data.
 
-### UCS-SecretAgent desktop layout
+### BQA Center desktop layout
 
-`bqa ui` opens the native Tkinter **UCS-SecretAgent** console. The global
+`bqa ui` opens the native Tkinter **BQA Center** console. The global
 header is intentionally small: UCS identity, the runtime-health badge, a visible
 `EN | VI` language switch, and Refresh. Lifecycle controls live in the Runtime
 tab, so Start and **Restart MCP bridge** are not visually confused with global

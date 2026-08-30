@@ -44,4 +44,4 @@ if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database "$APPLICATIONS_DIR" >/dev/null 2>&1 || true
 fi
 
-echo "[+] Installed UCS-SecretAgent desktop launcher: $TARGET"
+echo "[+] Installed BQA Center desktop launcher: $TARGET"

@@ -10,7 +10,7 @@ from app.cli.config_view import DEFAULT_UI_LANGUAGE, normalize_desktop_ui_langua
 
 MESSAGES: dict[str, dict[str, str]] = {
     "en": {
-        "app.identity": "UCS // SECRET AGENT",
+        "app.identity": "UCS // BQA CENTER",
         "app.subtitle": "desktop investigation console",
         "tab.runtime": "Runtime",
         "tab.workspace_logs": "Workspace Logs",
@@ -129,7 +129,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "activity.count": "{count} commands",
         "activity.all_workplaces": "all workplaces",
         "activity.filter_summary": "COMMANDS · {workplace} · {count} commands",
-        "activity.session_notice": "{visible} / {total} workplaces · {closed} tabs closed · {root}",
+        "activity.session_notice": "{visible}/{total} workplaces · {closed} closed",
         "activity.folder_source": "Session folders from HOST_CHAT_ROOT.",
         "activity.search_sessions": "Search sessions",
         "activity.search_commands": "Search commands",
@@ -172,7 +172,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "dialog.choose_workspace": "Choose workspace",
     },
     "vi": {
-        "app.identity": "UCS // SECRET AGENT",
+        "app.identity": "UCS // BQA CENTER",
         "app.subtitle": "bảng điều khiển điều tra desktop",
         "tab.runtime": "Runtime",
         "tab.workspace_logs": "Nhật ký Workspace",
@@ -291,7 +291,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "activity.count": "{count} lệnh",
         "activity.all_workplaces": "tất cả workplace",
         "activity.filter_summary": "LỆNH · {workplace} · {count} lệnh",
-        "activity.session_notice": "{visible} / {total} workplace · {closed} tab đã đóng · {root}",
+        "activity.session_notice": "{visible}/{total} workplace · {closed} đã đóng",
         "activity.folder_source": "Folder session được quét từ HOST_CHAT_ROOT.",
         "activity.search_sessions": "Tìm session",
         "activity.search_commands": "Tìm lệnh",

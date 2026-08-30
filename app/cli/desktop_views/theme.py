@@ -1,4 +1,4 @@
-"""Shared visual language for the native UCS-SecretAgent desktop views."""
+"""Shared visual language for the native BQA Center desktop views."""
 
 from __future__ import annotations
 

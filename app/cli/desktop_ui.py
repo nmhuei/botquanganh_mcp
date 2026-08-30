@@ -1,4 +1,4 @@
-"""Native Tkinter launcher and thin coordinator for UCS-SecretAgent."""
+"""Native Tkinter launcher and thin coordinator for BQA Center."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ WorkspaceLogStreamReader = Callable[[str | None], Any]
 
 BQA_UI_DAEMON_ENV = "BQA_UI_DAEMON"
 DESKTOP_UI_PID_FILENAME = "desktop-ui.pid"
-DESKTOP_APP_NAME = "UCS-SecretAgent"
+DESKTOP_APP_NAME = "BQA Center"
 MIN_COMPLETION_TOAST_SECONDS = 10.0
 COMPLETION_TOAST_LIFETIME_MS = 6000
 

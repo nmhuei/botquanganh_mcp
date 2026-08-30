@@ -805,11 +805,20 @@ class ActivityView:
         self.session_notice_var = self.tk.StringVar(
             value=self.translator.text("activity.scanning")
         )
-        self.ttk.Label(
+        session_notice = self.ttk.Label(
             sessions,
             textvariable=self.session_notice_var,
-            style="FieldName.TLabel",
-        ).grid(row=2, column=0, columnspan=2, sticky="w", pady=(3, 5))
+            style="SurfaceSubtle.TLabel",
+            wraplength=300,
+            justify="left",
+        )
+        session_notice.grid(
+            row=2,
+            column=0,
+            columnspan=2,
+            sticky="ew",
+            pady=(4, 7),
+        )
 
         session_tree = self.ttk.Treeview(
             sessions, columns=("state", "seen"), show="tree headings", height=18, style="Table.Treeview"
@@ -986,8 +995,10 @@ class ActivityView:
 
         vertical_panes.add(inputs, weight=1)
         vertical_panes.add(output, weight=1)
-        split_panes.add(sessions, weight=1)
-        split_panes.add(activity, weight=3)
+        # Keep the workplace rail wide enough for SESSION / STATE / LAST at
+        # normal desktop sizes. Compact mode still collapses it below 1040 px.
+        split_panes.add(sessions, weight=2)
+        split_panes.add(activity, weight=5)
         self.root.bind("/", self.focus_command_filter)
         self.root.bind("<Escape>", lambda _event: self.clear_local_filters())
 

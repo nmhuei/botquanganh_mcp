@@ -42,7 +42,7 @@ def test_graphical_session_detection_is_explicit():
 
 
 def test_desktop_display_name_is_rebranded_without_changing_the_bqa_command():
-    assert DESKTOP_APP_NAME == "UCS-SecretAgent"
+    assert DESKTOP_APP_NAME == "BQA Center"
 
 
 def test_desktop_launcher_installs_ucs_name_and_icon(tmp_path):
@@ -62,7 +62,7 @@ def test_desktop_launcher_installs_ucs_name_and_icon(tmp_path):
     )
 
     desktop_entry = (data_home / "applications" / "ucs-secretagent.desktop").read_text()
-    assert "Name=UCS-SecretAgent" in desktop_entry
+    assert "Name=BQA Center" in desktop_entry
     assert "Icon=ucs-secretagent" in desktop_entry
     assert (data_home / "icons/hicolor/512x512/apps/ucs-secretagent.png").is_file()
     assert completed.returncode == 0
