@@ -3,6 +3,7 @@ import time
 import pytest
 
 from app.cli.context import CLIContext
+from app.cli.center.persistence import CenterWindowStateStore
 from app.cli.desktop_ui import _DesktopDashboard
 from app.cli.ui_preferences import UIPreferencesStore
 
@@ -155,6 +156,7 @@ def test_real_tk_dashboard_exercises_ui_without_real_lifecycle(
             activity_reader=lambda _limit: activity_records,
             workspace_log_stream_reader=stream,
             ui_preferences_store=UIPreferencesStore(tmp_path / "ui.json"),
+            window_state_store=CenterWindowStateStore(tmp_path / "window.json"),
         )
         root.update()
 

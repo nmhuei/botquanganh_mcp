@@ -154,13 +154,18 @@ class ActionRequested(Event):
 @dataclass(frozen=True)
 class ActionStarted(Event):
     action_id: str = ""
+    kind: str = ""
+    group: str = ""
     observed_at: float = 0.0
 
 
 @dataclass(frozen=True)
 class ActionFinished(Event):
     action_id: str = ""
+    kind: str = ""
+    group: str = ""
     ok: bool = True
     observed_at: float = 0.0
+    elapsed_seconds: float = 0.0
     message: str = ""
     error: str = ""

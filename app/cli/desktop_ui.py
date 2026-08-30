@@ -15,8 +15,10 @@ from collections.abc import Callable
 from typing import Any
 
 from app.activity_log import read_mcp_command_activity
+from app.cli.center.actions import ActionController, ActionSpec
 from app.cli.center.controller import CenterController
 from app.cli.center.events import (
+    ActionFinished,
     CompactModeChanged,
     RuntimeSnapshotFailed,
     RuntimeSnapshotReceived,
@@ -24,6 +26,8 @@ from app.cli.center.events import (
     TabSelected,
     UiPreferenceChanged,
 )
+from app.cli.center.invariants import check_tunnel_invariant
+from app.cli.center.persistence import CenterWindowStateStore
 from app.cli.center.scheduler import TkRenderScheduler
 from app.cli.config_view import set_workspace_config
 from app.cli.context import CLIContext
@@ -221,6 +225,7 @@ class _DesktopDashboard:
         activity_reader: ActivityReader,
         workspace_log_stream_reader: WorkspaceLogStreamReader | None = None,
         ui_preferences_store: UIPreferencesStore | None = None,
+        window_state_store: CenterWindowStateStore | None = None,
     ) -> None:
         self.root, self.tk, self.ttk, self.ctx = root, tk, ttk, ctx
         self.status_reader = status_reader
@@ -244,7 +249,11 @@ class _DesktopDashboard:
             drain=self.center.drain,
             render=self._render_center_state,
         )
+        self.action_controller = ActionController(self._on_center_action_event)
         self.ui_preferences_store = ui_preferences_store or UIPreferencesStore()
+        self.window_state_store = window_state_store or CenterWindowStateStore()
+        self.window_state = self.window_state_store.load()
+        self.window_state_save_job: Any = None
         try:
             self.ui_preferences = self.ui_preferences_store.load(
                 legacy_language=ctx.values.get("BQA_UI_LANGUAGE")
@@ -304,7 +313,13 @@ class _DesktopDashboard:
     ) -> None:
         self.root.title(DESKTOP_APP_NAME)
         self.desktop_icon = load_desktop_icon(self.root, self.tk)
-        self.root.geometry("1180x760")
+        requested_geometry = str(
+            self.window_state.get("geometry") or "1180x760"
+        )
+        try:
+            self.root.geometry(requested_geometry)
+        except self.tk.TclError:
+            self.root.geometry("1180x760")
         self.root.minsize(900, 640)
         style = self.ttk.Style(self.root)
         apply_desktop_theme(style, self.root)
@@ -470,6 +485,10 @@ class _DesktopDashboard:
             sticky="e",
             padx=(14, 0),
         )
+        active_tab = str(self.window_state.get("active_tab") or "runtime")
+        if active_tab in self.notebook_tabs:
+            self.notebook.select(self.notebook_tabs[active_tab])
+            self.center.dispatch(TabSelected(tab=active_tab), notify=False)
         if initial_message:
             self._set_message(*initial_message)
         self._bind_shortcuts()
@@ -591,6 +610,7 @@ class _DesktopDashboard:
             center = getattr(self, "center", None)
             if center is not None:
                 center.dispatch(TabSelected(tab=key), notify=False)
+            self._schedule_window_state_save()
         return "break"
 
     def _selected_tab_key(self) -> str | None:
@@ -621,6 +641,54 @@ class _DesktopDashboard:
             self.activity_view.clear_local_filters()
         return "break"
 
+    def _schedule_window_state_save(self) -> None:
+        store = getattr(self, "window_state_store", None)
+        root = getattr(self, "root", None)
+        if store is None or root is None or self.closed:
+            return
+        current = getattr(self, "window_state_save_job", None)
+        if current is not None:
+            try:
+                root.after_cancel(current)
+            except Exception:
+                pass
+        try:
+            self.window_state_save_job = root.after(
+                500,
+                self._save_window_state,
+            )
+        except Exception:
+            self.window_state_save_job = None
+
+    def _save_window_state(self) -> None:
+        self.window_state_save_job = None
+        store = getattr(self, "window_state_store", None)
+        if store is None:
+            return
+        try:
+            geometry = str(self.root.geometry())
+        except Exception:
+            geometry = str(self.window_state.get("geometry") or "1180x760")
+        active_tab = self._selected_tab_key() or str(
+            self.window_state.get("active_tab") or "runtime"
+        )
+        self.window_state.update(
+            {
+                "geometry": geometry,
+                "active_tab": active_tab,
+                "selected_session": (
+                    self.activity_view.session_selected_id
+                    if self.activity_view is not None
+                    else None
+                ),
+            }
+        )
+        try:
+            store.save(self.window_state)
+        except Exception as exc:
+            if not self.closed:
+                self._set_message("warn", f"UI state save failed: {exc}")
+
     def _on_resize(self, event: Any) -> None:
         """Apply a small adaptive mode without rebuilding any live view."""
         if getattr(event, "widget", self.root) is not self.root:
@@ -628,6 +696,7 @@ class _DesktopDashboard:
         width = int(getattr(event, "width", 0) or 0)
         if width <= 0:
             return
+        self._schedule_window_state_save()
         compact = width < 1040
         if compact == self.compact_layout:
             return
@@ -788,42 +857,72 @@ class _DesktopDashboard:
             self.root.after_cancel(self.refresh_job)
         self.refresh_job = self.root.after(2_000, self.refresh)
 
-    def _run_action(self, label: str, action: Callable[[], dict[str, Any]]) -> None:
+    def _on_center_action_event(self, event: Any) -> None:
+        """Accept ActionController events from any thread without touching Tk."""
+        center = getattr(self, "center", None)
+        if center is not None:
+            center.emit(event)
+        if not isinstance(event, ActionFinished):
+            return
+        kind = "success" if event.ok else "error"
+        text = event.message or event.error
+        if not text:
+            text = (
+                self.translator.text("message.action_complete", action=event.kind)
+                if event.ok
+                else self.translator.text("message.action_failed", action=event.kind)
+            )
+        self.action_queue.put((kind, text, event.elapsed_seconds))
+
+    def _run_action(
+        self,
+        label: str,
+        action: Callable[[], dict[str, Any]],
+        *,
+        kind: str = "runtime_action",
+        group: str = "runtime_mutation",
+    ) -> None:
         if self.busy:
             return
         self.busy = True
         self.action_started_at = time.monotonic()
-        self.action_start_fingerprint = completion_fingerprint(self.latest_status_data) if isinstance(self.latest_status_data, dict) else None
+        self.action_start_fingerprint = (
+            completion_fingerprint(self.latest_status_data)
+            if isinstance(self.latest_status_data, dict)
+            else None
+        )
         self.runtime_view.set_message(
             self.translator.text("message.running_action", action=label)
         )
         self.runtime_view.set_busy(True)
         self._schedule_action_queue_drain()
 
-        def worker() -> None:
-            try:
-                result = action()
-                outcome = (
-                    "success",
-                    str(
-                        result.get("message")
-                        or self.translator.text("message.action_complete", action=label)
-                    ),
-                ) if result.get("ok", True) else (
-                    "error",
-                    str(
-                        result.get("message")
-                        or self.translator.text("message.action_failed", action=label)
-                    ),
-                )
-            except Exception as exc:
-                outcome = "error", self.translator.text(
-                    "message.action_error", action=label.lower(), error=str(exc)
-                )
-            elapsed = time.monotonic() - (self.action_started_at or time.monotonic())
-            self.action_queue.put((*outcome, elapsed))
+        controller = getattr(self, "action_controller", None)
+        if controller is None:
+            controller = ActionController(self._on_center_action_event)
+            self.action_controller = controller
 
-        threading.Thread(target=worker, name="bqa-desktop-action", daemon=True).start()
+        def work() -> dict[str, Any]:
+            result = dict(action() or {})
+            ok = bool(result.get("ok", True))
+            if not result.get("message"):
+                result["message"] = self.translator.text(
+                    "message.action_complete" if ok else "message.action_failed",
+                    action=label,
+                )
+            result["ok"] = ok
+            return result
+
+        action_id = controller.request(
+            ActionSpec(kind=kind, group=group, work=work)
+        )
+        if action_id is None:
+            self.busy = False
+            self.runtime_view.set_busy(False)
+            self._set_message(
+                "warn",
+                self.translator.text("message.running_action", action=label),
+            )
 
     def _schedule_action_queue_drain(self) -> None:
         if self.closed or self.action_drain_job is not None:
@@ -833,6 +932,9 @@ class _DesktopDashboard:
     def _drain_action_queue(self) -> None:
         """Finish lifecycle work on Tk's main loop, never the worker thread."""
         self.action_drain_job = None
+        center = getattr(self, "center", None)
+        if center is not None:
+            center.drain(100)
         while not self.closed:
             try:
                 kind, text, elapsed_seconds = self.action_queue.get_nowait()
@@ -896,16 +998,42 @@ class _DesktopDashboard:
         except self.tk.TclError:
             return
 
+    def _run_bridge_preserving_tunnel(
+        self,
+        mutation: Callable[[], dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Run a bridge-only mutation and enforce tunnel PID/URL invariants."""
+        before = self.status_reader(self.ctx.repo_root, self.ctx.values)
+        result = dict(mutation() or {})
+        after = self.status_reader(self.ctx.repo_root, self.ctx.values)
+        invariant = check_tunnel_invariant(before, after)
+        if invariant.ok:
+            return result
+        return {
+            "ok": False,
+            "message": self.translator.text(
+                "message.tunnel_invariant_failed",
+                error=invariant.error,
+            ),
+            "safety_violation": True,
+        }
+
     def start_service(self) -> None:
         self._run_action(
             self.translator.text("action.start_adopt"),
             lambda: self.start_action(self.ctx.repo_root),
+            kind="start_service",
+            group="runtime_mutation",
         )
 
     def restart_bridge(self) -> None:
         self._run_action(
             self.translator.text("action.restart_bridge"),
-            lambda: self.restart_action(self.ctx.repo_root, self.ctx.values),
+            lambda: self._run_bridge_preserving_tunnel(
+                lambda: self.restart_action(self.ctx.repo_root, self.ctx.values)
+            ),
+            kind="restart_bridge",
+            group="runtime_mutation",
         )
 
     def choose_workspace(self) -> None:
@@ -931,13 +1059,24 @@ class _DesktopDashboard:
 
         def apply() -> dict[str, Any]:
             self.ctx.values.update(set_workspace_config(self.ctx.repo_root, selected))
-            result = self.restart_action(self.ctx.repo_root, self.ctx.values)
+            result = self._run_bridge_preserving_tunnel(
+                lambda: self.restart_action(self.ctx.repo_root, self.ctx.values)
+            )
             return {
                 "ok": bool(result.get("ok", True)),
-                "message": self.translator.text("message.workspace_saved"),
+                "message": (
+                    self.translator.text("message.workspace_saved")
+                    if result.get("ok", True)
+                    else str(result.get("message") or "")
+                ),
             }
 
-        self._run_action(self.translator.text("action.apply"), apply)
+        self._run_action(
+            self.translator.text("action.apply"),
+            apply,
+            kind="apply_workspace",
+            group="runtime_mutation",
+        )
 
     def copy_endpoint(self) -> None:
         endpoint = self.values["endpoint"].get()
@@ -950,7 +1089,18 @@ class _DesktopDashboard:
         self._set_message("success", self.translator.text("message.endpoint_copied"))
 
     def close(self) -> None:
+        # Persist presentation state before marking the dashboard closed so a
+        # final save failure can still be surfaced during normal operation.
+        if getattr(self, "window_state_save_job", None) is not None:
+            try:
+                self.root.after_cancel(self.window_state_save_job)
+            except Exception:
+                pass
+            self.window_state_save_job = None
+        self._save_window_state()
         self.closed = True
+        if getattr(self, "center_scheduler", None) is not None:
+            self.center_scheduler.close()
         if self.workspace_log_view is not None:
             self.workspace_log_view.close()
         if self.refresh_job is not None:

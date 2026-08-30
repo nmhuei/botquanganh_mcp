@@ -23,6 +23,7 @@ from app.cli.config_view import load_env
 from app.cli.context import CLIContext
 from app.cli.desktop_ui import _DesktopDashboard
 from app.cli.desktop_views.workspace_logs import make_workspace_log_stream_reader
+from app.cli.center.persistence import CenterWindowStateStore
 from app.cli.lifecycle import status_data
 from app.cli.ui_preferences import UIPreferencesStore
 
@@ -265,6 +266,7 @@ def main() -> int:
             encoding="utf-8",
         )
         ui_preferences_store = UIPreferencesStore(safe_root / "ui.json")
+        window_state_store = CenterWindowStateStore(safe_root / "window.json")
 
         local_port = real_values.get("MCP_PORT", "18427")
         safe_ctx = CLIContext(
@@ -319,6 +321,7 @@ def main() -> int:
             activity_reader=activity_reader,
             workspace_log_stream_reader=stream_reader,
             ui_preferences_store=ui_preferences_store,
+            window_state_store=window_state_store,
         )
         root.deiconify()
 

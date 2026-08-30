@@ -47,7 +47,14 @@ class ActionController:
 
         def runner() -> None:
             started = time.monotonic()
-            self.emit(ActionStarted(action_id=action_id, observed_at=started))
+            self.emit(
+                ActionStarted(
+                    action_id=action_id,
+                    kind=spec.kind,
+                    group=spec.group,
+                    observed_at=started,
+                )
+            )
             ok = False
             message = ""
             error = ""
@@ -64,8 +71,11 @@ class ActionController:
                 self.emit(
                     ActionFinished(
                         action_id=action_id,
+                        kind=spec.kind,
+                        group=spec.group,
                         ok=ok,
                         observed_at=finished,
+                        elapsed_seconds=finished - started,
                         message=message,
                         error=error,
                     )
