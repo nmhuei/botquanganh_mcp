@@ -161,7 +161,14 @@ def _guard_chat_id(
     if resolved is None and _is_enforcing_mode():
         resolved = _context_chat_id()
         if resolved is None:
+            try:
+                from app.chat_identity import get_active_workspace
+                resolved = get_active_workspace()
+            except Exception:
+                pass
+        if resolved is None:
             return None, _bind_required_payload(tool)
+
     if resolved is None:
         if tool in _STATE_CHANGING_TOOLS and effective_attribution_mode() == "strict":
             return None, format_error_code(

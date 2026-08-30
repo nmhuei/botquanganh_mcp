@@ -539,3 +539,24 @@ def test_host_workspace_list_returns_recent_workspaces(tmp_path, monkeypatch):
     assert "suggestion" in list_res
 
 
+# ---------------------------------------------------------------------------
+# Task 4: Implicit Attribution Fallback in Host Tools
+# ---------------------------------------------------------------------------
+
+
+def test_guard_chat_id_falls_back_to_latest_workspace_under_enforce(monkeypatch, tmp_path):
+    _real_workspace_env(tmp_path, monkeypatch)
+    monkeypatch.setattr("app.chat_identity.is_enforcing", lambda: True)
+
+    # Bind a workspace so it becomes active
+    res = asyncio.run(host_workspace_bind(label="active-test", new=True))
+    chat_id = res["chat_id"]
+
+    # Call _guard_chat_id without chat_id
+    from app.tools.host import _guard_chat_id
+    validated, rejection = _guard_chat_id("host_write_file", None)
+    assert rejection is None
+    assert validated == chat_id
+
+
+

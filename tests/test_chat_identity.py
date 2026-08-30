@@ -232,3 +232,31 @@ def test_is_enforcing_is_false_for_off_and_unknown(monkeypatch):
     assert chat_identity.is_enforcing() is False
     monkeypatch.setattr(config_module, "ATTRIBUTION_MODE", "banana")
     assert chat_identity.is_enforcing() is False
+
+
+def test_get_active_workspace_resolution(tmp_path, monkeypatch):
+    import app.config as config_module
+    from app.chat_identity import bind_chat, get_active_workspace, touch_chat
+
+    # 1. When context is bound
+    bind_chat("bound123")
+    assert get_active_workspace() == "bound123"
+
+    # Reset context
+    chat_identity._CHAT_ID.set(None)
+
+    # 2. When LRU registry has an entry
+    touch_chat("lru_chat")
+    assert get_active_workspace() == "lru_chat"
+
+    # Reset registry
+    chat_identity._REGISTRY.clear()
+
+    # 3. When .last_session pointer exists on disk
+    monkeypatch.setattr(config_module, "HOST_CHAT_ROOT", str(tmp_path))
+    (tmp_path / "disk_chat").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "disk_chat" / "meta.json").write_text('{"chat_id": "disk_chat"}', encoding="utf-8")
+    (tmp_path / ".last_session").write_text('{"chat_id": "disk_chat"}', encoding="utf-8")
+
+    assert get_active_workspace() == "disk_chat"
+
