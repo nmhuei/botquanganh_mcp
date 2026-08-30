@@ -4,6 +4,7 @@ import pytest
 
 from app.cli.context import CLIContext
 from app.cli.desktop_ui import _DesktopDashboard
+from app.cli.ui_preferences import UIPreferencesStore
 
 
 def _status(workspace: str) -> dict:
@@ -42,11 +43,10 @@ def test_real_tk_dashboard_exercises_ui_without_real_lifecycle(
         pytest.skip("No Tk display is available")
 
     root.withdraw()
-    monkeypatch.delenv("BQA_UI_LANGUAGE", raising=False)
     monkeypatch.delenv("HOST_WORKSPACE_DIR", raising=False)
     monkeypatch.delenv("HOST_DEFAULT_DIR", raising=False)
     (tmp_path / ".env").write_text(
-        f'HOST_WORKSPACE_DIR="{tmp_path}"\nBQA_UI_LANGUAGE="en"\n',
+        f'HOST_WORKSPACE_DIR="{tmp_path}"\n',
         encoding="utf-8",
     )
     chat_root = tmp_path / "chats"
@@ -64,7 +64,6 @@ def test_real_tk_dashboard_exercises_ui_without_real_lifecycle(
     values = {
         "HOST_WORKSPACE_DIR": str(tmp_path),
         "HOST_CHAT_ROOT": str(chat_root),
-        "BQA_UI_LANGUAGE": "en",
         "MCP_PORT": "18427",
     }
     ctx = CLIContext(
@@ -155,6 +154,7 @@ def test_real_tk_dashboard_exercises_ui_without_real_lifecycle(
             restart_action=safe_restart,
             activity_reader=lambda _limit: activity_records,
             workspace_log_stream_reader=stream,
+            ui_preferences_store=UIPreferencesStore(tmp_path / "ui.json"),
         )
         root.update()
 
@@ -251,13 +251,18 @@ def test_real_tk_dashboard_exercises_ui_without_real_lifecycle(
         assert lifecycle_calls == ["start", "restart", "restart"]
         assert str(selected) in (tmp_path / ".env").read_text(encoding="utf-8")
 
-        # Language switching is live and preserves view-local filter state.
+        # Language switching is live, preserves view-local state, and must
+        # not add any backend lifecycle action.
+        lifecycle_before_language = list(lifecycle_calls)
         dashboard.activity_view.command_filter_var.set("needle")
         dashboard.language_buttons["vi"].invoke()
         root.update()
         assert dashboard.translator.language == "vi"
         assert dashboard.activity_view.command_filter_var.get() == "needle"
         assert dashboard.language_buttons["vi"].cget("style") == "LanguageActive.TButton"
+        assert lifecycle_calls == lifecycle_before_language
+        assert '"language": "vi"' in (tmp_path / "ui.json").read_text(encoding="utf-8")
+        assert "BQA_UI_LANGUAGE" not in (tmp_path / ".env").read_text(encoding="utf-8")
 
         # Keyboard-targeted navigation and compact/wide adaptation reuse the
         # same widget instances instead of rebuilding live views.

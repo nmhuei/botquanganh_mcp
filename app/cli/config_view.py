@@ -8,12 +8,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Mapping
 
-from app.config import value_loaded_from_dotenv
-
-
 SECRET_MARKERS = ("TOKEN", "SECRET", "PASSWORD", "PASSWD", "API_KEY", "PRIVATE_KEY")
-DEFAULT_UI_LANGUAGE = "en"
-SUPPORTED_UI_LANGUAGES = ("en", "vi")
 DEFAULTS: dict[str, str] = {
     "MCP_BIND_HOST": "127.0.0.1",
     "MCP_CONNECT_HOST": "127.0.0.1",
@@ -60,7 +55,6 @@ DEFAULTS: dict[str, str] = {
     "HOST_CHAT_JOURNAL_MAX_BYTES": "8388608",
     "HOST_CHAT_SWEEP_INTERVAL_MINUTES": "60",
     "HOST_CHAT_SWEEP_APPLY": "false",
-    "BQA_UI_LANGUAGE": DEFAULT_UI_LANGUAGE,
 }
 
 _BOOLEAN_KEYS = (
@@ -192,27 +186,6 @@ def _persist_env_updates(repo_root: Path, updates: Mapping[str, str]) -> dict[st
     return {key: str(value) for key, value in updates.items()}
 
 
-def normalize_desktop_ui_language(value: object) -> str:
-    """Return one supported desktop language or reject the setting explicitly."""
-    language = str(value or DEFAULT_UI_LANGUAGE).strip().lower()
-    if language not in SUPPORTED_UI_LANGUAGES:
-        raise ValueError("BQA_UI_LANGUAGE must be en or vi.")
-    return language
-
-
-def set_desktop_ui_language(repo_root: Path, raw_language: str) -> dict[str, str]:
-    """Persist the desktop language unless the process explicitly overrides it."""
-    if "BQA_UI_LANGUAGE" in os.environ and not value_loaded_from_dotenv("BQA_UI_LANGUAGE"):
-        raise ValueError(
-            "BQA_UI_LANGUAGE is set in the current environment; unset it before "
-            "changing language through the UI."
-        )
-    return _persist_env_updates(
-        repo_root,
-        {"BQA_UI_LANGUAGE": normalize_desktop_ui_language(raw_language)},
-    )
-
-
 def set_workspace_config(repo_root: Path, raw_workspace: str) -> dict[str, str]:
     """Persist a selected existing directory as the restricted host workspace.
 
@@ -296,13 +269,6 @@ def validate_config(
             "pass" if raw in _TRUE_VALUES | _FALSE_VALUES else "fail",
             raw,
         )
-
-    ui_language = str(values.get("BQA_UI_LANGUAGE", DEFAULT_UI_LANGUAGE)).strip().lower()
-    add(
-        "config_bqa_ui_language",
-        "pass" if ui_language in SUPPORTED_UI_LANGUAGES else "fail",
-        ui_language if ui_language in SUPPORTED_UI_LANGUAGES else f"{ui_language}; expected en or vi",
-    )
 
     for key, (minimum, maximum) in _INTEGER_LIMITS.items():
         valid, rendered = _parse_integer(values.get(key, DEFAULTS[key]), minimum, maximum)

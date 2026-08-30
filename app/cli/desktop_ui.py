@@ -15,7 +15,7 @@ from collections.abc import Callable
 from typing import Any
 
 from app.activity_log import read_mcp_command_activity
-from app.cli.config_view import set_desktop_ui_language, set_workspace_config
+from app.cli.config_view import set_workspace_config
 from app.cli.context import CLIContext
 from app.cli.desktop_views.activity import (
     ActivityNotification,
@@ -32,6 +32,11 @@ from app.cli.desktop_views.theme import PALETTE, apply_desktop_theme
 from app.cli.desktop_views.workspace_logs import (
     WorkspaceLogView,
     make_workspace_log_stream_reader,
+)
+from app.cli.ui_preferences import (
+    UIPreferencesError,
+    UIPreferencesStore,
+    normalize_ui_language,
 )
 from app.cli.lifecycle import process_command_line, read_pid, restart, start, status_data
 
@@ -205,6 +210,7 @@ class _DesktopDashboard:
         restart_action: LifecycleAction,
         activity_reader: ActivityReader,
         workspace_log_stream_reader: WorkspaceLogStreamReader | None = None,
+        ui_preferences_store: UIPreferencesStore | None = None,
     ) -> None:
         self.root, self.tk, self.ttk, self.ctx = root, tk, ttk, ctx
         self.status_reader = status_reader
@@ -222,7 +228,18 @@ class _DesktopDashboard:
         self.action_drain_job: Any = None
         self.last_toast_fingerprint: str | None = None
         self.active_toast: Any = None
-        self.translator = DesktopTranslator(ctx.values.get("BQA_UI_LANGUAGE", "en"))
+        self.ui_preferences_store = ui_preferences_store or UIPreferencesStore()
+        try:
+            self.ui_preferences = self.ui_preferences_store.load(
+                legacy_language=ctx.values.get("BQA_UI_LANGUAGE")
+            )
+            initial_language = str(self.ui_preferences["language"])
+            self.ui_preferences_error: str | None = None
+        except UIPreferencesError as exc:
+            self.ui_preferences = {"language": "en"}
+            initial_language = "en"
+            self.ui_preferences_error = str(exc)
+        self.translator = DesktopTranslator(initial_language)
         self.header_bindings = TranslationBindings(self.translator)
         self.language_choices: dict[str, str] = {}
         self.language_display_var = tk.StringVar()
@@ -468,7 +485,7 @@ class _DesktopDashboard:
             self.notebook.tab(tab, text=self.translator.text(f"tab.{key}"))
 
     def change_language(self, _event: Any = None) -> None:
-        """Persist and apply the desktop language without resetting live view state."""
+        """Apply language immediately and persist it in the UI-only preference store."""
         language = (
             _event
             if isinstance(_event, str) and _event in {"en", "vi"}
@@ -477,18 +494,22 @@ class _DesktopDashboard:
         if language is None:
             self._refresh_language_selector()
             return
-        if language == self.translator.language:
-            return
         try:
-            updated = set_desktop_ui_language(self.ctx.repo_root, language)
-        except ValueError as exc:
+            language = normalize_ui_language(language)
+        except UIPreferencesError as exc:
             self._refresh_language_selector()
             self._set_message(
-                "error", self.translator.text("message.language_error", error=str(exc))
+                "error",
+                self.translator.text("message.language_error", error=str(exc)),
             )
             return
-        self.ctx.values.update(updated)
-        self.translator = DesktopTranslator(updated["BQA_UI_LANGUAGE"])
+        if language == self.translator.language:
+            return
+
+        # Apply first: this is presentation state and must never wait for, or
+        # trigger, a backend/server lifecycle operation.
+        self.translator = DesktopTranslator(language)
+        self.ui_preferences["language"] = language
         self.header_bindings.set_translator(self.translator)
         self._refresh_language_selector()
         self._apply_notebook_labels()
@@ -497,6 +518,19 @@ class _DesktopDashboard:
             self.activity_view.set_translator(self.translator)
         if self.workspace_log_view is not None:
             self.workspace_log_view.set_translator(self.translator)
+
+        try:
+            self.ui_preferences_store.set_language(language)
+        except UIPreferencesError as exc:
+            self._set_message(
+                "warn",
+                self.translator.text(
+                    "message.language_persist_warning",
+                    error=str(exc),
+                ),
+            )
+            return
+
         self._set_message(
             "success",
             self.translator.text(

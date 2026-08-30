@@ -48,7 +48,6 @@ Toàn bộ cấu hình nằm trong `.env` ở thư mục repo, được nạp kh
 | `TRUST_PROXY_HEADERS` | `false` | Tin cậy header proxy khi đứng sau Cloudflare Tunnel / reverse proxy |
 | `HOST_TOOL_CACHE_SECONDS` | `300` | Thời gian cache catalog tool |
 | `ATTRIBUTION_MODE` | `enforce` | Gán thao tác host về chat: `off` / `tag` / `strict` / `enforce` (mặc định yêu cầu bind ID trước khi thao tác) |
-| `BQA_UI_LANGUAGE` | `en` | Ngôn ngữ `bqa ui`: `en` (mặc định) hoặc `vi`; chỉ ảnh hưởng desktop UI |
 | `HOST_CHAT_WORKSPACES` | `true` | Bật tính năng tạo workspace riêng cho từng chat |
 | `HOST_CHAT_ROOT` | `~/Downloads/bqa-workspaces` | Thư mục gốc chứa các chat workspace |
 | `HOST_CHAT_ISOLATE` | `false` | Khóa ghi: không cho ghi ra ngoài workspace riêng của chat |
@@ -57,9 +56,13 @@ Toàn bộ cấu hình nằm trong `.env` ở thư mục repo, được nạp kh
 | `HOST_CHAT_RETENTION_DAYS` | `30` | Số ngày lưu giữ workspace trước khi dọn dẹp vĩnh viễn |
 | `HOST_CHAT_MAX_WORKSPACES` | `128` | Giới hạn số lượng workspace tồn tại đồng thời |
 
-`BQA_UI_LANGUAGE` là tuỳ chọn chính thức cho desktop UI; `bqa ui` mặc định
-tiếng Anh và Language selector ghi giá trị `en`/`vi` vào `.env`. Nếu biến này
-đã được export trong môi trường hiện tại, selector sẽ từ chối ghi đè `.env`.
+Các tuỳ chọn chỉ thuộc desktop UI **không nằm trong `.env` của server**.
+BQA Center lưu chúng riêng tại `$XDG_CONFIG_HOME/bqa-center/ui.json` (mặc định
+`~/.config/bqa-center/ui.json`). Ví dụ, bấm `EN`/`VI` sẽ đổi toàn bộ label
+ngay trong cửa sổ đang mở và lưu `language` vào file JSON này; không restart
+MCP server, bridge hay tunnel. Nếu chưa có file preference, bản cũ
+`BQA_UI_LANGUAGE` trong `.env` chỉ được dùng một lần để migrate ngôn ngữ hiện
+tại rồi UI preference riêng sẽ được ưu tiên.
 
 ## Cách dùng
 

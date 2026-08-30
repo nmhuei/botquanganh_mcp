@@ -220,13 +220,19 @@ desktop text scaling is inherited. Entry/button focus borders, 30 px table
 rows, larger toolbar padding, and keyboard-accessible controls are part of the
 desktop accessibility contract.
 
-`BQA_UI_LANGUAGE=en` is the official default language preference; `vi`
-selects Vietnamese. Both choices are always visible as linked `EN`/`VI`
-buttons. Switching persists the same value to `.env` and relabels the live
-window without rebuilding tabs, dropping cached records, changing filters, or
-resetting selection. Terminal CLI output, MCP/API contracts, and journal fields
-remain unchanged. If the process explicitly exports `BQA_UI_LANGUAGE`, that
-environment value wins and the UI refuses a conflicting write.
+Desktop-only preferences are deliberately separate from server configuration.
+They are stored in `$XDG_CONFIG_HOME/bqa-center/ui.json` (normally
+`~/.config/bqa-center/ui.json`). The `EN`/`VI` buttons update the translator
+and every live widget immediately, then persist `language` to that JSON file.
+No `.env` write and no server/bridge/tunnel restart is involved. Cached rows,
+filters, selection, stream state, and runtime state remain intact. For migration
+only, if the JSON file does not yet exist, a legacy `BQA_UI_LANGUAGE` value
+already present in an older `.env` may seed the new preference once.
+
+This JSON store is the home for future presentation-only options such as theme,
+font scale, window geometry, or active tab. Backend/runtime options remain in
+the existing server configuration path and may still require lifecycle actions
+when their semantics demand it.
 
 The Runtime tab is grouped into **Runtime status**, **Connector**,
 **Workspace**, and **Runtime actions**. Endpoint copy and workspace selection are

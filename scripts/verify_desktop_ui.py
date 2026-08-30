@@ -24,6 +24,7 @@ from app.cli.context import CLIContext
 from app.cli.desktop_ui import _DesktopDashboard
 from app.cli.desktop_views.workspace_logs import make_workspace_log_stream_reader
 from app.cli.lifecycle import status_data
+from app.cli.ui_preferences import UIPreferencesStore
 
 
 DEFAULT_SIZES = (
@@ -256,15 +257,14 @@ def main() -> int:
                     if args.live_readonly and live_chat_root
                     else str(chat_root)
                 ),
-                "BQA_UI_LANGUAGE": "en",
             }
         )
         (safe_root / ".env").write_text(
             f'HOST_WORKSPACE_DIR="{safe_root}"\n'
-            f'HOST_DEFAULT_DIR="{safe_root}"\n'
-            'BQA_UI_LANGUAGE="en"\n',
+            f'HOST_DEFAULT_DIR="{safe_root}"\n',
             encoding="utf-8",
         )
+        ui_preferences_store = UIPreferencesStore(safe_root / "ui.json")
 
         local_port = real_values.get("MCP_PORT", "18427")
         safe_ctx = CLIContext(
@@ -318,6 +318,7 @@ def main() -> int:
             restart_action=safe_restart,
             activity_reader=activity_reader,
             workspace_log_stream_reader=stream_reader,
+            ui_preferences_store=ui_preferences_store,
         )
         root.deiconify()
 

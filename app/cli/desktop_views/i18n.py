@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from app.cli.config_view import DEFAULT_UI_LANGUAGE, normalize_desktop_ui_language
+from app.cli.ui_preferences import DEFAULT_UI_LANGUAGE, normalize_ui_language
 
 
 MESSAGES: dict[str, dict[str, str]] = {
@@ -156,6 +156,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "activity.human.duration": "Duration: {duration} ms",
         "message.language_saved": "Language changed to {language}.",
         "message.language_error": "Could not change language: {error}",
+        "message.language_persist_warning": "Language changed for this window, but the UI preference could not be saved: {error}",
         "message.status_error": "Could not read runtime status: {error}",
         "message.activity_error": "Could not read MCP activity: {error}",
         "message.session_reopened": "Session {session} received a command and was reopened.",
@@ -318,6 +319,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "activity.human.duration": "Thời lượng: {duration} ms",
         "message.language_saved": "Đã đổi ngôn ngữ sang {language}.",
         "message.language_error": "Không thể đổi ngôn ngữ: {error}",
+        "message.language_persist_warning": "Đã đổi ngôn ngữ ngay trong cửa sổ này nhưng chưa lưu được tuỳ chọn UI: {error}",
         "message.status_error": "Không đọc được trạng thái runtime: {error}",
         "message.activity_error": "Không đọc được lịch sử MCP: {error}",
         "message.session_reopened": "Session {session} có lệnh mới và đã tự mở lại.",
@@ -344,7 +346,7 @@ class DesktopTranslator:
 
     def __post_init__(self) -> None:
         try:
-            language = normalize_desktop_ui_language(self.language)
+            language = normalize_ui_language(self.language)
         except ValueError:
             language = DEFAULT_UI_LANGUAGE
         object.__setattr__(self, "language", language)

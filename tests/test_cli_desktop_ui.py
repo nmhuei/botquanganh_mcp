@@ -23,6 +23,7 @@ from app.cli.desktop_ui import (
     launch_desktop_ui_detached,
 )
 from app.cli.desktop_ui import _DesktopDashboard
+from app.cli.ui_preferences import UIPreferencesError
 from app.cli.main import main
 
 
@@ -173,12 +174,22 @@ def test_dashboard_language_change_persists_then_relabels_every_live_view(monkey
             self.translators.append(translator)
 
     dashboard = object.__new__(_DesktopDashboard)
+    class Store:
+        def __init__(self):
+            self.languages = []
+
+        def set_language(self, language):
+            self.languages.append(language)
+            return language
+
     dashboard.ctx = type("Context", (), {"repo_root": tmp_path, "values": {}})()
     dashboard.translator = DesktopTranslator("en")
     dashboard.header_bindings = Bindings()
     dashboard.language_display_var = Variable("Tiếng Việt")
     dashboard.language_combo = None
     dashboard.language_choices = {"English": "en", "Tiếng Việt": "vi"}
+    dashboard.ui_preferences_store = Store()
+    dashboard.ui_preferences = {"language": "en"}
     dashboard.notebook = Notebook()
     dashboard.notebook_tabs = {
         "runtime": "runtime-tab",
@@ -190,16 +201,12 @@ def test_dashboard_language_change_persists_then_relabels_every_live_view(monkey
     dashboard.workspace_log_view = View()
     messages = []
     dashboard._set_message = lambda kind, message: messages.append((kind, message))
-    persisted = []
-    monkeypatch.setattr(
-        "app.cli.desktop_ui.set_desktop_ui_language",
-        lambda root, language: persisted.append((root, language)) or {"BQA_UI_LANGUAGE": language},
-    )
 
     dashboard.change_language()
 
-    assert persisted == [(tmp_path, "vi")]
-    assert dashboard.ctx.values["BQA_UI_LANGUAGE"] == "vi"
+    assert dashboard.ui_preferences_store.languages == ["vi"]
+    assert dashboard.ui_preferences["language"] == "vi"
+    assert "BQA_UI_LANGUAGE" not in dashboard.ctx.values
     assert dashboard.notebook.calls == [
         ("runtime-tab", {"text": "Runtime"}),
         ("logs-tab", {"text": "Nhật ký Workspace"}),
@@ -480,3 +487,77 @@ def test_desktop_activity_root_uses_host_chat_root(tmp_path):
     )()
 
     assert dashboard.chat_workspaces_root() == configured
+
+
+def test_language_switch_applies_immediately_even_if_ui_preference_save_fails(tmp_path):
+    class Variable:
+        def __init__(self, value):
+            self.value = value
+
+        def get(self):
+            return self.value
+
+        def set(self, value):
+            self.value = value
+
+    class Bindings:
+        def __init__(self):
+            self.translators = []
+
+        def set_translator(self, translator):
+            self.translators.append(translator)
+
+    class Notebook:
+        def __init__(self):
+            self.calls = []
+
+        def tab(self, tab, **values):
+            self.calls.append((tab, values))
+
+    class View:
+        def __init__(self):
+            self.translators = []
+
+        def set_translator(self, translator):
+            self.translators.append(translator)
+
+    class FailingStore:
+        def set_language(self, _language):
+            raise UIPreferencesError("disk read-only")
+
+    dashboard = object.__new__(_DesktopDashboard)
+    dashboard.ctx = type("Context", (), {"repo_root": tmp_path, "values": {}})()
+    dashboard.translator = DesktopTranslator("en")
+    dashboard.header_bindings = Bindings()
+    dashboard.language_display_var = Variable("Tiếng Việt")
+    dashboard.language_combo = None
+    dashboard.language_choices = {"English": "en", "Tiếng Việt": "vi"}
+    dashboard.language_buttons = {}
+    dashboard.ui_preferences_store = FailingStore()
+    dashboard.ui_preferences = {"language": "en"}
+    dashboard.notebook = Notebook()
+    dashboard.notebook_tabs = {
+        "runtime": "runtime-tab",
+        "workspace_logs": "logs-tab",
+        "gpt_activity": "activity-tab",
+    }
+    dashboard.runtime_view = View()
+    dashboard.activity_view = View()
+    dashboard.workspace_log_view = View()
+    messages = []
+    dashboard._set_message = lambda kind, message: messages.append((kind, message))
+
+    dashboard.change_language()
+
+    assert dashboard.translator.language == "vi"
+    assert dashboard.ui_preferences["language"] == "vi"
+    assert all(
+        view.translators[-1].language == "vi"
+        for view in (
+            dashboard.runtime_view,
+            dashboard.activity_view,
+            dashboard.workspace_log_view,
+        )
+    )
+    assert messages[0][0] == "warn"
+    assert "chưa lưu được tuỳ chọn UI" in messages[0][1]
