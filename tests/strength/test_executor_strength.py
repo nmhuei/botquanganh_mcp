@@ -78,7 +78,8 @@ def test_invalid_inputs_do_not_leak_capacity_slots(isolated_workspace, monkeypat
     monkeypatch.setattr(executor, "command_capacity", capacity)
 
     with pytest.raises(ValueError):
-        execute_host_command("printf x", timeout_seconds=0)
+        execute_host_command("printf x", timeout_seconds=-1)
+
     with pytest.raises(TypeError):
         execute_host_command("printf x", timeout_seconds="2")  # type: ignore[arg-type]
     with pytest.raises(ValueError):
