@@ -377,8 +377,9 @@ def fake_workspace_infra(monkeypatch, tmp_path):
     monkeypatch.setitem(sys.modules, "app.chat_workspace", module)
 
 
-def test_only_host_workspace_bind_is_exempt():
-    assert BIND_EXEMPT_TOOLS == frozenset({"host_workspace_bind"})
+def test_discovery_and_bind_are_exempt_from_enforce():
+    assert BIND_EXEMPT_TOOLS == frozenset({"host_workspace_bind", "host_workspace_list"})
+
 
 
 def test_bind_works_under_enforce_without_any_prior_binding(

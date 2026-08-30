@@ -82,9 +82,10 @@ def test_invalid_inputs_do_not_leak_capacity_slots(isolated_workspace, monkeypat
     with pytest.raises(TypeError):
         execute_host_command("printf x", timeout_seconds="2")  # type: ignore[arg-type]
     with pytest.raises(ValueError):
-        execute_host_command("printf x", timeout_seconds=9999)
+        execute_host_command("printf x", timeout_seconds=app.config.MAX_TIMEOUT_SECONDS + 1)
     with pytest.raises(PermissionError):
         execute_host_command("sudo id", timeout_seconds=5)
+
     with pytest.raises(PermissionError):
         execute_host_command("shutdown now", timeout_seconds=5)
 
