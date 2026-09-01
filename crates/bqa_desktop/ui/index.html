@@ -3,10 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BQA Bridge Center — Native Studio Console</title>
-  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <title>BQA Bridge Center — Native Studio</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    /* ==================== 12 WORLD-CLASS THEMES ==================== */
+    /* ==================== 13 WORLD-CLASS DEVELOPER THEMES ==================== */
+    :root, html[data-theme="exodia"] {
+      --bg-base: #06080e; --bg-header: #0a0d16; --bg-surface: #0e1320; --bg-card: #131a2c;
+      --bg-selected: #1b2640; --bg-console: #030407; --border: #1e2a42; --border-hover: #00f0ff;
+      --accent: #00f0ff; --accent-soft: rgba(0, 240, 255, 0.2);
+      --text-main: #f8fafc; --text-sub: #94a3b8; --text-dim: #64748b;
+      --mint: #00ff88; --sky: #38bdf8;
+    }
     html[data-theme="linear"] {
       --bg-base: #0d0f14; --bg-header: #12151d; --bg-surface: #171b26; --bg-card: #1c2230;
       --bg-selected: #242c3f; --bg-console: #090b0f; --border: #23293a; --border-hover: #343e57;
@@ -93,9 +103,18 @@
     }
 
     body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      letter-spacing: -0.01em;
       background-color: var(--bg-base);
       color: var(--text-main);
       transition: background-color 0.15s ease, color 0.15s ease;
+    }
+
+    .font-mono, pre, code {
+      font-family: 'JetBrains Mono', 'Fira Code', 'Geist Mono', 'Cascadia Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+      letter-spacing: -0.015em;
     }
 
     * {
@@ -785,13 +804,13 @@
         </div>
       </div>
 
-      <!-- MỤC 4: GIAO DIỆN & CHỦ ĐỀ (12 THEMES) -->
+      <!-- MỤC 4: GIAO DIỆN & CHỦ ĐỀ (13 THEMES) -->
       <div style="background-color: var(--bg-surface); border-color: var(--border);" class="border rounded-xl overflow-hidden transition">
         <button onclick="toggleSection('secTheme')" class="w-full p-3.5 flex items-center justify-between text-left hover:opacity-90 transition">
           <div class="flex items-center gap-2.5">
             <span class="text-sm">🎨</span>
             <div>
-              <h3 style="color: var(--text-main);" class="font-semibold text-xs">4. Giao Diện & Chủ Đề (12 Theme)</h3>
+              <h3 style="color: var(--text-main);" class="font-semibold text-xs">4. Giao Diện & Chủ Đề (13 Theme)</h3>
               <p style="color: var(--text-dim);" class="text-[10px]">Tùy chọn phong cách phối màu developer</p>
             </div>
           </div>
@@ -800,6 +819,10 @@
 
         <div id="secTheme" class="p-3 pt-0 border-t space-y-1.5 hidden" style="border-color: var(--border);">
           <div class="grid grid-cols-2 gap-1.5 pt-2">
+            <button onclick="selectThemeFromDrawer('exodia')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="exodia" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-gradient-to-tr from-[#00f0ff] via-[#00ff88] to-[#c084fc] shadow-[0_0_8px_#00f0ff] shrink-0"></span>
+              <span class="truncate text-[11px] font-bold text-[#00f0ff]">Exodia Neon</span>
+            </button>
             <button onclick="selectThemeFromDrawer('rosepine')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="rosepine" style="background-color: var(--bg-base); border-color: var(--border);">
               <span class="w-3 h-3 rounded-full bg-[#ea9a97] shrink-0"></span>
               <span class="truncate text-[11px]">Rose Pine Moon</span>
@@ -1557,7 +1580,7 @@
     renderSessions(sampleSessions);
     renderCommands(sampleCommands);
     renderLogs(sampleLogs);
-    setTheme(localStorage.getItem('bqa_theme') || 'rosepine');
+    setTheme(localStorage.getItem('bqa_theme') || 'exodia');
     startAutoPolling();
   </script>
 </body>
