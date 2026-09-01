@@ -64,6 +64,38 @@ def get_chat_id() -> str | None:
     return _CHAT_ID.get()
 
 
+def get_active_workspace() -> str | None:
+    """Return the currently bound chat ID or fallback to the latest active workspace."""
+    bound = get_chat_id()
+    if bound:
+        return bound
+
+    # Check in-memory registry for most recently used
+    with _REGISTRY_LOCK:
+        if _REGISTRY:
+            return next(reversed(_REGISTRY))
+
+    # Check on-disk .last_session pointer if workspace infra is configured
+    try:
+        from pathlib import Path
+        import json
+        import app.config as config_module
+
+        root_val = getattr(config_module, "HOST_CHAT_ROOT", "")
+        if root_val:
+            pointer_file = Path(root_val) / ".last_session"
+            if pointer_file.is_file():
+                data = json.loads(pointer_file.read_text(encoding="utf-8"))
+                candidate = data.get("chat_id")
+                if isinstance(candidate, str) and (Path(root_val) / candidate / "meta.json").is_file():
+                    return candidate
+    except Exception:
+        pass
+
+    return None
+
+
+
 @contextmanager
 def bound_chat(chat_id: str) -> Iterator[str]:
     """Bind ``chat_id`` for the block and restore the previous binding on exit."""

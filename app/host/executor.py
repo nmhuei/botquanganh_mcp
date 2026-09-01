@@ -191,6 +191,7 @@ def _execute_host_command_impl(
             )
         wait_timeout = timeout_seconds
 
+
     policy = require_host_command_allowed(command)
     resolved_cwd = resolve_host_path(
         cwd or ".",

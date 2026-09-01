@@ -37,7 +37,6 @@ DEFAULTS: dict[str, str] = {
     "DEFAULT_TIMEOUT_SECONDS": "60",
     "MAX_TIMEOUT_SECONDS": "300",
     "MAX_CONCURRENT_COMMANDS": "100",
-
     "COMMAND_QUEUE_TIMEOUT_SECONDS": "2",
     "SEARCH_TEXT_DEADLINE_SECONDS": "15",
     "LOG_FILE": "./logs/gateway.log",

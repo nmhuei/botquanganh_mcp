@@ -494,3 +494,63 @@ def test_logs_view_supports_min_severity_outcome_action_and_phase_filters(
     assert file_results["count"] == 1
     assert file_results["records"][0]["event_category"] == "file"
     assert file_results["records"][0]["event_duration_ms"] == 250.0
+
+
+# ---------------------------------------------------------------------------
+# Task 5: Operator CLI Enhancements (resume, unlock, token)
+# ---------------------------------------------------------------------------
+
+
+def test_chats_resume_default_and_specific(monkeypatch, tmp_path, capsys):
+    root = _configure(monkeypatch, tmp_path)
+    _make_workspace(root, "resume-me")
+    (root / ".last_session").write_text('{"chat_id": "resume-me"}', encoding="utf-8")
+
+    # Resume default (latest)
+    assert main(["chats", "resume", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["chat_id"] == "resume-me"
+    assert "Tiếp tục làm việc trong workspace resume-me" in data["resume_prompt"]
+
+    # Resume quiet
+    assert main(["chats", "resume", "resume-me", "--quiet"]) == 0
+    out = capsys.readouterr().out.strip()
+    assert "Tiếp tục làm việc trong workspace resume-me" in out
+
+
+def test_chats_unlock_clears_token_hash(monkeypatch, tmp_path, capsys):
+    root = _configure(monkeypatch, tmp_path)
+    ws = _make_workspace(root, "unlock-me")
+    meta = json.loads((ws / "meta.json").read_text(encoding="utf-8"))
+    meta["token_hash"] = "some-hash"
+    (ws / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+
+    assert main(["chats", "unlock", "unlock-me", "--json"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["unlocked"] is True
+
+    # Verify file updated
+    updated_meta = json.loads((ws / "meta.json").read_text(encoding="utf-8"))
+    assert updated_meta.get("token_hash") is None
+
+
+def test_chats_token_rotate(monkeypatch, tmp_path, capsys):
+    root = _configure(monkeypatch, tmp_path)
+    ws = _make_workspace(root, "token-me")
+
+    # Rotate token JSON
+    assert main(["chats", "token", "token-me", "--rotate", "--json"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["rotated"] is True
+    assert out["token"] == "<redacted>"
+
+    # Rotate token quiet returns raw token
+    assert main(["chats", "token", "token-me", "--rotate", "--quiet"]) == 0
+    raw_token = capsys.readouterr().out.strip()
+    assert len(raw_token) == 64
+
+    # Verify file updated
+    updated_meta = json.loads((ws / "meta.json").read_text(encoding="utf-8"))
+    assert updated_meta.get("token_hash") is not None
+
+

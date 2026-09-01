@@ -63,7 +63,8 @@ def _invalid_chat_id_payload() -> dict[str, Any]:
 
 # Tools exempt from enforce-mode binding: host_workspace_bind IS the way in,
 # so demanding a prior bind from it would deadlock every caller.
-BIND_EXEMPT_TOOLS = frozenset({"host_workspace_bind"})
+BIND_EXEMPT_TOOLS = frozenset({"host_workspace_bind", "host_workspace_list"})
+
 
 
 def _is_enforcing_mode() -> bool:
@@ -160,7 +161,14 @@ def _guard_chat_id(
     if resolved is None and _is_enforcing_mode():
         resolved = _context_chat_id()
         if resolved is None:
+            try:
+                from app.chat_identity import get_active_workspace
+                resolved = get_active_workspace()
+            except Exception:
+                pass
+        if resolved is None:
             return None, _bind_required_payload(tool)
+
     if resolved is None:
         if tool in _STATE_CHANGING_TOOLS and effective_attribution_mode() == "strict":
             return None, format_error_code(
@@ -630,11 +638,14 @@ def host_check_command(
         "Default timeout is 60 seconds (1 minute). Maximum allowed timeout is 300 seconds (5 minutes). "
         "Pass timeout_seconds to adjust (up to 300s) or 0 to run without timeout until completion. "
         "Relative cwd values are resolved from the default directory (HOST_DEFAULT_DIR, e.g. ~/Downloads). "
+
         "The default working directory is HOST_DEFAULT_DIR. Destructive commands are blocked."
     ),
 )
 
 def host_run_command(
+
+
     command: str,
     timeout_seconds: Optional[int] = None,
     cwd: Optional[str] = None,

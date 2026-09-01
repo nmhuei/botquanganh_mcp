@@ -484,3 +484,79 @@ def test_save_note_lands_in_real_bound_workspace(tmp_path, monkeypatch):
     assert note["ok"] is True
     assert note["path"] == str(log_file)
     assert read_single_note(log_file) == "real note"
+
+
+# ---------------------------------------------------------------------------
+# Task 2: Auto-hydration, Resume Prompt/Badge, and Idempotent Bind
+# ---------------------------------------------------------------------------
+
+
+def test_host_workspace_bind_auto_hydrates_and_provides_resume_prompt(tmp_path, monkeypatch):
+    _real_workspace_env(tmp_path, monkeypatch)
+
+    # 1. First bind
+    res1 = asyncio.run(host_workspace_bind(label="my-task"))
+    assert res1["ok"] is True
+    chat_id = res1["chat_id"]
+    assert "resume_prompt" in res1
+    assert "resume_badge_markdown" in res1
+    assert (tmp_path / chat_id / "RESUME.md").is_file()
+
+    # 2. Append a note
+    asyncio.run(host_save_note("Step 1 completed: installed deps", chat_id=chat_id))
+
+    # 3. Second bind without arguments (simulating next prompt or new session auto-resume)
+    res2 = asyncio.run(host_workspace_bind())
+    assert res2["ok"] is True
+    assert res2["chat_id"] == chat_id
+    assert res2["created"] is False
+    assert "auto_hydrated_context" in res2
+    notes = res2["auto_hydrated_context"]["recent_notes"]
+    assert any("Step 1 completed" in n for n in notes)
+
+
+# ---------------------------------------------------------------------------
+# Task 3: Workspace Discovery Tool (host_workspace_list)
+# ---------------------------------------------------------------------------
+
+
+def test_host_workspace_list_returns_recent_workspaces(tmp_path, monkeypatch):
+    _real_workspace_env(tmp_path, monkeypatch)
+
+    # Create two workspaces
+    res1 = asyncio.run(host_workspace_bind(label="crawler-job", new=True))
+    res2 = asyncio.run(host_workspace_bind(label="analysis-job", new=True))
+
+    from app.tools.workspace_tools import host_workspace_list
+
+    list_res = asyncio.run(host_workspace_list(limit=5))
+    assert list_res["ok"] is True
+    assert len(list_res["workspaces"]) >= 2
+    chat_ids = [w["chat_id"] for w in list_res["workspaces"]]
+    assert res1["chat_id"] in chat_ids
+    assert res2["chat_id"] in chat_ids
+    assert "last_active_human" in list_res["workspaces"][0]
+    assert "suggestion" in list_res
+
+
+# ---------------------------------------------------------------------------
+# Task 4: Implicit Attribution Fallback in Host Tools
+# ---------------------------------------------------------------------------
+
+
+def test_guard_chat_id_falls_back_to_latest_workspace_under_enforce(monkeypatch, tmp_path):
+    _real_workspace_env(tmp_path, monkeypatch)
+    monkeypatch.setattr("app.chat_identity.is_enforcing", lambda: True)
+
+    # Bind a workspace so it becomes active
+    res = asyncio.run(host_workspace_bind(label="active-test", new=True))
+    chat_id = res["chat_id"]
+
+    # Call _guard_chat_id without chat_id
+    from app.tools.host import _guard_chat_id
+    validated, rejection = _guard_chat_id("host_write_file", None)
+    assert rejection is None
+    assert validated == chat_id
+
+
+

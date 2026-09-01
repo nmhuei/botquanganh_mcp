@@ -74,16 +74,18 @@ def _workspace_path_from(result: Any) -> Path | None:
 @mcp.tool(
     name="host_workspace_bind",
     description=(
-        "Initialize or re-bind a per-chat host workspace and receive a server-assigned "
-        "chat_id and secret session token. Always call this tool first before using other "
-        "host tools. To create a new workspace, pass an optional label. To resume an "
-        "existing workspace, pass resume_id and resume_token."
+        "Initialize or resume a host workspace. Call this tool ONCE at the start of a session. "
+        "By default, calling without arguments automatically resumes the most recent active workspace. "
+        "To resume a specific workspace by label or ID, pass resume_id='<label_or_id>'. "
+        "To start a brand new workspace, pass new=True and an optional label. "
+        "Once bound, REUSE the returned chat_id for all subsequent host tool calls in this conversation."
     ),
 )
 async def host_workspace_bind(
     label: str | None = None,
     resume_id: str | None = None,
     resume_token: str | None = None,
+    new: bool = False,
     chat_id: str | None = None,
 ) -> dict[str, Any]:
     try:
@@ -100,13 +102,16 @@ async def host_workspace_bind(
             )
         manager = workspace_module.WorkspaceManager(_chat_root())
         target_id = resume_id if resume_id is not None else chat_id
-        if target_id is not None:
+        if target_id is None and not new and label is None:
+            target_id = "latest"
+
+        if target_id is not None and target_id not in {"latest", "@latest"} and not target_id.startswith("latest:"):
             validate_chat_id(target_id)
         bound = manager.create_or_bind(
             target_id,
             label=label,
             resume_token=resume_token,
-            require_token=bool(target_id),
+            require_token=bool(target_id and target_id not in {"latest", "@latest"}),
         )
         workspace_dir = _workspace_path_from(bound)
         if workspace_dir is None:
@@ -118,23 +123,37 @@ async def host_workspace_bind(
         assigned_id = (
             getattr(bound, "chat_id", "")
             or (bound.get("chat_id") if isinstance(bound, dict) else "")
-            or target_id
+            or (target_id if target_id not in {"latest", "@latest"} else "")
             or ""
         )
         session_token = getattr(bound, "session_token", None) if not isinstance(bound, dict) else bound.get("session_token")
+        auto_hydrated = getattr(bound, "auto_hydrated_context", None) if not isinstance(bound, dict) else bound.get("auto_hydrated_context")
 
         message = f"Workspace ready at {resolved}"
         if resumed_hint:
             message = f"{message} ({resumed_hint})"
+
+        resume_prompt_text = f"Tiếp tục làm việc trong workspace {assigned_id}" + (f" với token {session_token}" if session_token else "")
+        resume_badge_md = (
+            f"> 📦 **Workspace Active**: `{assigned_id}`\n"
+            f"> 📋 **Prompt phục hồi khi session chết**:\n"
+            f"> ```text\n> {resume_prompt_text}\n> ```"
+        )
+
         extra_fields: dict[str, Any] = {
             "chat_id": assigned_id,
             "workspace": resolved,
             "created": created,
             "hints": hints,
             "lines": [resolved, *hints],
+            "resume_prompt": resume_prompt_text,
+            "resume_badge_markdown": resume_badge_md,
         }
         if session_token:
             extra_fields["session_token"] = session_token
+        if auto_hydrated is not None:
+            extra_fields["auto_hydrated_context"] = auto_hydrated
+
         # Binding cannot be journaled before authorization/creation without
         # risking writes to an unowned workspace. Record a compact lifecycle
         # event only after a successful bind, never including the session token.
@@ -152,6 +171,115 @@ async def host_workspace_bind(
         )
     except Exception as exc:
         return to_tool_error(exc)
+
+
+@mcp.tool(
+    name="host_workspace_list",
+    description=(
+        "List recent host workspaces with their chat_id, label, last active time, "
+        "and summary. Use this tool when the user wants to resume an earlier project, "
+        "continue previous work, or find existing workspaces."
+    ),
+)
+async def host_workspace_list(
+    limit: int = 5,
+    include_archived: bool = True,
+    query: str | None = None,
+) -> dict[str, Any]:
+    try:
+        if not _workspaces_enabled():
+            return tool_unavailable(
+                "host_workspace_list", reason="Chat workspaces are disabled."
+            )
+        root = _chat_root()
+        if not root.is_dir():
+            return tool_success(
+                "No workspaces found.",
+                total_count=0,
+                workspaces=[],
+                suggestion="Call host_workspace_bind() to create your first workspace.",
+            )
+
+        candidates: list[tuple[float, Path, bool]] = []
+        import json
+        from datetime import datetime, timezone
+
+        for entry in root.iterdir():
+            if entry.is_dir() and not entry.name.startswith("."):
+                mtime = entry.stat().st_mtime
+                candidates.append((mtime, entry, False))
+        archive_root = root / ".archive"
+        if include_archived and archive_root.is_dir():
+            for entry in archive_root.iterdir():
+                if entry.is_dir() and not entry.name.startswith("."):
+                    mtime = entry.stat().st_mtime
+                    candidates.append((mtime, entry, True))
+
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        now_ts = datetime.now(timezone.utc).timestamp()
+
+        workspaces: list[dict[str, Any]] = []
+        for mtime, entry, archived in candidates:
+            chat_id = entry.name
+            if query and query.lower() not in chat_id.lower():
+                continue
+
+            meta_file = entry / "meta.json"
+            created_at = None
+            if meta_file.is_file():
+                try:
+                    meta_data = json.loads(meta_file.read_text(encoding="utf-8"))
+                    created_at = meta_data.get("created_at")
+                except Exception:
+                    pass
+
+            diff_sec = max(0, int(now_ts - mtime))
+            if diff_sec < 60:
+                human_time = "just now"
+            elif diff_sec < 3600:
+                human_time = f"{diff_sec // 60}m ago"
+            elif diff_sec < 86400:
+                human_time = f"{diff_sec // 3600}h ago"
+            else:
+                human_time = f"{diff_sec // 86400}d ago"
+
+            notes_file = entry / "notes" / "log.txt"
+            notes_count = 0
+            recent_note = None
+            if notes_file.is_file():
+                try:
+                    lines = [ln.strip() for ln in notes_file.read_text(encoding="utf-8", errors="replace").splitlines() if ln.strip()]
+                    notes_count = len(lines)
+                    if lines:
+                        recent_note = lines[-1]
+                except Exception:
+                    pass
+
+            item = {
+                "chat_id": chat_id,
+                "state": "archived" if archived else "active",
+                "last_active_human": human_time,
+                "created_at": created_at,
+                "notes_count": notes_count,
+            }
+            if recent_note:
+                item["recent_note"] = recent_note
+            workspaces.append(item)
+
+        total_matched = len(workspaces)
+        limited_workspaces = workspaces[:limit]
+
+        return tool_success(
+            f"Found {total_matched} workspace(s).",
+            total_count=total_matched,
+            workspaces=limited_workspaces,
+            suggestion="Call host_workspace_bind(resume_id='<chat_id>') to resume any workspace.",
+        )
+    except Exception as exc:
+        return to_tool_error(exc)
+
+
+
 
 
 @mcp.tool(

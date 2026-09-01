@@ -19,8 +19,10 @@ EXPECTED_TOOLS = {
     "ctf_render_fetch_result",
     "host_knowledge",
     "host_workspace_bind",
+    "host_workspace_list",
     "host_save_note",
 }
+
 
 
 def _list_tools() -> set[str]:
