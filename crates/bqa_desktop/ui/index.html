@@ -129,6 +129,33 @@
       box-shadow: 0 0 6px var(--accent);
     }
     .resizer.hidden { display: none; }
+
+    /* Custom Form & Select Controls (Prevent WebKit white glitch) */
+    select, input[type="text"], input[type="number"] {
+      background-color: var(--bg-base) !important;
+      color: var(--text-main) !important;
+      border: 1px solid var(--border) !important;
+      outline: none !important;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    select {
+      appearance: none !important;
+      -webkit-appearance: none !important;
+      background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%239ca3af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e") !important;
+      background-position: right 0.5rem center !important;
+      background-repeat: no-repeat !important;
+      background-size: 1.2em 1.2em !important;
+      padding-right: 1.75rem !important;
+    }
+    select option {
+      background-color: var(--bg-card) !important;
+      color: var(--text-main) !important;
+      padding: 6px 10px;
+    }
+    select:focus, input[type="text"]:focus, input[type="number"]:focus {
+      border-color: var(--accent) !important;
+      box-shadow: 0 0 0 1.5px var(--accent) !important;
+    }
   </style>
 </head>
 <body class="antialiased h-screen flex flex-col overflow-hidden select-none font-sans relative">
