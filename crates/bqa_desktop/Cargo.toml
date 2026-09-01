@@ -1,0 +1,16 @@
+[package]
+name = "bqa-desktop"
+version = "1.0.0"
+edition = "2021"
+authors = ["BQA Bridge Team"]
+description = "Native Rust Studio App for BQA Bridge Center"
+
+[dependencies]
+tao = "0.31"
+wry = "0.47"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.38", features = ["full"] }
+chrono = "0.4"
+notify = "6.1"
+reqwest = { version = "0.12", features = ["json"] }

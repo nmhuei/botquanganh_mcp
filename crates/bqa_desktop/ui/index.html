@@ -1,0 +1,1322 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="rosepine">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BQA Bridge Center — Native Studio Console</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    /* ==================== 12 WORLD-CLASS THEMES ==================== */
+    html[data-theme="linear"] {
+      --bg-base: #0d0f14; --bg-header: #12151d; --bg-surface: #171b26; --bg-card: #1c2230;
+      --bg-selected: #242c3f; --bg-console: #090b0f; --border: #23293a; --border-hover: #343e57;
+      --accent: #5e6ad2; --accent-soft: rgba(94, 106, 210, 0.15);
+      --text-main: #f3f4f6; --text-sub: #9ca3af; --text-dim: #6b7280;
+      --mint: #34d399; --sky: #38bdf8;
+    }
+    html[data-theme="github"] {
+      --bg-base: #1c2128; --bg-header: #22272e; --bg-surface: #22272e; --bg-card: #2d333b;
+      --bg-selected: #373e47; --bg-console: #181c22; --border: #373e47; --border-hover: #444c56;
+      --accent: #539bf5; --accent-soft: rgba(83, 155, 245, 0.15);
+      --text-main: #adbac7; --text-sub: #768390; --text-dim: #545d68;
+      --mint: #57ab5a; --sky: #6cb6ff;
+    }
+    html[data-theme="vercel"] {
+      --bg-base: #000000; --bg-header: #0a0a0a; --bg-surface: #0f0f0f; --bg-card: #171717;
+      --bg-selected: #262626; --bg-console: #050505; --border: #262626; --border-hover: #404040;
+      --accent: #ffffff; --accent-soft: rgba(255, 255, 255, 0.1);
+      --text-main: #ededed; --text-sub: #888888; --text-dim: #525252;
+      --mint: #ededed; --sky: #a1a1a1;
+    }
+    html[data-theme="dracula"] {
+      --bg-base: #21222c; --bg-header: #282a36; --bg-surface: #282a36; --bg-card: #343746;
+      --bg-selected: #44475a; --bg-console: #191a21; --border: #44475a; --border-hover: #6272a4;
+      --accent: #bd93f9; --accent-soft: rgba(189, 147, 249, 0.15);
+      --text-main: #f8f8f2; --text-sub: #bfbfbf; --text-dim: #6272a4;
+      --mint: #50fa7b; --sky: #8be9fd;
+    }
+    html[data-theme="nord"] {
+      --bg-base: #242933; --bg-header: #2e3440; --bg-surface: #2e3440; --bg-card: #3b4252;
+      --bg-selected: #434c5e; --bg-console: #1d212a; --border: #3b4252; --border-hover: #4c566a;
+      --accent: #88c0d0; --accent-soft: rgba(136, 192, 208, 0.15);
+      --text-main: #eceff4; --text-sub: #d8dee9; --text-dim: #7b88a1;
+      --mint: #a3be8c; --sky: #81a1c1;
+    }
+    html[data-theme="tokyo"] {
+      --bg-base: #16161e; --bg-header: #1f2335; --bg-surface: #1f2335; --bg-card: #292e42;
+      --bg-selected: #3b4261; --bg-console: #13141c; --border: #292e42; --border-hover: #414868;
+      --accent: #7aa2f7; --accent-soft: rgba(122, 162, 247, 0.15);
+      --text-main: #c0caf5; --text-sub: #9aa5ce; --text-dim: #565f89;
+      --mint: #9ece6a; --sky: #7dcfff;
+    }
+    html[data-theme="gruvbox"] {
+      --bg-base: #1d2021; --bg-header: #282828; --bg-surface: #282828; --bg-card: #32302f;
+      --bg-selected: #3c3836; --bg-console: #141617; --border: #3c3836; --border-hover: #504945;
+      --accent: #fabd2f; --accent-soft: rgba(250, 189, 47, 0.15);
+      --text-main: #ebdbb2; --text-sub: #a89984; --text-dim: #7c6f64;
+      --mint: #b8bb26; --sky: #83a598;
+    }
+    html[data-theme="catppuccin"] {
+      --bg-base: #181825; --bg-header: #1e1e2e; --bg-surface: #1e1e2e; --bg-card: #313244;
+      --bg-selected: #45475a; --bg-console: #11111b; --border: #313244; --border-hover: #585b70;
+      --accent: #cba6f7; --accent-soft: rgba(203, 166, 247, 0.15);
+      --text-main: #cdd6f4; --text-sub: #a6adc8; --text-dim: #6c7086;
+      --mint: #a6e3a1; --sky: #89dceb;
+    }
+    html[data-theme="monokai"] {
+      --bg-base: #19181a; --bg-header: #221f22; --bg-surface: #221f22; --bg-card: #2d2a2e;
+      --bg-selected: #403e41; --bg-console: #121113; --border: #2d2a2e; --border-hover: #4d494e;
+      --accent: #ffd866; --accent-soft: rgba(255, 216, 102, 0.15);
+      --text-main: #fcfcfa; --text-sub: #939293; --text-dim: #727072;
+      --mint: #a9dc76; --sky: #78dce8;
+    }
+    html[data-theme="rosepine"] {
+      --bg-base: #191724; --bg-header: #232136; --bg-surface: #232136; --bg-card: #2a273f;
+      --bg-selected: #393552; --bg-console: #14121e; --border: #2a273f; --border-hover: #44415a;
+      --accent: #ea9a97; --accent-soft: rgba(234, 154, 151, 0.15);
+      --text-main: #e0def4; --text-sub: #908caa; --text-dim: #6e6a86;
+      --mint: #9ccfd8; --sky: #c4a7e7;
+    }
+    html[data-theme="solarized"] {
+      --bg-base: #00212b; --bg-header: #002b36; --bg-surface: #002b36; --bg-card: #073642;
+      --bg-selected: #0e4c5b; --bg-console: #00171e; --border: #073642; --border-hover: #586e75;
+      --accent: #268bd2; --accent-soft: rgba(38, 139, 210, 0.15);
+      --text-main: #93a1a1; --text-sub: #657b83; --text-dim: #586e75;
+      --mint: #859900; --sky: #2aa198;
+    }
+    html[data-theme="light"] {
+      --bg-base: #f8fafc; --bg-header: #ffffff; --bg-surface: #ffffff; --bg-card: #f1f5f9;
+      --bg-selected: #e2e8f0; --bg-console: #0f172a; --border: #e2e8f0; --border-hover: #cbd5e1;
+      --accent: #4f46e5; --accent-soft: rgba(79, 70, 229, 0.1);
+      --text-main: #0f172a; --text-sub: #64748b; --text-dim: #94a3b8;
+      --mint: #10b981; --sky: #0284c7;
+    }
+
+    body {
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      transition: background-color 0.15s ease, color 0.15s ease;
+    }
+
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(148, 163, 184, 0.2) transparent;
+    }
+    *::-webkit-scrollbar { width: 4px; height: 4px; }
+    *::-webkit-scrollbar-track { background: transparent; }
+    *::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.2); border-radius: 999px; }
+
+    .resizer {
+      width: 5px;
+      cursor: col-resize;
+      background: transparent;
+      position: relative;
+      z-index: 20;
+      flex-shrink: 0;
+      transition: background 0.15s ease;
+    }
+    .resizer::after {
+      content: '';
+      position: absolute;
+      top: 0; bottom: 0;
+      left: 2px;
+      width: 1px;
+      background: var(--border);
+    }
+    .resizer:hover::after,
+    .resizer.dragging::after {
+      background: var(--accent);
+      box-shadow: 0 0 6px var(--accent);
+    }
+    .resizer.hidden { display: none; }
+  </style>
+</head>
+<body class="antialiased h-screen flex flex-col overflow-hidden select-none font-sans relative">
+
+  <!-- ==================== TOP NAVIGATION BAR ==================== -->
+  <header style="background-color: var(--bg-header); border-color: var(--border);" class="h-11 border-b px-4 flex items-center justify-between shrink-0 z-20">
+    <!-- Left: Brand + 3 Page Navigation -->
+    <div class="flex items-center space-x-4">
+      <div class="flex items-center gap-2 text-xs font-bold">
+        <span style="background-color: var(--accent);" class="w-2 h-2 rounded-full shadow-xs"></span>
+        <span class="tracking-wide font-mono">BQA Center</span>
+        <span style="color: var(--accent); background-color: var(--accent-soft);" class="text-[9px] px-1 py-0.2 rounded font-mono">Rust Native</span>
+      </div>
+
+      <!-- 3 Navigation Tabs -->
+      <nav style="background-color: var(--bg-base); border-color: var(--border);" class="flex items-center space-x-1 p-0.5 rounded-lg border text-xs">
+        <button id="tabOverview" onclick="switchPage('overview')" style="color: var(--text-sub);" class="nav-tab px-3 py-1 rounded-md transition hover:text-white flex items-center gap-1.5">
+          <span>Tổng quan</span>
+        </button>
+        <button id="tabActivity" onclick="switchPage('activity')" style="background-color: var(--bg-card); border-color: var(--border); color: var(--text-main);" class="nav-tab px-3 py-1 border rounded-md font-medium shadow-xs transition flex items-center gap-1.5">
+          <span>Hoạt động</span>
+        </button>
+        <button id="tabLogs" onclick="switchPage('logs')" style="color: var(--text-sub);" class="nav-tab px-3 py-1 rounded-md transition hover:text-white flex items-center gap-1.5">
+          <span>Nhật ký</span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- Right: Status Beacon & Actions -->
+    <div style="color: var(--text-sub);" class="flex items-center space-x-2.5 text-xs">
+      <div style="background-color: var(--bg-base); border-color: var(--border);" class="flex items-center gap-2 border px-2.5 py-1 rounded-md text-[11px] font-mono">
+        <span id="topbarStatusDot" style="background-color: var(--mint);" class="w-1.5 h-1.5 rounded-full"></span>
+        <span id="topbarStatusText" style="color: var(--text-main);">0.0.0.0:18427</span>
+      </div>
+
+      <!-- Restart Button with auto-switch to Overview -->
+      <button id="btnRestart" onclick="handleRestartServer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-2.5 py-1 border hover:border-[#37425c] rounded-md text-[11px] font-medium transition flex items-center gap-1.5 active:scale-95 shadow-xs" title="Khởi động lại Bridge Server">
+        <svg id="restartIcon" class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+        <span id="restartLabel">Khởi động lại</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ==================== PAGE 1: TỔNG QUAN (OVERVIEW) ==================== -->
+  <div id="pageOverview" class="flex-1 overflow-y-auto p-6 hidden">
+    <div class="max-w-4xl mx-auto space-y-5">
+      <!-- Header Banner -->
+      <div style="border-color: var(--border);" class="border-b pb-3 flex items-center justify-between">
+        <div>
+          <h1 style="color: var(--text-main);" class="text-base font-semibold">Tổng quan Hệ thống</h1>
+          <p style="color: var(--text-sub);" class="text-xs mt-0.5">Quản lý kết nối MCP Cloudflare Tunnel và tài nguyên lưu trữ</p>
+        </div>
+        <!-- Bridge Lifecycle Control Box (Start / Restart / Stop) -->
+        <div style="background-color: var(--bg-header); border-color: var(--border);" class="flex items-center gap-2.5 border px-3 py-1.5 rounded-lg shadow-xs">
+          <span id="bridgeStateText" style="color: var(--mint);" class="text-xs font-medium flex items-center gap-1.5 mr-1 font-mono">
+            <span id="bridgeDot" style="background-color: var(--mint);" class="w-2 h-2 rounded-full"></span>
+            <span>Đang chạy</span>
+          </span>
+
+          <!-- Actions container -->
+          <div id="bridgeActionsRunning" class="flex items-center gap-1.5">
+            <button onclick="handleRestartServer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-2.5 py-1 border hover:border-[#37425c] rounded-md text-[11px] font-medium transition flex items-center gap-1 active:scale-95 shadow-xs" title="Khởi động lại Bridge">
+              <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+              <span>Restart</span>
+            </button>
+            <button onclick="stopBridgeServer()" class="px-2.5 py-1 bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 rounded-md text-[11px] font-medium transition flex items-center gap-1 active:scale-95 shadow-xs" title="Dừng Bridge Server">
+              <span class="w-2 h-2 rounded-xs bg-rose-400"></span>
+              <span>Stop</span>
+            </button>
+          </div>
+
+          <!-- Stopped State Action (Hidden when running) -->
+          <div id="bridgeActionsStopped" class="hidden items-center gap-1.5">
+            <button onclick="startBridgeServer()" class="px-3 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-md text-[11px] font-medium transition flex items-center gap-1 active:scale-95 shadow-xs" title="Khởi chạy Bridge Server">
+              <svg class="w-3 h-3 text-emerald-400" fill="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+              <span>Start</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- MCP Tunnel Box -->
+      <div style="background-color: var(--bg-header); border-color: var(--border);" class="border rounded-xl p-4 space-y-3 font-mono text-xs">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span style="color: var(--text-sub);" class="text-[11px] uppercase tracking-wider font-sans font-semibold">MCP Cloudflare Tunnel Endpoint</span>
+            <span style="color: var(--mint); background-color: var(--accent-soft); border-color: var(--border);" class="text-[10px] border px-1.5 py-0.2 rounded font-sans">Đã kết nối Edge</span>
+          </div>
+          <div class="flex items-center gap-2 font-sans">
+            <button onclick="copyBridgeUrl()" style="background-color: var(--accent); color: white;" class="px-3 py-1 rounded-md text-[11px] font-medium transition flex items-center gap-1.5 shadow-xs">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" stroke-width="2"></rect><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke-width="2"></path></svg>
+              <span id="copyUrlLabel">Sao chép Tunnel URL</span>
+            </button>
+            <button onclick="openSettingsDrawer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-2.5 py-1 border rounded-md text-[11px] transition">
+              Cài đặt Server
+            </button>
+          </div>
+        </div>
+
+        <div style="background-color: var(--bg-base); border-color: var(--border);" class="border px-3.5 py-2.5 rounded-lg flex items-center justify-between text-xs">
+          <div class="flex items-center gap-2 truncate">
+            <span style="color: var(--accent);" class="font-bold">TUNNEL ›</span>
+            <span id="bridgeUrlDisplay" style="color: var(--mint);" class="select-text font-medium">https://bqa-bridge-live.trycloudflare.com/sse</span>
+          </div>
+          <span style="color: var(--text-dim);" class="text-[11px] shrink-0 font-sans">Giao thức SSE</span>
+        </div>
+      </div>
+
+      <!-- 4-Metric Grid -->
+      <div>
+        <span style="color: var(--text-sub);" class="text-[11px] font-semibold uppercase tracking-wider block mb-2 font-sans">Chỉ số Hoạt động (Telemetry)</span>
+        <div class="grid grid-cols-4 gap-3 font-mono text-xs">
+          <div style="background-color: var(--bg-header); border-color: var(--border);" class="border p-3.5 rounded-xl">
+            <span style="color: var(--text-sub);" class="text-[10px] block uppercase font-sans">Phiên đang mở</span>
+            <span id="metricSessions" style="color: var(--text-main);" class="text-xl font-bold mt-1 block">4 <span style="color: var(--text-dim);" class="text-xs font-normal font-sans">sessions</span></span>
+          </div>
+          <div style="background-color: var(--bg-header); border-color: var(--border);" class="border p-3.5 rounded-xl">
+            <span style="color: var(--text-sub);" class="text-[10px] block uppercase font-sans">Lệnh đã thực thi</span>
+            <span id="metricCommands" style="color: var(--text-main);" class="text-xl font-bold mt-1 block">1,420 <span style="color: var(--mint);" class="text-xs font-normal font-sans">(100% OK)</span></span>
+          </div>
+          <div style="background-color: var(--bg-header); border-color: var(--border);" class="border p-3.5 rounded-xl">
+            <span style="color: var(--text-sub);" class="text-[10px] block uppercase font-sans">Bộ nhớ lưu trữ</span>
+            <span id="metricStorage" style="color: var(--text-main);" class="text-xl font-bold mt-1 block">42.8 MB <span style="color: var(--text-dim);" class="text-xs font-normal font-sans">/ 2GB</span></span>
+          </div>
+          <div style="background-color: var(--bg-header); border-color: var(--border);" class="border p-3.5 rounded-xl">
+            <span style="color: var(--text-sub);" class="text-[10px] block uppercase font-sans">Độ trễ phản hồi</span>
+            <span id="metricLatency" style="color: var(--mint);" class="text-xl font-bold mt-1 block">0.4 ms</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Action Buttons -->
+      <div class="pt-2 flex gap-2.5 font-sans">
+        <button onclick="switchPage('activity')" style="background-color: var(--accent); color: white;" class="px-4 py-2 text-xs font-medium rounded-lg transition shadow-xs flex items-center gap-1.5">
+          <span>Xem Hoạt động lệnh</span>
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+        </button>
+        <button onclick="switchPage('logs')" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-4 py-2 text-xs font-medium rounded-lg border transition">
+          Xem Nhật ký sự kiện
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== PAGE 2: HOẠT ĐỘNG (ACTIVITY - 3 PANES RESIZABLE) ==================== -->
+  <div id="pageActivity" class="flex-1 flex overflow-hidden relative">
+
+    <!-- CỘT 1: SESSIONS (CÓ NÚT THU GỌN INLINE « TRỰC TIẾP TRÊN HEADER) -->
+    <aside id="paneSidebar" style="background-color: var(--bg-header); border-color: var(--border);" class="w-56 min-w-[150px] max-w-[360px] border-r flex flex-col shrink-0">
+      <div style="border-color: var(--border); color: var(--text-sub);" class="px-3 py-2 border-b flex items-center justify-between text-xs shrink-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-semibold uppercase tracking-wider text-[10px]">Sessions</span>
+          <span style="color: var(--text-dim);" class="text-[9.5px] font-sans">• Đĩa</span>
+        </div>
+        <!-- Action buttons on Sidebar Header: Reload & Inline Collapse -->
+        <div class="flex items-center space-x-1">
+          <button onclick="refreshSessionsFromDisk()" style="color: var(--text-sub);" class="hover:text-white transition p-1 rounded hover:bg-slate-700/30" title="Đọc lại từ workspace">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+          </button>
+          <button onclick="toggleSidebar()" style="color: var(--text-sub);" class="hover:text-white transition p-1 rounded hover:bg-slate-700/30" title="Thu gọn danh sách phiên (Collapse)">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"></path></svg>
+          </button>
+        </div>
+      </div>
+
+      <div id="sessionListContainer" class="flex-1 overflow-y-auto p-1.5 space-y-1 font-mono text-xs">
+        <!-- Dynamically injected from Rust IPC -->
+      </div>
+    </aside>
+
+    <!-- Splitter 1 -->
+    <div id="resizerLeft" class="resizer"></div>
+
+    <!-- CỘT 2: TÓM TẮT LỆNH (CÓ NÚT MỞ NHANH » KHI SIDEBAR BỊ THU GỌN) -->
+    <section id="paneStream" style="background-color: var(--bg-base); border-color: var(--border);" class="w-64 min-w-[180px] max-w-[460px] flex flex-col shrink-0 overflow-hidden border-r">
+      <div style="border-color: var(--border); color: var(--text-sub);" class="px-3 py-2 border-b text-xs shrink-0 flex items-center justify-between">
+        <div class="flex items-center gap-2 truncate">
+          <button id="btnExpandSidebar" onclick="toggleSidebar()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="hidden px-1.5 py-0.5 border rounded text-[10.5px] font-mono items-center gap-1 transition hover:border-[#4f46e5]" title="Mở lại danh sách phiên">
+            <svg class="w-3 h-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"></path></svg>
+            <span>Sessions</span>
+          </button>
+          <span id="streamTitle" style="color: var(--text-main);" class="font-mono font-semibold truncate text-[11.5px]">Đang tải...</span>
+        </div>
+
+        <div class="flex items-center gap-1 shrink-0">
+          <span style="color: var(--text-dim);" class="text-[10px] font-sans">Mới nhất ↓</span>
+          <button onclick="toggleInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white hover:bg-slate-700/30 transition" title="Ẩn/Hiện Khung Chi Tiết Inspector">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" stroke-width="2"></rect><path d="M15 4v16" stroke-width="2"></path></svg>
+          </button>
+        </div>
+      </div>
+
+      <div id="commandStreamContainer" class="flex-1 overflow-y-auto p-2 space-y-1.5 font-mono text-xs">
+        <!-- Dynamically injected from Rust IPC -->
+      </div>
+    </section>
+
+    <!-- Splitter 2 -->
+    <div id="resizerRight" class="resizer"></div>
+
+    <!-- CỘT 3: KHUNG CHI TIẾT (HERO ELEMENT) -->
+    <aside id="paneInspector" style="background-color: var(--bg-header);" class="flex-1 min-w-[320px] flex flex-col overflow-hidden">
+      <div style="border-color: var(--border); color: var(--text-sub);" class="px-4 py-2 border-b flex items-center justify-between text-xs shrink-0">
+        <span style="color: var(--text-main);" class="font-semibold">Chi tiết Thực thi (Inspector)</span>
+        <div class="flex items-center gap-2">
+          <button onclick="copyDetails()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-2.5 py-1 border rounded-md text-[11px] transition">
+            <span id="copyBtnLabel">Sao chép Output</span>
+          </button>
+          <button onclick="toggleInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white hover:bg-slate-700/30 transition" title="Thu gọn Khung Chi tiết">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-4 space-y-3.5 text-xs font-mono">
+        <div class="grid grid-cols-3 gap-2.5">
+          <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-2.5 rounded-lg">
+            <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans">Tác vụ</span>
+            <span id="inspectTool" style="color: var(--accent);" class="font-semibold mt-0.5 block truncate">host_run_command</span>
+          </div>
+
+          <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-2.5 rounded-lg">
+            <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans">Thời gian (Date & Time)</span>
+            <span id="inspectTimestamp" style="color: var(--text-main);" class="font-semibold mt-0.5 block truncate">2026-09-01 20:26:15</span>
+          </div>
+
+          <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-2.5 rounded-lg">
+            <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans">Kết quả & Thời lượng</span>
+            <span id="inspectExit" style="color: var(--mint);" class="font-semibold mt-0.5 block truncate">0 (Success) · 1.42s</span>
+          </div>
+        </div>
+
+        <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-3 rounded-lg">
+          <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans mb-1">Lệnh đầy đủ</span>
+          <div id="inspectCommand" style="color: var(--text-main);" class="select-text break-all">uv run pytest tests/test_qml_backend.py</div>
+        </div>
+
+        <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-3 rounded-lg">
+          <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans mb-1">Thư mục (CWD)</span>
+          <div id="inspectCwd" style="color: var(--text-sub);" class="select-text break-all">/home/light/GitHub/botquanganh_mcp</div>
+        </div>
+
+        <div class="flex flex-col flex-1 min-h-[220px]">
+          <div style="color: var(--text-dim);" class="flex items-center justify-between text-[10px] uppercase font-sans mb-1">
+            <span>Terminal Console Output</span>
+            <span>UTF-8</span>
+          </div>
+          <pre id="inspectOutput" style="background-color: var(--bg-console); border-color: var(--border); color: var(--mint);" class="flex-1 border rounded-xl p-3.5 text-[11px] leading-relaxed overflow-auto select-text font-mono whitespace-pre-wrap"></pre>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- ==================== PAGE 3: NHẬT KÝ (AUDIT LOGS - 2 PANES RESIZABLE) ==================== -->
+  <div id="pageLogs" class="flex-1 flex overflow-hidden hidden font-mono text-xs relative">
+    <div id="paneLogStream" style="background-color: var(--bg-base); border-color: var(--border);" class="flex-1 min-w-[260px] flex flex-col overflow-hidden border-r">
+      <div style="background-color: var(--bg-header); border-color: var(--border); color: var(--text-sub);" class="px-4 py-2.5 border-b flex items-center justify-between shrink-0 text-xs">
+        <div class="flex items-center gap-2">
+          <span style="color: var(--text-main);" class="font-semibold">System Audit Log Stream</span>
+          <span style="color: var(--text-dim);" class="text-[10px] font-sans">Toàn bộ sự kiện bảo mật & tệp (Mới nhất ↓)</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="refreshLogsFromDisk()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-2.5 py-1 border rounded-md text-[11px] font-sans transition">
+            Làm mới
+          </button>
+          <button onclick="toggleInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white transition" title="Ẩn/Hiện Chi tiết Log">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" stroke-width="2"></rect><path d="M15 4v16" stroke-width="2"></path></svg>
+          </button>
+        </div>
+      </div>
+
+      <div id="logStreamContainer" class="flex-1 overflow-y-auto p-2 space-y-1">
+        <!-- Dynamically injected from Rust IPC -->
+      </div>
+    </div>
+
+    <!-- Divider -->
+    <div id="resizerLog" class="resizer"></div>
+
+    <!-- CỘT 2: FORENSICS JSON -->
+    <aside id="paneLogInspector" style="background-color: var(--bg-header);" class="w-[420px] min-w-[280px] max-w-[800px] flex flex-col overflow-hidden shrink-0">
+      <div style="border-color: var(--border); color: var(--text-sub);" class="px-4 py-2.5 border-b flex items-center justify-between text-xs shrink-0">
+        <span style="color: var(--text-main);" class="font-semibold">Log Event Forensics</span>
+        <div class="flex items-center gap-1.5">
+          <button onclick="copyLogJson()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-2.5 py-1 border rounded-md text-[11px] font-sans transition">
+            <span id="copyLogLabel">Sao chép JSON</span>
+          </button>
+          <button onclick="toggleInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white transition" title="Thu gọn chi tiết">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-4 space-y-3">
+        <div class="grid grid-cols-2 gap-2.5 text-xs">
+          <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-2.5 rounded-lg">
+            <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans">Event ID</span>
+            <span id="logInspectId" style="color: var(--text-main);" class="font-semibold mt-0.5 block">evt-init</span>
+          </div>
+          <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-2.5 rounded-lg">
+            <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans">Severity / Category</span>
+            <span id="logInspectCategory" style="color: var(--mint);" class="font-semibold mt-0.5 block">SYSTEM · network</span>
+          </div>
+        </div>
+
+        <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-2.5 rounded-lg text-xs">
+          <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans mb-1">Action & Session ID</span>
+          <div class="flex items-center justify-between">
+            <span id="logInspectAction" style="color: var(--accent);" class="font-semibold">bridge_init</span>
+            <span id="logInspectSession" style="color: var(--text-sub);">system</span>
+          </div>
+        </div>
+
+        <div class="flex flex-col flex-1 min-h-[240px]">
+          <span style="color: var(--text-dim);" class="text-[10px] uppercase font-sans mb-1">Raw JSON Metadata Payload</span>
+          <pre id="logInspectJson" style="background-color: var(--bg-console); border-color: var(--border); color: var(--sky);" class="flex-1 border rounded-xl p-3.5 text-[11px] leading-relaxed overflow-auto select-text whitespace-pre-wrap">{}</pre>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ==================== FLOATING SETTINGS TRIGGER BUTTON ==================== -->
+  <button id="btnSettingsTrigger" onclick="openSettingsDrawer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="fixed bottom-4 right-4 z-40 px-3.5 py-2 border rounded-full shadow-xl hover:border-[#6366f1] hover:shadow-indigo-500/20 transition flex items-center gap-2 text-xs font-medium group active:scale-95">
+    <svg class="w-4 h-4 group-hover:rotate-45 transition-transform duration-300 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+    <span>Cài đặt</span>
+  </button>
+
+  <!-- ==================== SLIDE-OUT SETTINGS DRAWER ==================== -->
+  <div id="settingsBackdrop" onclick="closeSettingsDrawer()" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs transition-opacity duration-300 opacity-0 pointer-events-none"></div>
+
+  <aside id="settingsDrawer" style="background-color: var(--bg-header); border-color: var(--border);" class="fixed top-0 right-0 bottom-0 w-[450px] max-w-full z-50 border-l shadow-2xl flex flex-col transform translate-x-full transition-transform duration-300 ease-out font-sans">
+    <div style="border-color: var(--border);" class="p-4 border-b flex items-center justify-between shrink-0">
+      <div class="flex items-center gap-2">
+        <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+        <div>
+          <h2 style="color: var(--text-main);" class="text-sm font-bold">Cấu Hình Máy Chủ & Môi Trường</h2>
+          <span style="color: var(--text-dim);" class="text-[10px] font-mono">Quản lý qua Rust Backend</span>
+        </div>
+      </div>
+      <button onclick="closeSettingsDrawer()" style="color: var(--text-sub);" class="hover:text-white p-1 rounded-md transition" title="Đóng">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+      </button>
+    </div>
+
+    <div class="flex-1 overflow-y-auto p-4 space-y-3 text-xs">
+      <!-- MỤC 1: WORKSPACES & ĐƯỜNG DẪN -->
+      <div style="background-color: var(--bg-surface); border-color: var(--border);" class="border rounded-xl overflow-hidden shadow-xs">
+        <button onclick="toggleSection('secPaths')" class="w-full p-3.5 flex items-center justify-between text-left hover:opacity-90 transition">
+          <div class="flex items-center gap-2.5">
+            <span class="text-sm">📂</span>
+            <div>
+              <div class="flex items-center gap-1.5">
+                <h3 style="color: var(--text-main);" class="font-semibold text-xs">1. Workspaces & Đường Dẫn</h3>
+                <span style="color: var(--mint); background-color: var(--accent-soft);" class="text-[9px] px-1 rounded font-mono font-medium">Hot Reload</span>
+              </div>
+              <p style="color: var(--text-dim);" class="text-[10px]">HOST_WORKSPACE_DIR & Thư mục Chat</p>
+            </div>
+          </div>
+          <svg id="arrow-secPaths" class="w-3.5 h-3.5 text-slate-400 transform transition-transform duration-200 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+        </button>
+
+        <div id="secPaths" class="p-3.5 pt-0 border-t space-y-2.5 font-mono" style="border-color: var(--border);">
+          <div class="pt-2">
+            <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">HOST_WORKSPACE_DIR (Gốc phân quyền)</label>
+            <input id="cfgWorkspaceDir" type="text" value="/home/light" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px] focus:outline-hidden">
+          </div>
+
+          <div>
+            <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">HOST_DEFAULT_DIR (Thư mục mặc định)</label>
+            <input id="cfgDefaultDir" type="text" value="/home/light/Downloads/bqa" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px]">
+          </div>
+
+          <div>
+            <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">HOST_CHAT_ROOT (Thư mục lưu phiên)</label>
+            <input id="cfgChatRoot" type="text" value="/home/light/Downloads/bqa-workspaces" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px]">
+          </div>
+        </div>
+      </div>
+
+      <!-- MỤC 2: CHÍNH SÁCH LỆNH & TIMEOUT -->
+      <div style="background-color: var(--bg-surface); border-color: var(--border);" class="border rounded-xl overflow-hidden shadow-xs">
+        <button onclick="toggleSection('secExecution')" class="w-full p-3.5 flex items-center justify-between text-left hover:opacity-90 transition">
+          <div class="flex items-center gap-2.5">
+            <span class="text-sm">⚡</span>
+            <div>
+              <div class="flex items-center gap-1.5">
+                <h3 style="color: var(--text-main);" class="font-semibold text-xs">2. Thực Thi & Giới Hạn (Policy)</h3>
+                <span style="color: var(--mint); background-color: var(--accent-soft);" class="text-[9px] px-1 rounded font-mono font-medium">Hot Reload</span>
+              </div>
+              <p style="color: var(--text-dim);" class="text-[10px]">Guarded policy, Timeouts & Limits</p>
+            </div>
+          </div>
+          <svg id="arrow-secExecution" class="w-3.5 h-3.5 text-slate-400 transform transition-transform duration-200 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+        </button>
+
+        <div id="secExecution" class="p-3.5 pt-0 border-t space-y-2.5 font-mono" style="border-color: var(--border);">
+          <div class="grid grid-cols-2 gap-2 pt-2">
+            <div>
+              <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">COMMAND POLICY</label>
+              <select id="cfgPolicy" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2 py-1.5 text-[11px] cursor-pointer">
+                <option value="guarded" selected>guarded (An toàn)</option>
+                <option value="allowlist">allowlist (Chỉ định)</option>
+              </select>
+            </div>
+            <div>
+              <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">DEFAULT TIMEOUT (s)</label>
+              <input id="cfgDefaultTimeout" type="number" value="60" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px]">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">MAX TIMEOUT (s)</label>
+              <input id="cfgMaxTimeout" type="number" value="300" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px]">
+            </div>
+            <div>
+              <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">MAX OUTPUT (BYTES)</label>
+              <input id="cfgMaxOutput" type="number" value="5000000" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px]">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MỤC 3: BẢO MẬT & XÁC THỰC -->
+      <div style="background-color: var(--bg-surface); border-color: var(--border);" class="border rounded-xl overflow-hidden shadow-xs">
+        <button onclick="toggleSection('secSecurity')" class="w-full p-3.5 flex items-center justify-between text-left hover:opacity-90 transition">
+          <div class="flex items-center gap-2.5">
+            <span class="text-sm">🛡️</span>
+            <div>
+              <div class="flex items-center gap-1.5">
+                <h3 style="color: var(--text-main);" class="font-semibold text-xs">3. Bảo Mật & Xác Thực (Auth)</h3>
+                <span style="color: var(--mint); background-color: var(--accent-soft);" class="text-[9px] px-1 rounded font-mono font-medium">Hot Reload</span>
+              </div>
+              <p style="color: var(--text-dim);" class="text-[10px]">GATEWAY_TOKEN & Attribution Mode</p>
+            </div>
+          </div>
+          <svg id="arrow-secSecurity" class="w-3.5 h-3.5 text-slate-400 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+        </button>
+
+        <div id="secSecurity" class="p-3.5 pt-0 border-t space-y-2.5 font-mono hidden" style="border-color: var(--border);">
+          <div class="pt-2">
+            <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">GATEWAY_TOKEN</label>
+            <input id="cfgToken" type="text" value="mcp_gateway_9f8d1c7a3b4e5f60" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px]">
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">REQUIRE_AUTH</label>
+              <select id="cfgRequireAuth" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2 py-1.5 text-[11px] cursor-pointer">
+                <option value="false" selected>false (Không bắt buộc)</option>
+                <option value="true">true (Bắt buộc Token)</option>
+              </select>
+            </div>
+            <div>
+              <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">ATTRIBUTION_MODE</label>
+              <select id="cfgAttribution" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2 py-1.5 text-[11px] cursor-pointer">
+                <option value="enforce" selected>enforce (Bắt buộc)</option>
+                <option value="strict">strict</option>
+                <option value="tag">tag</option>
+                <option value="off">off</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MỤC 4: GIAO DIỆN & CHỦ ĐỀ (12 THEMES) -->
+      <div style="background-color: var(--bg-surface); border-color: var(--border);" class="border rounded-xl overflow-hidden transition">
+        <button onclick="toggleSection('secTheme')" class="w-full p-3.5 flex items-center justify-between text-left hover:opacity-90 transition">
+          <div class="flex items-center gap-2.5">
+            <span class="text-sm">🎨</span>
+            <div>
+              <h3 style="color: var(--text-main);" class="font-semibold text-xs">4. Giao Diện & Chủ Đề (12 Theme)</h3>
+              <p style="color: var(--text-dim);" class="text-[10px]">Tùy chọn phong cách phối màu developer</p>
+            </div>
+          </div>
+          <svg id="arrow-secTheme" class="w-3.5 h-3.5 text-slate-400 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+        </button>
+
+        <div id="secTheme" class="p-3 pt-0 border-t space-y-1.5 hidden" style="border-color: var(--border);">
+          <div class="grid grid-cols-2 gap-1.5 pt-2">
+            <button onclick="selectThemeFromDrawer('rosepine')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="rosepine" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#ea9a97] shrink-0"></span>
+              <span class="truncate text-[11px]">Rose Pine Moon</span>
+            </button>
+            <button onclick="selectThemeFromDrawer('linear')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="linear" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#5e6ad2] shrink-0"></span>
+              <span class="truncate text-[11px]">Linear Studio</span>
+            </button>
+            <button onclick="selectThemeFromDrawer('github')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="github" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#539bf5] shrink-0"></span>
+              <span class="truncate text-[11px]">GitHub Dimmed</span>
+            </button>
+            <button onclick="selectThemeFromDrawer('dracula')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="dracula" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#bd93f9] shrink-0"></span>
+              <span class="truncate text-[11px]">Dracula</span>
+            </button>
+            <button onclick="selectThemeFromDrawer('nord')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="nord" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#88c0d0] shrink-0"></span>
+              <span class="truncate text-[11px]">Nord Arctic</span>
+            </button>
+            <button onclick="selectThemeFromDrawer('tokyo')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="tokyo" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#7aa2f7] shrink-0"></span>
+              <span class="truncate text-[11px]">Tokyo Night</span>
+            </button>
+            <button onclick="selectThemeFromDrawer('gruvbox')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="gruvbox" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#fabd2f] shrink-0"></span>
+              <span class="truncate text-[11px]">Gruvbox Retro</span>
+            </button>
+            <button onclick="selectThemeFromDrawer('catppuccin')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="catppuccin" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#cba6f7] shrink-0"></span>
+              <span class="truncate text-[11px]">Catppuccin</span>
+            </button>
+            <button onclick="selectThemeFromDrawer('monokai')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="monokai" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#ffd866] shrink-0"></span>
+              <span class="truncate text-[11px]">Monokai Pro</span>
+            </button>
+            <button onclick="selectThemeFromDrawer('solarized')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="solarized" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#268bd2] shrink-0"></span>
+              <span class="truncate text-[11px]">Solarized Dark</span>
+            </button>
+            <button onclick="selectThemeFromDrawer('vercel')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="vercel" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#ffffff] shrink-0"></span>
+              <span class="truncate text-[11px]">Vercel Mono</span>
+            </button>
+            <button onclick="selectThemeFromDrawer('light')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="light" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#4f46e5] shrink-0"></span>
+              <span class="truncate text-[11px]">Clean Light</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- MỤC 5: MẠNG & PORT -->
+      <div style="background-color: var(--bg-surface); border-color: var(--border);" class="border rounded-xl overflow-hidden">
+        <button onclick="toggleSection('secNetwork')" class="w-full p-3.5 flex items-center justify-between text-left hover:opacity-90 transition">
+          <div class="flex items-center gap-2.5">
+            <span class="text-sm">🌐</span>
+            <div>
+              <div class="flex items-center gap-1.5">
+                <h3 style="color: var(--text-main);" class="font-semibold text-xs">5. Mạng & Socket Binding</h3>
+                <span style="color: var(--text-dim);" class="text-[9px] px-1 rounded font-mono">Cần Restart</span>
+              </div>
+              <p style="color: var(--text-dim);" class="text-[10px]">MCP_BIND_HOST (0.0.0.0) & MCP_PORT (18427)</p>
+            </div>
+          </div>
+          <svg id="arrow-secNetwork" class="w-3.5 h-3.5 text-slate-400 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+        </button>
+
+        <div id="secNetwork" class="p-3.5 pt-0 border-t space-y-2 font-mono hidden" style="border-color: var(--border);">
+          <div class="grid grid-cols-2 gap-2 pt-2">
+            <div>
+              <label style="color: var(--text-dim);" class="text-[10px] uppercase font-semibold block mb-1">MCP_BIND_HOST</label>
+              <input type="text" value="0.0.0.0" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px]">
+            </div>
+            <div>
+              <label style="color: var(--text-dim);" class="text-[10px] uppercase font-semibold block mb-1">MCP_PORT</label>
+              <input type="text" value="18427" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px]">
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div style="background-color: var(--bg-header); border-color: var(--border);" class="p-3.5 border-t flex items-center justify-between shrink-0 font-sans">
+      <span style="color: var(--text-dim);" class="text-[10.5px]">Tự động ghi đè .env</span>
+      <div class="flex items-center gap-2">
+        <button onclick="closeSettingsDrawer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-3 py-1.5 rounded-lg text-xs font-medium border transition">
+          Đóng
+        </button>
+        <button onclick="applyEnvHotReload()" style="background-color: var(--mint); color: #090b0f;" class="px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-xs hover:opacity-90 active:scale-95">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+          <span id="btnHotReloadLabel">Lưu & Hot Reload</span>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Rust IPC & Interactive Logic -->
+  <script>
+    // Native Rust IPC Bridge Dispatcher
+    function sendToRust(action, payload) {
+      return new Promise((resolve) => {
+        if (window.ipc) {
+          window.ipc.postMessage(JSON.stringify({ action, payload }));
+        }
+        // Fallback for standalone preview
+        resolve(true);
+      });
+    }
+
+    // Set & Persist Theme
+    function setTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      document.querySelectorAll('.theme-card').forEach(card => {
+        if (card.getAttribute('data-theme-val') === theme) {
+          card.style.borderColor = 'var(--accent)';
+          card.style.backgroundColor = 'var(--bg-selected)';
+          card.style.fontWeight = 'bold';
+        } else {
+          card.style.borderColor = 'var(--border)';
+          card.style.backgroundColor = 'var(--bg-base)';
+          card.style.fontWeight = 'normal';
+        }
+      });
+      localStorage.setItem('bqa_theme', theme);
+      sendToRust('set_theme', { theme });
+    }
+
+    function selectThemeFromDrawer(theme) {
+      setTheme(theme);
+      showToast('✓ Đã áp dụng giao diện: ' + theme);
+    }
+
+    function openSettingsDrawer() {
+      const backdrop = document.getElementById('settingsBackdrop');
+      const drawer = document.getElementById('settingsDrawer');
+      backdrop.classList.remove('opacity-0', 'pointer-events-none');
+      backdrop.classList.add('opacity-100');
+      drawer.classList.remove('translate-x-full');
+      drawer.classList.add('translate-x-0');
+    }
+
+    function closeSettingsDrawer() {
+      const backdrop = document.getElementById('settingsBackdrop');
+      const drawer = document.getElementById('settingsDrawer');
+      backdrop.classList.remove('opacity-100');
+      backdrop.classList.add('opacity-0', 'pointer-events-none');
+      drawer.classList.remove('translate-x-0');
+      drawer.classList.add('translate-x-full');
+    }
+
+    function toggleSection(sectionId) {
+      const sec = document.getElementById(sectionId);
+      const arrow = document.getElementById('arrow-' + sectionId);
+      if (sec.classList.contains('hidden')) {
+        sec.classList.remove('hidden');
+        if (arrow) arrow.classList.add('rotate-180');
+      } else {
+        sec.classList.add('hidden');
+        if (arrow) arrow.classList.remove('rotate-180');
+      }
+    }
+
+    // Hot Reload .env via Rust IPC
+    function applyEnvHotReload() {
+      const btn = document.getElementById('btnHotReloadLabel');
+      const origText = btn.innerText;
+      btn.innerText = 'Đang nạp lại .env...';
+
+      const configPayload = {
+        HOST_WORKSPACE_DIR: document.getElementById('cfgWorkspaceDir').value,
+        HOST_DEFAULT_DIR: document.getElementById('cfgDefaultDir').value,
+        HOST_CHAT_ROOT: document.getElementById('cfgChatRoot').value,
+        HOST_COMMAND_POLICY: document.getElementById('cfgPolicy').value,
+        DEFAULT_TIMEOUT_SECONDS: document.getElementById('cfgDefaultTimeout').value,
+        MAX_TIMEOUT_SECONDS: document.getElementById('cfgMaxTimeout').value,
+        MAX_OUTPUT_BYTES: document.getElementById('cfgMaxOutput').value,
+        GATEWAY_TOKEN: document.getElementById('cfgToken').value,
+        REQUIRE_AUTH: document.getElementById('cfgRequireAuth').value,
+        ATTRIBUTION_MODE: document.getElementById('cfgAttribution').value
+      };
+
+      sendToRust('save_env', configPayload).then(() => {
+        setTimeout(() => {
+          btn.innerText = '✓ Đã đồng bộ .env!';
+          showToast(`⚡ Hot Reload thành công .env (Zero-downtime)`);
+          setTimeout(() => {
+            btn.innerText = origText;
+          }, 1500);
+        }, 200);
+      });
+    }
+
+    // Page Switching
+    function switchPage(page) {
+      document.getElementById('pageOverview').classList.add('hidden');
+      document.getElementById('pageActivity').classList.add('hidden');
+      document.getElementById('pageLogs').classList.add('hidden');
+
+      document.querySelectorAll('.nav-tab').forEach(tab => {
+        tab.style.backgroundColor = 'transparent';
+        tab.style.borderColor = 'transparent';
+        tab.style.color = 'var(--text-sub)';
+        tab.classList.remove('font-medium', 'shadow-xs');
+      });
+
+      if (page === 'overview') {
+        document.getElementById('pageOverview').classList.remove('hidden');
+        const tab = document.getElementById('tabOverview');
+        tab.style.backgroundColor = 'var(--bg-card)';
+        tab.style.borderColor = 'var(--border)';
+        tab.style.color = 'var(--text-main)';
+        tab.classList.add('font-medium', 'shadow-xs');
+      } else if (page === 'activity') {
+        document.getElementById('pageActivity').classList.remove('hidden');
+        const tab = document.getElementById('tabActivity');
+        tab.style.backgroundColor = 'var(--bg-card)';
+        tab.style.borderColor = 'var(--border)';
+        tab.style.color = 'var(--text-main)';
+        tab.classList.add('font-medium', 'shadow-xs');
+      } else if (page === 'logs') {
+        document.getElementById('pageLogs').classList.remove('hidden');
+        const tab = document.getElementById('tabLogs');
+        tab.style.backgroundColor = 'var(--bg-card)';
+        tab.style.borderColor = 'var(--border)';
+        tab.style.color = 'var(--text-main)';
+        tab.classList.add('font-medium', 'shadow-xs');
+      }
+    }
+
+    // Resizing & Panes
+    const sidebar = document.getElementById('paneSidebar');
+    const paneStream = document.getElementById('paneStream');
+    const inspector = document.getElementById('paneInspector');
+    const resizerLeft = document.getElementById('resizerLeft');
+    const resizerRight = document.getElementById('resizerRight');
+
+    const paneLogStream = document.getElementById('paneLogStream');
+    const paneLogInspector = document.getElementById('paneLogInspector');
+    const resizerLog = document.getElementById('resizerLog');
+    const btnExpandSidebar = document.getElementById('btnExpandSidebar');
+
+    let isSidebarCollapsed = false;
+    let isInspectorCollapsed = false;
+    let lastSidebarWidth = 224;
+    let lastStreamWidth = 256;
+    let lastLogInspectorWidth = 420;
+
+    function toggleSidebar() {
+      isSidebarCollapsed = !isSidebarCollapsed;
+      if (isSidebarCollapsed) {
+        lastSidebarWidth = sidebar.offsetWidth || 224;
+        sidebar.style.display = 'none';
+        resizerLeft.classList.add('hidden');
+        if (btnExpandSidebar) {
+          btnExpandSidebar.classList.remove('hidden');
+          btnExpandSidebar.classList.add('inline-flex');
+        }
+      } else {
+        sidebar.style.display = 'flex';
+        sidebar.style.width = lastSidebarWidth + 'px';
+        resizerLeft.classList.remove('hidden');
+        if (btnExpandSidebar) {
+          btnExpandSidebar.classList.remove('inline-flex');
+          btnExpandSidebar.classList.add('hidden');
+        }
+      }
+    }
+
+    function toggleInspector() {
+      isInspectorCollapsed = !isInspectorCollapsed;
+      const isActivity = !document.getElementById('pageActivity').classList.contains('hidden');
+      
+      if (isActivity) {
+        if (isInspectorCollapsed) {
+          inspector.style.display = 'none';
+          resizerRight.classList.add('hidden');
+          paneStream.style.flex = "1";
+          paneStream.style.maxWidth = "none";
+        } else {
+          inspector.style.display = 'flex';
+          resizerRight.classList.remove('hidden');
+          paneStream.style.flex = "none";
+          paneStream.style.width = lastStreamWidth + 'px';
+          paneStream.style.maxWidth = "460px";
+        }
+      } else {
+        if (isInspectorCollapsed) {
+          paneLogInspector.style.display = 'none';
+          resizerLog.classList.add('hidden');
+        } else {
+          paneLogInspector.style.display = 'flex';
+          resizerLog.classList.remove('hidden');
+        }
+      }
+    }
+
+    let isDraggingLeft = false;
+    resizerLeft.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      isDraggingLeft = true;
+      resizerLeft.classList.add('dragging');
+      document.body.style.cursor = 'col-resize';
+    });
+
+    let isDraggingRight = false;
+    resizerRight.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      isDraggingRight = true;
+      resizerRight.classList.add('dragging');
+      document.body.style.cursor = 'col-resize';
+    });
+
+    let isDraggingLog = false;
+    resizerLog.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      isDraggingLog = true;
+      resizerLog.classList.add('dragging');
+      document.body.style.cursor = 'col-resize';
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (isDraggingLeft) {
+        const newWidth = Math.min(Math.max(e.clientX, 140), 360);
+        sidebar.style.width = newWidth + 'px';
+        lastSidebarWidth = newWidth;
+      }
+      if (isDraggingRight) {
+        const streamLeft = paneStream.getBoundingClientRect().left;
+        const newWidth = Math.min(Math.max(e.clientX - streamLeft, 160), 460);
+        paneStream.style.width = newWidth + 'px';
+        lastStreamWidth = newWidth;
+      }
+      if (isDraggingLog) {
+        const newWidth = Math.min(Math.max(window.innerWidth - e.clientX, 200), window.innerWidth - 300);
+        paneLogInspector.style.width = newWidth + 'px';
+        lastLogInspectorWidth = newWidth;
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      isDraggingLeft = false;
+      isDraggingRight = false;
+      isDraggingLog = false;
+      resizerLeft.classList.remove('dragging');
+      resizerRight.classList.remove('dragging');
+      resizerLog.classList.remove('dragging');
+      document.body.style.cursor = '';
+    });
+
+    // Mock Sample Data Loading
+    const sampleSessions = [
+      { id: "cw-research_mcp_tunnel", label: "research_mcp_tunnel", ops: 5, active: true },
+      { id: "cw-analyze_botquanganh", label: "analyze_botquang...", ops: 14, active: false },
+      { id: "cw-ui_overhaul_qml", label: "ui_overhaul_qml", ops: 8, active: false },
+      { id: "cw-auto_continuation_tests", label: "auto_continuation", ops: 32, active: false }
+    ];
+
+    const sampleCommands = [
+      {
+        tool: "host_run_command",
+        cmd: "uv run pytest tests/test_qml_backend.py",
+        exit_code: 0,
+        duration: "1.42s",
+        timestamp: "2026-09-01 20:26:15",
+        time_short: "01/09 20:26",
+        is_latest: true,
+        output: "============================= test session starts ==============================\nrootdir: /home/light/GitHub/botquanganh_mcp\ncollected 27 items\n\ntests/test_qml_backend.py ...........................                    [100%]\n\n============================== 27 passed in 1.42s =============================="
+      },
+      {
+        tool: "host_workspace_bind",
+        cmd: "bind label=analyze_botquanganh",
+        exit_code: 0,
+        duration: "12ms",
+        timestamp: "2026-09-01 20:25:35",
+        time_short: "01/09 20:25",
+        is_latest: false,
+        output: "{\n  \"ok\": true,\n  \"chat_id\": \"cw-analyze_botquanganh\",\n  \"workspace_path\": \"/home/light/GitHub/botquanganh_mcp\"\n}"
+      },
+      {
+        tool: "host_read_file",
+        cmd: "cat app/qml_ui/qml/Theme.qml",
+        exit_code: 0,
+        duration: "6ms",
+        timestamp: "2026-09-01 20:25:08",
+        time_short: "01/09 20:25",
+        is_latest: false,
+        output: "import QtQuick\n\nQtObject {\n    property string variant: \"classic\"\n    readonly property int rowHeight: 48\n}"
+      },
+      {
+        tool: "host_run_command",
+        cmd: "git branch -a -vv",
+        exit_code: 0,
+        duration: "18ms",
+        timestamp: "2026-09-01 20:25:01",
+        time_short: "01/09 20:25",
+        is_latest: false,
+        output: "04bad0e [feat/rust-desktop-ui] feat(rust): native desktop studio app\nmain    a460791 docs(readme): rewrite manual"
+      }
+    ];
+
+    const sampleLogs = [
+      {
+        id: "evt-38241:04",
+        severity: "SYSTEM",
+        cat: "network",
+        action: "bridge_handshake",
+        time: "01/09 20:26",
+        msg: "MCP SSE client connected (127.0.0.1)",
+        session: "system",
+        json: '{\n  "event": "bridge_handshake",\n  "protocol": "MCP_SSE_1.0",\n  "client": "ChatGPT_Web_Connector",\n  "remote_ip": "127.0.0.1",\n  "tunnel_edge": "cf-tunnel-bqa-8427"\n}'
+      },
+      {
+        id: "evt-38241:03",
+        severity: "AUTH",
+        cat: "security",
+        action: "host_workspace_bind",
+        time: "01/09 20:25",
+        msg: "token_verified=true · scope=enforce",
+        session: "cw-analyze_botquanganh",
+        json: '{\n  "action": "host_workspace_bind",\n  "chat_id": "cw-analyze_botquanganh",\n  "token_hash": "sha256:8f4c2e1b...",\n  "scope": "enforce",\n  "resumed": true,\n  "duration_ms": 12.4\n}'
+      }
+    ];
+
+    function renderSessions(sessions) {
+      const container = document.getElementById('sessionListContainer');
+      container.innerHTML = '';
+      sessions.forEach(s => {
+        const item = document.createElement('div');
+        item.className = `session-item ${s.active ? 'active' : ''} p-2 rounded-lg cursor-pointer transition flex items-center justify-between font-mono text-xs`;
+        item.style.backgroundColor = s.active ? 'var(--bg-selected)' : 'transparent';
+        item.style.borderColor = s.active ? 'var(--border)' : 'transparent';
+        item.style.color = s.active ? 'var(--text-main)' : 'var(--text-sub)';
+        if (s.active) item.classList.add('border', 'shadow-xs', 'font-medium');
+
+        item.innerHTML = `
+          <span class="truncate">${s.label}</span>
+          <span style="color: ${s.active ? 'var(--accent)' : 'var(--text-dim)'};" class="text-[10px] ${s.active ? 'font-bold' : ''}">${s.ops} ops</span>
+        `;
+        item.onclick = () => {
+          document.querySelectorAll('.session-item').forEach(e => {
+            e.style.backgroundColor = 'transparent';
+            e.style.borderColor = 'transparent';
+            e.style.color = 'var(--text-sub)';
+            e.classList.remove('active', 'font-medium', 'shadow-xs');
+          });
+          item.style.backgroundColor = 'var(--bg-selected)';
+          item.style.borderColor = 'var(--border)';
+          item.style.color = 'var(--text-main)';
+          item.classList.add('active', 'font-medium', 'shadow-xs');
+          document.getElementById('streamTitle').innerText = s.id;
+        };
+        container.appendChild(item);
+      });
+      document.getElementById('streamTitle').innerText = sessions[0]?.id || "cw-research_mcp_tunnel";
+    }
+
+    function renderCommands(commands) {
+      const container = document.getElementById('commandStreamContainer');
+      container.innerHTML = '';
+      commands.forEach((c, idx) => {
+        const isSelected = idx === 0;
+        const row = document.createElement('div');
+        row.className = `action-row ${isSelected ? 'selected shadow-xs' : ''} p-2 rounded-lg border cursor-pointer transition flex flex-col gap-1`;
+        row.style.backgroundColor = isSelected ? 'var(--bg-selected)' : 'var(--bg-header)';
+        row.style.borderColor = isSelected ? 'var(--accent)' : 'var(--border)';
+
+        row.innerHTML = `
+          <div class="flex items-center justify-between text-[11px]">
+            <div class="flex items-center gap-1.5">
+              <span style="color: var(--accent);" class="font-bold">${c.tool.replace('host_', '')}</span>
+              ${c.is_latest ? '<span style="color: var(--mint); background-color: var(--accent-soft);" class="text-[9px] px-1 rounded font-sans">Mới nhất</span>' : ''}
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span style="color: var(--text-dim);">${c.time_short}</span>
+              <span style="color: var(--mint);" class="font-semibold">OK</span>
+            </div>
+          </div>
+          <div style="color: var(--text-main);" class="font-medium truncate text-[11px]">${c.cmd}</div>
+        `;
+
+        row.onclick = () => {
+          document.querySelectorAll('.action-row').forEach(e => {
+            e.style.backgroundColor = 'var(--bg-header)';
+            e.style.borderColor = 'var(--border)';
+            e.classList.remove('selected', 'shadow-xs');
+          });
+          row.style.backgroundColor = 'var(--bg-selected)';
+          row.style.borderColor = 'var(--accent)';
+          row.classList.add('selected', 'shadow-xs');
+
+          document.getElementById('inspectTool').innerText = c.tool;
+          document.getElementById('inspectTimestamp').innerText = c.timestamp;
+          document.getElementById('inspectExit').innerText = `${c.exit_code} (Success) · ${c.duration}`;
+          document.getElementById('inspectCommand').innerText = c.cmd;
+          document.getElementById('inspectOutput').innerText = c.output;
+
+          if (isInspectorCollapsed) {
+            toggleInspector();
+          }
+        };
+        container.appendChild(row);
+      });
+
+      if (commands.length > 0) {
+        document.getElementById('inspectTool').innerText = commands[0].tool;
+        document.getElementById('inspectTimestamp').innerText = commands[0].timestamp;
+        document.getElementById('inspectExit').innerText = `${commands[0].exit_code} (Success) · ${commands[0].duration}`;
+        document.getElementById('inspectCommand').innerText = commands[0].cmd;
+        document.getElementById('inspectOutput').innerText = commands[0].output;
+      }
+    }
+
+    function renderLogs(logs) {
+      const container = document.getElementById('logStreamContainer');
+      container.innerHTML = '';
+      logs.forEach((l, idx) => {
+        const isSelected = idx === 0;
+        const row = document.createElement('div');
+        row.className = `log-row ${isSelected ? 'selected shadow-xs' : ''} p-2.5 rounded-lg border flex items-center justify-between cursor-pointer transition`;
+        row.style.backgroundColor = isSelected ? 'var(--bg-selected)' : 'var(--bg-header)';
+        row.style.borderColor = isSelected ? 'var(--accent)' : 'var(--border)';
+
+        row.innerHTML = `
+          <div class="flex items-center gap-2 truncate">
+            <span style="color: var(--mint);" class="font-bold text-[10px]">[${l.severity}]</span>
+            <span style="color: var(--text-dim);">${l.time}</span>
+            <span style="color: var(--mint);" class="font-semibold">${l.action}</span>
+            <span style="color: var(--text-main);" class="truncate">${l.msg}</span>
+          </div>
+          <span style="color: var(--text-dim);" class="text-[10px] shrink-0">${l.session}</span>
+        `;
+
+        row.onclick = () => {
+          document.querySelectorAll('.log-row').forEach(e => {
+            e.style.backgroundColor = 'var(--bg-header)';
+            e.style.borderColor = 'var(--border)';
+            e.classList.remove('selected', 'shadow-xs');
+          });
+          row.style.backgroundColor = 'var(--bg-selected)';
+          row.style.borderColor = 'var(--accent)';
+          row.classList.add('selected', 'shadow-xs');
+
+          document.getElementById('logInspectId').innerText = l.id;
+          document.getElementById('logInspectCategory').innerText = `${l.severity} · ${l.cat}`;
+          document.getElementById('logInspectAction').innerText = l.action;
+          document.getElementById('logInspectSession').innerText = l.session;
+          document.getElementById('logInspectJson').innerText = l.json;
+
+          if (isInspectorCollapsed) {
+            toggleInspector();
+          }
+        };
+        container.appendChild(row);
+      });
+
+      if (logs.length > 0) {
+        document.getElementById('logInspectId').innerText = logs[0].id;
+        document.getElementById('logInspectCategory').innerText = `${logs[0].severity} · ${logs[0].cat}`;
+        document.getElementById('logInspectAction').innerText = logs[0].action;
+        document.getElementById('logInspectSession').innerText = logs[0].session;
+        document.getElementById('logInspectJson').innerText = logs[0].json;
+      }
+    }
+
+    function refreshSessionsFromDisk() {
+      sendToRust('get_sessions').then(() => {
+        showToast('✓ Đã đồng bộ sessions từ đĩa');
+      });
+    }
+
+    function refreshLogsFromDisk() {
+      sendToRust('get_logs').then(() => {
+        showToast('✓ Đã cập nhật logs hệ thống');
+      });
+    }
+
+    function copyDetails() {
+      const cmd = document.getElementById('inspectCommand').innerText;
+      const out = document.getElementById('inspectOutput').innerText;
+      navigator.clipboard.writeText('Command: ' + cmd + '\nOutput:\n' + out).then(() => {
+        const btn = document.getElementById('copyBtnLabel');
+        btn.innerText = 'Đã sao chép!';
+        setTimeout(() => btn.innerText = 'Sao chép Output', 1500);
+      });
+    }
+
+    function copyLogJson() {
+      const json = document.getElementById('logInspectJson').innerText;
+      navigator.clipboard.writeText(json).then(() => {
+        const btn = document.getElementById('copyLogLabel');
+        btn.innerText = 'Đã sao chép!';
+        setTimeout(() => btn.innerText = 'Sao chép JSON', 1500);
+      });
+    }
+
+    function copyBridgeUrl() {
+      const url = document.getElementById('bridgeUrlDisplay').innerText;
+      navigator.clipboard.writeText(url).then(() => {
+        const btn = document.getElementById('copyUrlLabel');
+        btn.innerText = 'Đã sao chép!';
+        setTimeout(() => btn.innerText = 'Sao chép Tunnel URL', 1500);
+      });
+    }
+
+    let isBridgeRunning = true;
+    function startBridgeServer() {
+      isBridgeRunning = true;
+      const stateText = document.getElementById('bridgeStateText');
+      const runningActions = document.getElementById('bridgeActionsRunning');
+      const stoppedActions = document.getElementById('bridgeActionsStopped');
+      const topbarStatusDot = document.getElementById('topbarStatusDot');
+      const topbarStatusText = document.getElementById('topbarStatusText');
+
+      stateText.innerHTML = '<span id="bridgeDot" style="background-color: var(--mint);" class="w-2 h-2 rounded-full"></span><span>Đang chạy</span>';
+      stateText.style.color = 'var(--mint)';
+      runningActions.classList.remove('hidden');
+      runningActions.classList.add('flex');
+      stoppedActions.classList.remove('flex');
+      stoppedActions.classList.add('hidden');
+
+      if (topbarStatusDot) topbarStatusDot.style.backgroundColor = 'var(--mint)';
+      if (topbarStatusText) topbarStatusText.innerText = '0.0.0.0:18427';
+
+      sendToRust('bridge_start').then(() => {
+        showToast('✓ Bridge Server đã khởi chạy thành công (Port: 18427)');
+      });
+    }
+
+    function stopBridgeServer() {
+      isBridgeRunning = false;
+      const stateText = document.getElementById('bridgeStateText');
+      const runningActions = document.getElementById('bridgeActionsRunning');
+      const stoppedActions = document.getElementById('bridgeActionsStopped');
+      const topbarStatusDot = document.getElementById('topbarStatusDot');
+      const topbarStatusText = document.getElementById('topbarStatusText');
+
+      stateText.innerHTML = '<span id="bridgeDot" style="background-color: var(--text-dim);" class="w-2 h-2 rounded-full"></span><span>Đã dừng</span>';
+      stateText.style.color = 'var(--text-dim)';
+      runningActions.classList.remove('flex');
+      runningActions.classList.add('hidden');
+      stoppedActions.classList.remove('hidden');
+      stoppedActions.classList.add('flex');
+
+      if (topbarStatusDot) topbarStatusDot.style.backgroundColor = 'var(--text-dim)';
+      if (topbarStatusText) topbarStatusText.innerText = 'Offline (Stopped)';
+
+      sendToRust('bridge_stop').then(() => {
+        showToast('■ Bridge Server đã dừng hoạt động');
+      });
+    }
+
+    function handleRestartServer() {
+      const restartIcon = document.getElementById('restartIcon');
+      const restartLabel = document.getElementById('restartLabel');
+      const statusDot = document.getElementById('topbarStatusDot');
+      const statusText = document.getElementById('topbarStatusText');
+      const btn = document.getElementById('btnRestart');
+
+      restartIcon.classList.add('animate-spin');
+      restartLabel.innerText = 'Đang khởi động...';
+      statusDot.style.backgroundColor = 'var(--amber, #fbbf24)';
+      statusText.innerText = 'Reconnecting...';
+      btn.disabled = true;
+
+      switchPage('overview');
+
+      sendToRust('bridge_restart').then(() => {
+        setTimeout(() => {
+          restartIcon.classList.remove('animate-spin');
+          restartLabel.innerText = 'Khởi động lại';
+          statusDot.style.backgroundColor = 'var(--mint)';
+          statusText.innerText = '0.0.0.0:18427';
+          btn.disabled = false;
+          showToast('✓ Đã khởi động lại Bridge Server thành công (:18427)');
+        }, 700);
+      });
+    }
+
+    function showToast(msg) {
+      let toast = document.getElementById('appToast');
+      if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'appToast';
+        toast.className = 'fixed top-14 right-4 z-50 px-3.5 py-2 rounded-lg border text-xs font-medium font-mono shadow-xl transition-all duration-300 transform translate-y-[-10px] opacity-0 flex items-center gap-2';
+        toast.style.backgroundColor = 'var(--bg-header)';
+        toast.style.borderColor = 'var(--accent)';
+        toast.style.color = 'var(--text-main)';
+        document.body.appendChild(toast);
+      }
+      toast.innerHTML = `<span style="color: var(--mint);">●</span> <span>${msg}</span>`;
+      toast.classList.remove('hidden', 'translate-y-[-10px]', 'opacity-0');
+      toast.classList.add('translate-y-0', 'opacity-100');
+
+      setTimeout(() => {
+        toast.classList.remove('translate-y-0', 'opacity-100');
+        toast.classList.add('translate-y-[-10px]', 'opacity-0');
+      }, 2400);
+    }
+
+    // Init App State
+    renderSessions(sampleSessions);
+    renderCommands(sampleCommands);
+    renderLogs(sampleLogs);
+    setTheme(localStorage.getItem('bqa_theme') || 'rosepine');
+  </script>
+</body>
+</html>

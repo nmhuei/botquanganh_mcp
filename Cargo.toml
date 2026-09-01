@@ -1,0 +1,5 @@
+[workspace]
+members = [
+    "crates/bqa_desktop",
+]
+resolver = "2"
