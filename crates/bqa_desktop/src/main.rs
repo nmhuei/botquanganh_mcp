@@ -8,8 +8,9 @@ use tao::{
     event::{Event, StartCause, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
+    platform::unix::WindowExtUnix,
 };
-use wry::WebViewBuilder;
+use wry::{WebViewBuilder, WebViewBuilderExtUnix};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -169,7 +170,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let html_content = include_str!("../ui/index.html");
 
     let state_clone = Arc::clone(&state);
-    let _webview = WebViewBuilder::new()
+    let builder = WebViewBuilder::new()
         .with_html(html_content)
         .with_ipc_handler(move |req: wry::http::Request<String>| {
             let msg = req.body();
@@ -201,8 +202,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     _ => {}
                 }
             }
-        })
-        .build(&window)?;
+        });
+
+    let vbox = window.default_vbox().expect("Failed to get default vbox container on Linux GTK");
+    let _webview = builder.build_gtk(vbox)?;
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
