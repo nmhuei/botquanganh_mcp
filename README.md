@@ -127,4 +127,4 @@ Probe sức khỏe trực tiếp: `curl -s http://127.0.0.1:18427/healthz` · en
 
 ## Tài liệu
 
-[Kiến trúc](docs/ARCHITECTURE.md) · [BQA Center QML](docs/QML_CENTER_UI.md) · [Vận hành](docs/OPERATIONS_RUNBOOK.md) · [Checklist phát hành](docs/RELEASE_CHECKLIST.md) · [Bảo mật](SECURITY.md) · [Giao diện CLI](docs/CLI_UI.md) · [Chat workspaces](docs/CHAT_WORKSPACES.md)
+[Hướng dẫn Toàn Diện BQA CLI & Debugging](docs/CLI_USAGE.md) · [Kiến trúc](docs/ARCHITECTURE.md) · [Vận hành](docs/OPERATIONS_RUNBOOK.md) · [Checklist phát hành](docs/RELEASE_CHECKLIST.md) · [Bảo mật](SECURITY.md) · [Giao diện CLI](docs/CLI_UI.md) · [Chat workspaces](docs/CHAT_WORKSPACES.md)
