@@ -156,6 +156,61 @@
       border-color: var(--accent) !important;
       box-shadow: 0 0 0 1.5px var(--accent) !important;
     }
+
+    /* ==================== SMOOTH SLIDE & TRANSITION ANIMATIONS ==================== */
+    .page-view {
+      animation: pageEntrance 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    @keyframes pageEntrance {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    #paneSidebar {
+      transition: width 0.24s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.24s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.18s ease, transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+      will-change: width, min-width, opacity, transform;
+    }
+    #paneSidebar.pane-collapsed {
+      width: 0px !important;
+      min-width: 0px !important;
+      border-right-width: 0px !important;
+      opacity: 0 !important;
+      transform: translateX(-20px);
+      pointer-events: none !important;
+    }
+
+    #paneInspector {
+      transition: flex 0.24s cubic-bezier(0.4, 0, 0.2, 1), width 0.24s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.24s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.18s ease, transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+      will-change: flex, width, min-width, opacity, transform;
+    }
+    #paneInspector.pane-collapsed {
+      flex: 0 0 0px !important;
+      width: 0px !important;
+      min-width: 0px !important;
+      max-width: 0px !important;
+      border-left-width: 0px !important;
+      opacity: 0 !important;
+      transform: translateX(20px);
+      pointer-events: none !important;
+    }
+
+    #paneLogInspector {
+      transition: width 0.24s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.24s cubic-bezier(0.4, 0, 0.2, 1), max-width 0.24s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.18s ease, transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+      will-change: width, min-width, opacity, transform;
+    }
+    #paneLogInspector.pane-collapsed {
+      width: 0px !important;
+      min-width: 0px !important;
+      max-width: 0px !important;
+      border-left-width: 0px !important;
+      opacity: 0 !important;
+      transform: translateX(20px);
+      pointer-events: none !important;
+    }
+
+    #paneStream {
+      transition: width 0.24s cubic-bezier(0.4, 0, 0.2, 1), flex 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+    }
   </style>
 </head>
 <body class="antialiased h-screen flex flex-col overflow-hidden select-none font-sans relative">
@@ -832,11 +887,18 @@
       });
     }
 
-    // Page Switching
+    // Page Switching with Smooth Slide-in Animation
     function switchPage(page) {
-      document.getElementById('pageOverview').classList.add('hidden');
-      document.getElementById('pageActivity').classList.add('hidden');
-      document.getElementById('pageLogs').classList.add('hidden');
+      const pOverview = document.getElementById('pageOverview');
+      const pActivity = document.getElementById('pageActivity');
+      const pLogs = document.getElementById('pageLogs');
+
+      pOverview.classList.add('hidden');
+      pActivity.classList.add('hidden');
+      pLogs.classList.add('hidden');
+      pOverview.classList.remove('page-view');
+      pActivity.classList.remove('page-view');
+      pLogs.classList.remove('page-view');
 
       document.querySelectorAll('.nav-tab').forEach(tab => {
         tab.style.backgroundColor = 'transparent';
@@ -846,21 +908,24 @@
       });
 
       if (page === 'overview') {
-        document.getElementById('pageOverview').classList.remove('hidden');
+        pOverview.classList.remove('hidden');
+        pOverview.classList.add('page-view');
         const tab = document.getElementById('tabOverview');
         tab.style.backgroundColor = 'var(--bg-card)';
         tab.style.borderColor = 'var(--border)';
         tab.style.color = 'var(--text-main)';
         tab.classList.add('font-medium', 'shadow-xs');
       } else if (page === 'activity') {
-        document.getElementById('pageActivity').classList.remove('hidden');
+        pActivity.classList.remove('hidden');
+        pActivity.classList.add('page-view');
         const tab = document.getElementById('tabActivity');
         tab.style.backgroundColor = 'var(--bg-card)';
         tab.style.borderColor = 'var(--border)';
         tab.style.color = 'var(--text-main)';
         tab.classList.add('font-medium', 'shadow-xs');
       } else if (page === 'logs') {
-        document.getElementById('pageLogs').classList.remove('hidden');
+        pLogs.classList.remove('hidden');
+        pLogs.classList.add('page-view');
         const tab = document.getElementById('tabLogs');
         tab.style.backgroundColor = 'var(--bg-card)';
         tab.style.borderColor = 'var(--border)';
@@ -869,7 +934,7 @@
       }
     }
 
-    // Resizing & Panes
+    // Resizing & Panes with Smooth Slide Transitions
     const sidebar = document.getElementById('paneSidebar');
     const paneStream = document.getElementById('paneStream');
     const inspector = document.getElementById('paneInspector');
@@ -890,15 +955,15 @@
     function toggleSidebar() {
       isSidebarCollapsed = !isSidebarCollapsed;
       if (isSidebarCollapsed) {
-        lastSidebarWidth = sidebar.offsetWidth || 224;
-        sidebar.style.display = 'none';
+        lastSidebarWidth = sidebar.offsetWidth > 50 ? sidebar.offsetWidth : 224;
+        sidebar.classList.add('pane-collapsed');
         resizerLeft.classList.add('hidden');
         if (btnExpandSidebar) {
           btnExpandSidebar.classList.remove('hidden');
           btnExpandSidebar.classList.add('inline-flex');
         }
       } else {
-        sidebar.style.display = 'flex';
+        sidebar.classList.remove('pane-collapsed');
         sidebar.style.width = lastSidebarWidth + 'px';
         resizerLeft.classList.remove('hidden');
         if (btnExpandSidebar) {
@@ -914,12 +979,12 @@
       
       if (isActivity) {
         if (isInspectorCollapsed) {
-          inspector.style.display = 'none';
+          inspector.classList.add('pane-collapsed');
           resizerRight.classList.add('hidden');
           paneStream.style.flex = "1";
           paneStream.style.maxWidth = "none";
         } else {
-          inspector.style.display = 'flex';
+          inspector.classList.remove('pane-collapsed');
           resizerRight.classList.remove('hidden');
           paneStream.style.flex = "none";
           paneStream.style.width = lastStreamWidth + 'px';
@@ -927,11 +992,12 @@
         }
       } else {
         if (isInspectorCollapsed) {
-          paneLogInspector.style.display = 'none';
+          paneLogInspector.classList.add('pane-collapsed');
           resizerLog.classList.add('hidden');
         } else {
-          paneLogInspector.style.display = 'flex';
+          paneLogInspector.classList.remove('pane-collapsed');
           resizerLog.classList.remove('hidden');
+          paneLogInspector.style.width = lastLogInspectorWidth + 'px';
         }
       }
     }
