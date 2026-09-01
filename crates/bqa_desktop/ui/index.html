@@ -211,6 +211,113 @@
     #paneStream {
       transition: width 0.24s cubic-bezier(0.4, 0, 0.2, 1), flex 0.24s cubic-bezier(0.4, 0, 0.2, 1);
     }
+
+    /* ==================== INTERACTIVE HOVER & CLICK MICRO-INTERACTIONS ==================== */
+    button, [role="button"], .cursor-pointer {
+      cursor: pointer !important;
+    }
+
+    /* Session Item Hover & Click Feedback */
+    .session-item {
+      transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1) !important;
+      position: relative;
+    }
+    .session-item:hover:not(.active) {
+      background-color: var(--bg-surface) !important;
+      border-color: var(--border) !important;
+      transform: translateX(3px);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+    .session-item:active {
+      transform: scale(0.98);
+    }
+
+    /* Command Action Row Hover & Click Feedback */
+    .action-row {
+      transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1) !important;
+      position: relative;
+    }
+    .action-row:hover:not(.selected) {
+      background-color: var(--bg-surface) !important;
+      border-color: var(--accent-soft) !important;
+      transform: translateX(3px);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+    }
+    .action-row:hover:not(.selected)::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 15%;
+      bottom: 15%;
+      width: 3px;
+      border-radius: 99px;
+      background: var(--accent);
+    }
+    .action-row:active {
+      transform: scale(0.985);
+    }
+
+    /* Log Stream Row Hover & Click Feedback */
+    .log-row {
+      transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1) !important;
+      position: relative;
+    }
+    .log-row:hover:not(.selected) {
+      background-color: var(--bg-surface) !important;
+      border-color: var(--accent-soft) !important;
+      transform: translateX(3px);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+    }
+    .log-row:hover:not(.selected)::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 15%;
+      bottom: 15%;
+      width: 3px;
+      border-radius: 99px;
+      background: var(--mint);
+    }
+    .log-row:active {
+      transform: scale(0.985);
+    }
+
+    /* Navigation Tab Feedback */
+    .nav-tab {
+      transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    }
+    .nav-tab:hover {
+      background-color: var(--bg-surface) !important;
+      color: var(--text-main) !important;
+      transform: translateY(-1px);
+    }
+    .nav-tab:active {
+      transform: translateY(0px) scale(0.97);
+    }
+
+    /* Universal Button Click Feedback */
+    button {
+      transition: all 0.15s ease;
+    }
+    button:hover {
+      filter: brightness(1.1);
+    }
+    button:active {
+      transform: scale(0.96);
+    }
+
+    /* Theme Card Feedback */
+    .theme-card {
+      transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    }
+    .theme-card:hover {
+      border-color: var(--accent) !important;
+      transform: translateY(-1px) scale(1.02);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+    .theme-card:active {
+      transform: scale(0.97);
+    }
   </style>
 </head>
 <body class="antialiased h-screen flex flex-col overflow-hidden select-none font-sans relative">
