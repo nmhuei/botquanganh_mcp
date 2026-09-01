@@ -62,19 +62,27 @@ QtObject {
     readonly property int xl: 24
     readonly property int xxl: 32
 
-    readonly property int rowHeight: density === "comfortable" ? 40 : 34
-    readonly property int controlHeight: density === "comfortable" ? 38 : 34
-    readonly property int headerHeight: density === "comfortable" ? 58 : 52
+    readonly property int rowHeight: density === "comfortable" ? 48 : 40
+    readonly property int controlHeight: density === "comfortable" ? 42 : 36
+    readonly property int headerHeight: density === "comfortable" ? 64 : 56
     readonly property int statusHeight: 0
-    readonly property int navWide: 184
-    readonly property int navCompact: 52
+    readonly property int navWide: 196
+    readonly property int navCompact: 56
     readonly property int panelRadius: 12
     readonly property int smallRadius: 8
     readonly property int popupRadius: 14
 
     function font(basePixels) {
-        return Math.max(8, Math.round(basePixels * fontScale))
+        var scaled = basePixels;
+        if (basePixels <= 8) scaled = 12;
+        else if (basePixels === 9) scaled = 13;
+        else if (basePixels === 10) scaled = 14;
+        else if (basePixels === 11) scaled = 15;
+        else if (basePixels === 12) scaled = 16;
+        else if (basePixels <= 16) scaled = basePixels + 2;
+        return Math.max(10, Math.round(scaled * fontScale));
     }
+
 
     function toneColor(tone) {
         if (tone === "success") return success

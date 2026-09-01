@@ -378,12 +378,14 @@ Item {
                                                 }
 
                                                 Text {
-                                                    text: eventRow.summary
+                                                    text: eventRow.summary ? eventRow.summary.replace(/\n+/g, " · ") : ""
                                                     color: root.theme.textMuted
                                                     font.pixelSize: root.theme.font(8)
                                                     Layout.fillWidth: true
                                                     elide: Text.ElideRight
+                                                    maximumLineCount: 1
                                                 }
+
 
                                                 Text {
                                                     visible: !root.compactLayout

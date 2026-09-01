@@ -483,13 +483,15 @@ Item {
                                     }
 
                                     Text {
-                                        text: operationRow.command
+                                        text: operationRow.command ? operationRow.command.replace(/\n+/g, " ↵ ") : ""
                                         color: root.theme.text
                                         font.family: root.backend.monoFontFamily
                                         font.pixelSize: root.theme.font(9)
                                         Layout.fillWidth: true
                                         elide: Text.ElideRight
+                                        maximumLineCount: 1
                                     }
+
 
                                     Text {
                                         visible: !root.compactLayout
