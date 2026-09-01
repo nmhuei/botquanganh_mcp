@@ -222,7 +222,10 @@ def parse_sse_lines(lines: Iterator[str]) -> Iterator[dict[str, Any]]:
 
 
 def make_workspace_log_stream_reader(
-    ctx: Any, *, replay: int = WORKSPACE_LOG_REPLAY
+    ctx: Any,
+    *,
+    replay: int = WORKSPACE_LOG_REPLAY,
+    read_timeout_seconds: float = 30.0,
 ) -> Callable[[str | None], Iterator[dict[str, Any]]]:
     """Create an authenticated reconnectable SSE reader for the CLI endpoint."""
     values = getattr(ctx, "values", {}) or {}
@@ -233,9 +236,12 @@ def make_workspace_log_stream_reader(
     base_url = str(getattr(ctx, "base_url", "") or "").rstrip("/") or f"http://{connect_host}:{port}"
     token = str(getattr(ctx, "token", "") or "")
     timeout = float(getattr(ctx, "request_timeout", 15.0) or 15.0)
+    active_lock = threading.Lock()
+    active_response: Any | None = None
 
     def reader(last_event_id: str | None = None) -> Iterator[dict[str, Any]]:
         import httpx
+        nonlocal active_response
 
         headers = {"Accept": "text/event-stream", "User-Agent": "bqa-desktop/1.0"}
         if token:
@@ -247,12 +253,35 @@ def make_workspace_log_stream_reader(
             f"{base_url}{WORKSPACE_LOG_STREAM_PATH}",
             params={"replay": max(0, min(int(replay), 200))},
             headers=headers,
-            timeout=httpx.Timeout(timeout, read=30.0),
+            timeout=httpx.Timeout(
+                timeout,
+                read=max(0.5, float(read_timeout_seconds)),
+            ),
             follow_redirects=True,
         ) as response:
-            response.raise_for_status()
-            yield from parse_sse_lines(iter(response.iter_lines()))
+            with active_lock:
+                active_response = response
+            try:
+                response.raise_for_status()
+                # Internal control envelope: HTTP stream is established and healthy.
+                # It is not a journal event and must never be rendered as one.
+                yield {"id": "", "event": "stream_open", "data": {}}
+                yield from parse_sse_lines(iter(response.iter_lines()))
+            finally:
+                with active_lock:
+                    if active_response is response:
+                        active_response = None
 
+    def close_reader() -> None:
+        with active_lock:
+            response = active_response
+        if response is not None:
+            try:
+                response.close()
+            except Exception:
+                pass
+
+    setattr(reader, "close", close_reader)
     return reader
 
 
@@ -817,7 +846,11 @@ class WorkspaceLogView:
                         if self.stop_event.is_set() or self.closed:
                             return
                         event_name = envelope.get("event")
-                        if event_name == "stream_reset":
+                        if event_name == "stream_open":
+                            if not self._put_stream_item(("connection", ("live", ""))):
+                                return
+                            received = True
+                        elif event_name == "stream_reset":
                             if not self._put_stream_item(("control", envelope)):
                                 return
                             received = True
@@ -910,6 +943,9 @@ class WorkspaceLogView:
         """Stop the worker before the dashboard destroys its root window."""
         self.closed = True
         self.stop_event.set()
+        close_reader = getattr(self.stream_reader, "close", None)
+        if callable(close_reader):
+            close_reader()
         if self.drain_job is not None and self.root is not None:
             try:
                 self.root.after_cancel(self.drain_job)

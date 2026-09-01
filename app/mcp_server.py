@@ -26,7 +26,7 @@ from app.request_context import (
 )
 
 logger = logging.getLogger("botquanganh_host_mcp")
-FASTMCP_COMPAT_VERSION = "3.4.0"
+FASTMCP_COMPAT_VERSION = "3.4.7"
 
 if getattr(fastmcp, "__version__", "") != FASTMCP_COMPAT_VERSION:
     logger.warning(

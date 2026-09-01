@@ -17,9 +17,19 @@ from typing import Any, Mapping
 UI_PREFERENCES_SCHEMA = 1
 DEFAULT_UI_LANGUAGE = "en"
 SUPPORTED_UI_LANGUAGES = ("en", "vi")
+DEFAULT_UI_THEME = "classic"
+SUPPORTED_UI_THEMES = ("classic", "light", "dark")
+DEFAULT_UI_DENSITY = "compact"
+SUPPORTED_UI_DENSITIES = ("compact", "comfortable")
+DEFAULT_UI_FONT_SCALE = 1.0
+MIN_UI_FONT_SCALE = 0.85
+MAX_UI_FONT_SCALE = 1.5
 DEFAULT_UI_PREFERENCES: dict[str, Any] = {
     "schema_version": UI_PREFERENCES_SCHEMA,
     "language": DEFAULT_UI_LANGUAGE,
+    "theme": DEFAULT_UI_THEME,
+    "density": DEFAULT_UI_DENSITY,
+    "font_scale": DEFAULT_UI_FONT_SCALE,
 }
 
 
@@ -42,6 +52,36 @@ def normalize_ui_language(value: object) -> str:
     return language
 
 
+def normalize_ui_theme(value: object) -> str:
+    theme = str(value or DEFAULT_UI_THEME).strip().lower()
+    if theme not in SUPPORTED_UI_THEMES:
+        raise UIPreferencesError(
+            "UI theme must be one of: " + ", ".join(SUPPORTED_UI_THEMES) + "."
+        )
+    return theme
+
+
+def normalize_ui_density(value: object) -> str:
+    density = str(value or DEFAULT_UI_DENSITY).strip().lower()
+    if density not in SUPPORTED_UI_DENSITIES:
+        raise UIPreferencesError(
+            "UI density must be one of: " + ", ".join(SUPPORTED_UI_DENSITIES) + "."
+        )
+    return density
+
+
+def normalize_ui_font_scale(value: object) -> float:
+    try:
+        scale = float(value)
+    except (TypeError, ValueError) as exc:
+        raise UIPreferencesError("UI font scale must be a number.") from exc
+    if not MIN_UI_FONT_SCALE <= scale <= MAX_UI_FONT_SCALE:
+        raise UIPreferencesError(
+            f"UI font scale must be between {MIN_UI_FONT_SCALE:g} and {MAX_UI_FONT_SCALE:g}."
+        )
+    return round(scale, 2)
+
+
 class UIPreferencesStore:
     """Small atomic JSON store for presentation-only settings."""
 
@@ -55,6 +95,9 @@ class UIPreferencesStore:
             data.update(dict(raw))
         data["schema_version"] = UI_PREFERENCES_SCHEMA
         data["language"] = normalize_ui_language(data.get("language"))
+        data["theme"] = normalize_ui_theme(data.get("theme"))
+        data["density"] = normalize_ui_density(data.get("density"))
+        data["font_scale"] = normalize_ui_font_scale(data.get("font_scale"))
         return data
 
     def load(
@@ -133,4 +176,19 @@ class UIPreferencesStore:
         """Persist and return a normalized language immediately."""
         normalized = normalize_ui_language(language)
         self.update(language=normalized)
+        return normalized
+
+    def set_theme(self, theme: object) -> str:
+        normalized = normalize_ui_theme(theme)
+        self.update(theme=normalized)
+        return normalized
+
+    def set_density(self, density: object) -> str:
+        normalized = normalize_ui_density(density)
+        self.update(density=normalized)
+        return normalized
+
+    def set_font_scale(self, scale: object) -> float:
+        normalized = normalize_ui_font_scale(scale)
+        self.update(font_scale=normalized)
         return normalized

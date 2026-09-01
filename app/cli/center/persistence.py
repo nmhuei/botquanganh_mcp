@@ -12,11 +12,13 @@ from typing import Any, Mapping
 STATE_SCHEMA_VERSION = 1
 DEFAULT_WINDOW_STATE: dict[str, Any] = {
     "schema_version": STATE_SCHEMA_VERSION,
-    "active_tab": "runtime",
-    "geometry": "1180x760",
+    "active_tab": "overview",
+    "geometry": "1280x820",
     "activity_pane": None,
     "logs_pane": None,
     "selected_session": None,
+    "selected_workspace": None,
+    "logs_mode": "events",
     "inspector_tabs": {},
 }
 

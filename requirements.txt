@@ -1,4 +1,5 @@
 fastmcp==3.4.7
 httpx>=0.27,<1
+PySide6==6.11.2
 python-dotenv==1.2.3
 pytest==9.1.1

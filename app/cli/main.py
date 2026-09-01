@@ -413,24 +413,35 @@ def _dispatch(ctx: CLIContext, args) -> int:
             run_desktop_ui,
         )
 
+        classic = bool(getattr(args, "classic", False))
+
+        def run_selected_desktop() -> int:
+            if classic:
+                return run_desktop_ui(ctx)
+            try:
+                from app.qml_ui.app import QmlUIUnavailable, run_qml_ui
+
+                return run_qml_ui(ctx)
+            except (ImportError, QmlUIUnavailable):
+                # Keep the mature Tk frontend as an emergency fallback on hosts
+                # whose Qt runtime cannot initialize; --classic selects it explicitly.
+                return run_desktop_ui(ctx)
+
         is_daemon_child = os.environ.get(BQA_UI_DAEMON_ENV) == "1"
         if is_daemon_child:
-            # The launcher marks its child explicitly.  This check must happen
-            # before the normal detached path, otherwise `bqa ui` recursively
-            # launches a new child instead of ever creating the Tk window.
+            # The launcher marks its child explicitly. This check must happen
+            # before the normal detached path or `bqa ui` would recurse.
             register_desktop_ui_pid(ctx.repo_root, os.getpid())
             try:
-                return run_desktop_ui(ctx)
+                return run_selected_desktop()
             finally:
                 release_desktop_ui_pid(ctx.repo_root, os.getpid())
 
         if not getattr(args, "inline", False):
-            # `bqa ui`, `bqa ui --detach`, and the requested compatibility form
-            # `bqa ui --foreground` all return to the terminal immediately.
             if not graphical_session_available():
                 raise CLIError("Không có graphical display để mở BQA Center.")
             try:
-                pid = launch_desktop_ui_detached(ctx)
+                pid = launch_desktop_ui_detached(ctx, classic=classic)
             except DesktopUIAlreadyRunning as running:
                 if ctx.json_output:
                     emit_json(
@@ -453,14 +464,15 @@ def _dispatch(ctx: CLIContext, args) -> int:
                 emit_quiet(pid)
             else:
                 renderer = renderer_for(ctx)
-                renderer.header("BQA Center", "Detached desktop window")
+                frontend = "Tk classic" if classic else "Qt Quick / QML"
+                renderer.header("BQA Center", f"Detached desktop window · {frontend}")
                 renderer.blank()
                 renderer.status("success", f"Đã mở nền (PID {pid})")
                 renderer.blank()
                 renderer.hint("bqa logs launcher -n 100", "Theo dõi service với")
             return 0
         try:
-            return run_desktop_ui(ctx)
+            return run_selected_desktop()
         except DesktopUIUnavailable:
             if interactive_terminal():
                 return run_dashboard(

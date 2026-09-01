@@ -8,6 +8,7 @@ from app.cli.desktop_views.workspace_logs import (
     format_workspace_log_details,
     format_workspace_log_time,
     normalize_workspace_log_chip,
+    make_workspace_log_stream_reader,
     parse_sse_lines,
     workspace_log_inspector_content,
     workspace_log_row_from_mapping,
@@ -338,3 +339,61 @@ def test_workspace_log_outcome_selector_localizes_without_changing_filter_value(
     view.set_translator(DesktopTranslator("vi"))
     assert view._selected_outcome() == "failure"
     assert view.outcome_var.get() == "Thất bại"
+
+
+def test_workspace_log_stream_reader_emits_open_control_before_events(monkeypatch):
+    import httpx
+
+    captured = {}
+
+    class Response:
+        def __init__(self):
+            self.closed = False
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def raise_for_status(self):
+            return None
+
+        def close(self):
+            self.closed = True
+
+        def iter_lines(self):
+            return iter(
+                [
+                    "id: evt-1",
+                    "event: workspace_log",
+                    'data: {"chat_id":"chat-a"}',
+                    "",
+                ]
+            )
+
+    response = Response()
+
+    def fake_stream(method, url, **kwargs):
+        captured["method"] = method
+        captured["url"] = url
+        captured["timeout"] = kwargs["timeout"]
+        return response
+
+    monkeypatch.setattr(httpx, "stream", fake_stream)
+
+    class Ctx:
+        values = {"MCP_CONNECT_HOST": "127.0.0.1", "MCP_PORT": "18427"}
+        base_url = "http://127.0.0.1:18427"
+        token = ""
+        request_timeout = 2.0
+
+    reader = make_workspace_log_stream_reader(Ctx())
+    stream = reader(None)
+
+    assert next(stream) == {"id": "", "event": "stream_open", "data": {}}
+    assert next(stream)["event"] == "workspace_log"
+    assert captured["timeout"].read == 30.0
+    reader.close()
+    assert response.closed is True
+    stream.close()

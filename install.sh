@@ -99,6 +99,8 @@ fi
 mkdir -p logs
 chmod +x install.sh bin/bqa scripts/*.sh
 
+./scripts/install_ui_fonts.sh
+
 TARGET_DIR="${BQA_BIN_DIR:-$HOME/.local/bin}"
 TARGET_LINK="$TARGET_DIR/bqa"
 SOURCE_BIN="$ROOT_DIR/bin/bqa"

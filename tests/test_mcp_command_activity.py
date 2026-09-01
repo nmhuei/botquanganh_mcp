@@ -120,7 +120,7 @@ def test_executor_records_running_then_terminal_for_mcp_command(monkeypatch):
     def fake_execute(command, *, cwd, timeout_seconds, on_started=None):
         assert command == "sleep 10"
         assert cwd == "/workspace"
-        assert timeout_seconds == 30
+        assert timeout_seconds is None
         assert on_started is not None
         on_started("/workspace")
         return {

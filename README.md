@@ -11,7 +11,8 @@ curl -fsSL https://raw.githubusercontent.com/nmhuei/botquanganh_mcp/main/install
 ```
 
 Installer sẽ clone repo về `~/.botquanganh_mcp` (nếu chạy ngoài thư mục repo), tạo virtualenv `.venv` bằng `uv venv --seed`,
-cài dependencies và CLI, sinh `.env` từ `.env.example`, rồi symlink `bqa` vào `~/.local/bin/bqa`.
+cài dependencies và CLI, kiểm tra/cài Noto Sans + Noto Sans Mono khi có thể, sinh `.env` từ `.env.example`, rồi symlink `bqa` vào `~/.local/bin/bqa`.
+Nếu Noto không thể cài, BQA Center dùng Qt system-font fallback thay vì lỗi khởi động.
 
 Khởi động service; khi từng thành phần sẵn sàng (server → tunnel → bridge → endpoint), URL connector được in ra như một dòng copy-safe:
 
@@ -77,9 +78,10 @@ bqa server restart     # chỉ restart bridge cục bộ
 bqa server status      # trạng thái riêng của bridge
 bqa url                # in URL connector (--quiet: chỉ chuỗi URL)
 # Interface
-bqa ui                 # UCS-SecretAgent trên desktop, chạy nền
-bqa ui --foreground    # tương thích: vẫn mở UI chạy nền
-bqa ui --inline         # giữ UI gắn với terminal cho đến khi đóng cửa sổ
+bqa ui                 # BQA Center Qt Quick/QML trên desktop, chạy nền
+bqa ui --foreground    # tương thích: vẫn mở QML UI chạy nền
+bqa ui --inline         # giữ QML UI gắn với terminal cho đến khi đóng cửa sổ
+bqa ui --classic        # frontend Tkinter cũ khi cần fallback/debug
 bqa tui                # bản TUI trong terminal (dùng khi SSH/headless)
 # Inspection
 bqa status             # trạng thái runtime tổng thể
@@ -117,7 +119,7 @@ bqa version
 bqa help [command]
 ```
 
-Khi cần debug runtime, `bqa logs all` gộp log server, tunnel, launcher và audit; REST `GET /api/v1/logs/tail` trả cùng bản chụp qua HTTP. Với log theo chat/workspace, dùng `bqa chats logs <chat_id>` hoặc live SSE `GET /api/v1/activity/stream`; Control Center có tab `Workspace Logs` dùng chính stream này.
+Khi cần debug runtime, `bqa logs all` gộp log server, tunnel, launcher và audit; REST `GET /api/v1/logs/tail` trả cùng bản chụp qua HTTP. Với log theo chat/workspace, dùng `bqa chats logs <chat_id>` hoặc live SSE `GET /api/v1/activity/stream`. BQA Center QML tổ chức thành `Overview / Activity / Workspaces / Logs / Diagnostics / Settings`; `Logs > Events` dùng structured workspace stream và `Logs > Runtime services` hiển thị snapshot log server/tunnel/launcher/audit/desktop.
 
 Chat workspace cục bộ mặc định nằm dưới `~/Downloads/bqa-workspaces`.
 
@@ -125,4 +127,4 @@ Probe sức khỏe trực tiếp: `curl -s http://127.0.0.1:18427/healthz` · en
 
 ## Tài liệu
 
-[Kiến trúc](docs/ARCHITECTURE.md) · [Vận hành](docs/OPERATIONS_RUNBOOK.md) · [Checklist phát hành](docs/RELEASE_CHECKLIST.md) · [Bảo mật](SECURITY.md) · [Giao diện CLI](docs/CLI_UI.md) · [Chat workspaces](docs/CHAT_WORKSPACES.md)
+[Kiến trúc](docs/ARCHITECTURE.md) · [BQA Center QML](docs/QML_CENTER_UI.md) · [Vận hành](docs/OPERATIONS_RUNBOOK.md) · [Checklist phát hành](docs/RELEASE_CHECKLIST.md) · [Bảo mật](SECURITY.md) · [Giao diện CLI](docs/CLI_UI.md) · [Chat workspaces](docs/CHAT_WORKSPACES.md)

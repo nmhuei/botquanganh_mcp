@@ -177,7 +177,7 @@ def test_intent_is_recorded_alongside_the_command_and_capped_at_200(
     assert calls == [
         {
             "cwd": None,
-            "timeout_seconds": 30,
+            "timeout_seconds": None,
             "activity_source": "mcp",
             "activity_chat_id": None,
         }

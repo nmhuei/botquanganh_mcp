@@ -163,4 +163,4 @@ curl -N \
   'http://127.0.0.1:18427/api/v1/activity/stream?category=process&replay=25'
 ```
 
-The native Control Center now has a `Workspace Logs` tab backed by this stream. It keeps a maximum of 500 events in memory, shows newest matching events first, and supports local chips for `ALL`, `ERROR`, `PROCESS`, `FILE`, and `SESSION` plus a chat-id substring filter. Selecting an event shows the normalized payload, phase, interaction id, dataset/source, and derived duration. Disconnects switch the panel to `RECONNECTING` and automatically reconnect with the last SSE event id.
+The native QML Control Center exposes this stream under `Logs > Events`. The event cache is bounded, newest matching events remain first, and local filters support severity/category/outcome/chat/operation/action terms. Selecting an event exposes normalized metadata/payload and stable `operation_id` correlation back to Activity. Runtime service evidence is kept separate under `Logs > Runtime services`. Disconnects update the stream state and automatically reconnect using the last SSE event id.

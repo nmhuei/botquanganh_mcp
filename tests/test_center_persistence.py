@@ -38,8 +38,8 @@ def test_window_state_corruption_falls_back_to_defaults(tmp_path):
 
     loaded = CenterWindowStateStore(path).load()
 
-    assert loaded["geometry"] == "1180x760"
-    assert loaded["active_tab"] == "runtime"
+    assert loaded["geometry"] == "1280x820"
+    assert loaded["active_tab"] == "overview"
 
 
 def test_window_state_json_has_schema_version(tmp_path):

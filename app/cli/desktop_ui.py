@@ -178,7 +178,7 @@ def load_desktop_icon(root: Any, tk: Any) -> Any | None:
         return None
 
 
-def launch_desktop_ui_detached(ctx: CLIContext) -> int:
+def launch_desktop_ui_detached(ctx: CLIContext, *, classic: bool = False) -> int:
     """Start the desktop UI independently from the invoking terminal session."""
     existing = live_desktop_ui_pid(ctx.repo_root)
     if existing is not None:
@@ -186,6 +186,8 @@ def launch_desktop_ui_detached(ctx: CLIContext) -> int:
     log_dir = ctx.repo_root / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     command = [sys.executable, "-m", "app.cli.main", "ui"]
+    if classic:
+        command.append("--classic")
     child_env = dict(os.environ)
     child_env[BQA_UI_DAEMON_ENV] = "1"
     try:

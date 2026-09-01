@@ -300,14 +300,29 @@ def test_lifecycle_worker_delivers_result_through_main_thread_queue():
     assert all(thread_id == main_thread for thread_id in dashboard.root.after_threads)
 
 
-def test_ui_command_uses_desktop_window(monkeypatch):
+def test_ui_command_uses_qml_window_by_default(monkeypatch):
     called = []
     monkeypatch.delenv(BQA_UI_DAEMON_ENV, raising=False)
-    monkeypatch.setattr("app.cli.desktop_ui.run_desktop_ui", lambda ctx: called.append(ctx) or 0)
+    monkeypatch.setattr(
+        "app.qml_ui.app.run_qml_ui",
+        lambda ctx: called.append(ctx) or 0,
+    )
 
     assert main(["ui", "--inline"]) == 0
     assert len(called) == 1
     assert isinstance(called[0], CLIContext)
+
+
+def test_ui_classic_flag_uses_legacy_tk_window(monkeypatch):
+    called = []
+    monkeypatch.delenv(BQA_UI_DAEMON_ENV, raising=False)
+    monkeypatch.setattr(
+        "app.cli.desktop_ui.run_desktop_ui",
+        lambda ctx: called.append(ctx) or 0,
+    )
+
+    assert main(["ui", "--inline", "--classic"]) == 0
+    assert len(called) == 1
 
 
 def test_ui_detach_starts_independent_process(monkeypatch, tmp_path):
@@ -331,11 +346,12 @@ def test_ui_detach_starts_independent_process(monkeypatch, tmp_path):
 
 
 def test_ui_detach_dispatches_to_background_launcher(monkeypatch, capsys):
+    monkeypatch.delenv(BQA_UI_DAEMON_ENV, raising=False)
     started = []
     monkeypatch.setattr("app.cli.desktop_ui.graphical_session_available", lambda: True)
     monkeypatch.setattr(
         "app.cli.desktop_ui.launch_desktop_ui_detached",
-        lambda _ctx: started.append(True) or 8765,
+        lambda _ctx, **_kwargs: started.append(True) or 8765,
     )
 
     assert main(["ui", "--detach", "--quiet"]) == 0
@@ -344,6 +360,7 @@ def test_ui_detach_dispatches_to_background_launcher(monkeypatch, capsys):
 
 
 def test_default_ui_detaches_instead_of_opening_inline(monkeypatch, capsys):
+    monkeypatch.delenv(BQA_UI_DAEMON_ENV, raising=False)
     opened_inline = []
     monkeypatch.setattr("app.cli.desktop_ui.graphical_session_available", lambda: True)
     monkeypatch.setattr(
@@ -352,7 +369,7 @@ def test_default_ui_detaches_instead_of_opening_inline(monkeypatch, capsys):
     )
     monkeypatch.setattr(
         "app.cli.desktop_ui.launch_desktop_ui_detached",
-        lambda _ctx: 2468,
+        lambda _ctx, **_kwargs: 2468,
     )
 
     assert main(["ui", "--quiet"]) == 0
@@ -361,11 +378,12 @@ def test_default_ui_detaches_instead_of_opening_inline(monkeypatch, capsys):
 
 
 def test_foreground_ui_is_a_detached_compatibility_alias(monkeypatch, capsys):
+    monkeypatch.delenv(BQA_UI_DAEMON_ENV, raising=False)
     started = []
     monkeypatch.setattr("app.cli.desktop_ui.graphical_session_available", lambda: True)
     monkeypatch.setattr(
         "app.cli.desktop_ui.launch_desktop_ui_detached",
-        lambda _ctx: started.append(True) or 1357,
+        lambda _ctx, **_kwargs: started.append(True) or 1357,
     )
 
     assert main(["ui", "--foreground", "--quiet"]) == 0
@@ -426,9 +444,10 @@ def test_launch_ignores_stale_pid_file_and_reclaims_it(monkeypatch, tmp_path):
 
 
 def test_main_reports_already_running_without_spawning(monkeypatch, capsys):
+    monkeypatch.delenv(BQA_UI_DAEMON_ENV, raising=False)
     monkeypatch.setattr("app.cli.desktop_ui.graphical_session_available", lambda: True)
 
-    def raise_already_running(_ctx):
+    def raise_already_running(_ctx, **_kwargs):
         raise DesktopUIAlreadyRunning(4321)
 
     monkeypatch.setattr(
@@ -448,14 +467,14 @@ def test_daemon_child_registers_and_releases_the_pid_file(monkeypatch, tmp_path)
     observed = {}
     real_pid = os.getpid()
 
-    def fake_run_desktop_ui(ctx):
+    def fake_run_qml_ui(ctx):
         path = desktop_ui_pid_path(ctx.repo_root)
         observed["content"] = path.read_text(encoding="utf-8").strip()
         return 0
 
     monkeypatch.setattr("app.cli.context.repo_root", lambda: tmp_path)
     monkeypatch.setenv(BQA_UI_DAEMON_ENV, "1")
-    monkeypatch.setattr("app.cli.desktop_ui.run_desktop_ui", fake_run_desktop_ui)
+    monkeypatch.setattr("app.qml_ui.app.run_qml_ui", fake_run_qml_ui)
 
     assert main(["ui"]) == 0
     assert observed["content"] == str(real_pid)
@@ -465,7 +484,7 @@ def test_daemon_child_registers_and_releases_the_pid_file(monkeypatch, tmp_path)
 def test_inline_ui_without_env_marker_never_touches_the_pid_file(monkeypatch, tmp_path):
     monkeypatch.setattr("app.cli.context.repo_root", lambda: tmp_path)
     monkeypatch.delenv(BQA_UI_DAEMON_ENV, raising=False)
-    monkeypatch.setattr("app.cli.desktop_ui.run_desktop_ui", lambda _ctx: 0)
+    monkeypatch.setattr("app.qml_ui.app.run_qml_ui", lambda _ctx: 0)
 
     assert main(["ui", "--inline"]) == 0
     assert not desktop_ui_pid_path(tmp_path).exists()

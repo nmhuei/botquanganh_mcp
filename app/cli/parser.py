@@ -219,7 +219,7 @@ Output modes:
     )
     commands.add_parser("status", help="Show runtime status")
     commands.add_parser("url", help="Print the current connector URL")
-    ui = commands.add_parser("ui", help="Open the native Python desktop control center")
+    ui = commands.add_parser("ui", help="Open the Qt Quick/QML desktop control center")
     ui.add_argument(
         "--foreground",
         action="store_true",
@@ -234,6 +234,11 @@ Output modes:
         "--inline",
         action="store_true",
         help="Run attached to this terminal until the UI window is closed",
+    )
+    ui.add_argument(
+        "--classic",
+        action="store_true",
+        help="Use the legacy Tkinter frontend instead of Qt Quick/QML",
     )
     commands.add_parser("tui", help="Open the terminal control center")
     help_parser = commands.add_parser("help", help="Show help information")
