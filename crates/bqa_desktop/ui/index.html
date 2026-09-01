@@ -360,17 +360,17 @@
 
     <!-- CỘT 1: SESSIONS (CÓ NÚT THU GỌN INLINE « TRỰC TIẾP TRÊN HEADER) -->
     <aside id="paneSidebar" style="background-color: var(--bg-header); border-color: var(--border);" class="w-56 min-w-[150px] max-w-[360px] border-r flex flex-col shrink-0">
-      <div style="border-color: var(--border); color: var(--text-sub);" class="px-3 py-2 border-b flex items-center justify-between text-xs shrink-0">
-        <div class="flex items-center gap-1.5">
-          <span class="font-semibold uppercase tracking-wider text-[10px]">Sessions</span>
-          <span style="color: var(--text-dim);" class="text-[9.5px] font-sans">• Đĩa</span>
+      <div style="border-color: var(--border); color: var(--text-sub);" class="px-3 py-2 border-b flex items-center justify-between gap-1.5 text-xs shrink-0 min-w-0 overflow-hidden">
+        <div class="flex items-center gap-1 min-w-0 truncate">
+          <span class="font-semibold uppercase tracking-wider text-[10px] whitespace-nowrap">Sessions</span>
+          <span style="color: var(--text-dim);" class="text-[9.5px] font-sans truncate">• Đĩa</span>
         </div>
         <!-- Action buttons on Sidebar Header: Reload & Inline Collapse -->
-        <div class="flex items-center space-x-1">
-          <button onclick="refreshSessionsFromDisk()" style="color: var(--text-sub);" class="hover:text-white transition p-1 rounded hover:bg-slate-700/30" title="Đọc lại từ workspace">
+        <div class="flex items-center space-x-1 shrink-0">
+          <button onclick="refreshSessionsFromDisk()" style="color: var(--text-sub);" class="hover:text-white transition p-1 rounded hover:bg-slate-700/30 shrink-0" title="Đọc lại từ workspace">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
           </button>
-          <button onclick="toggleSidebar()" style="color: var(--text-sub);" class="hover:text-white transition p-1 rounded hover:bg-slate-700/30" title="Thu gọn danh sách phiên (Collapse)">
+          <button onclick="toggleSidebar()" style="color: var(--text-sub);" class="hover:text-white transition p-1 rounded hover:bg-slate-700/30 shrink-0" title="Thu gọn danh sách phiên (Collapse)">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"></path></svg>
           </button>
         </div>
@@ -386,18 +386,18 @@
 
     <!-- CỘT 2: TÓM TẮT LỆNH (CÓ NÚT MỞ NHANH » KHI SIDEBAR BỊ THU GỌN) -->
     <section id="paneStream" style="background-color: var(--bg-base); border-color: var(--border);" class="w-64 min-w-[180px] max-w-[460px] flex flex-col shrink-0 overflow-hidden border-r">
-      <div style="border-color: var(--border); color: var(--text-sub);" class="px-3 py-2 border-b text-xs shrink-0 flex items-center justify-between">
-        <div class="flex items-center gap-2 truncate">
-          <button id="btnExpandSidebar" onclick="toggleSidebar()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="hidden px-1.5 py-0.5 border rounded text-[10.5px] font-mono items-center gap-1 transition hover:border-[#4f46e5]" title="Mở lại danh sách phiên">
+      <div style="border-color: var(--border); color: var(--text-sub);" class="px-3 py-2 border-b text-xs shrink-0 flex items-center justify-between gap-2 min-w-0 overflow-hidden">
+        <div class="flex items-center gap-1.5 min-w-0 truncate">
+          <button id="btnExpandSidebar" onclick="toggleSidebar()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="hidden px-1.5 py-0.5 border rounded text-[10.5px] font-mono items-center gap-1 transition hover:border-[#4f46e5] whitespace-nowrap shrink-0" title="Mở lại danh sách phiên">
             <svg class="w-3 h-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"></path></svg>
             <span>Sessions</span>
           </button>
-          <span id="streamTitle" style="color: var(--text-main);" class="font-mono font-semibold truncate text-[11.5px]">Đang tải...</span>
+          <span id="streamTitle" style="color: var(--text-main);" class="font-mono font-semibold truncate text-[11.5px] min-w-0">Đang tải...</span>
         </div>
 
-        <div class="flex items-center gap-1 shrink-0">
+        <div class="flex items-center gap-1 shrink-0 whitespace-nowrap">
           <span style="color: var(--text-dim);" class="text-[10px] font-sans">Mới nhất ↓</span>
-          <button onclick="toggleInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white hover:bg-slate-700/30 transition" title="Ẩn/Hiện Khung Chi Tiết Inspector">
+          <button onclick="toggleInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white hover:bg-slate-700/30 transition shrink-0" title="Ẩn/Hiện Khung Chi Tiết Inspector">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" stroke-width="2"></rect><path d="M15 4v16" stroke-width="2"></path></svg>
           </button>
         </div>
@@ -413,13 +413,13 @@
 
     <!-- CỘT 3: KHUNG CHI TIẾT (HERO ELEMENT) -->
     <aside id="paneInspector" style="background-color: var(--bg-header);" class="flex-1 min-w-[320px] flex flex-col overflow-hidden">
-      <div style="border-color: var(--border); color: var(--text-sub);" class="px-4 py-2 border-b flex items-center justify-between text-xs shrink-0">
-        <span style="color: var(--text-main);" class="font-semibold">Chi tiết Thực thi (Inspector)</span>
-        <div class="flex items-center gap-2">
-          <button onclick="copyDetails()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-2.5 py-1 border rounded-md text-[11px] transition">
+      <div style="border-color: var(--border); color: var(--text-sub);" class="px-4 py-2 border-b flex items-center justify-between gap-2 text-xs shrink-0 min-w-0 overflow-hidden">
+        <span style="color: var(--text-main);" class="font-semibold whitespace-nowrap truncate min-w-0">Chi tiết Thực thi (Inspector)</span>
+        <div class="flex items-center gap-2 shrink-0">
+          <button onclick="copyDetails()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-2.5 py-1 border rounded-md text-[11px] transition whitespace-nowrap shrink-0">
             <span id="copyBtnLabel">Sao chép Output</span>
           </button>
-          <button onclick="toggleInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white hover:bg-slate-700/30 transition" title="Thu gọn Khung Chi tiết">
+          <button onclick="toggleInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white hover:bg-slate-700/30 transition shrink-0" title="Thu gọn Khung Chi tiết">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
           </button>
         </div>
@@ -427,34 +427,34 @@
 
       <div class="flex-1 overflow-y-auto p-4 space-y-3.5 text-xs font-mono">
         <div class="grid grid-cols-3 gap-2.5">
-          <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-2.5 rounded-lg">
-            <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans">Tác vụ</span>
+          <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-2.5 rounded-lg min-w-0">
+            <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans whitespace-nowrap truncate">Tác vụ</span>
             <span id="inspectTool" style="color: var(--accent);" class="font-semibold mt-0.5 block truncate">host_run_command</span>
           </div>
 
-          <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-2.5 rounded-lg">
-            <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans">Thời gian (Date & Time)</span>
+          <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-2.5 rounded-lg min-w-0">
+            <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans whitespace-nowrap truncate">Thời gian</span>
             <span id="inspectTimestamp" style="color: var(--text-main);" class="font-semibold mt-0.5 block truncate">2026-09-01 20:26:15</span>
           </div>
 
-          <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-2.5 rounded-lg">
-            <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans">Kết quả & Thời lượng</span>
+          <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-2.5 rounded-lg min-w-0">
+            <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans whitespace-nowrap truncate">Kết quả & Thời lượng</span>
             <span id="inspectExit" style="color: var(--mint);" class="font-semibold mt-0.5 block truncate">0 (Success) · 1.42s</span>
           </div>
         </div>
 
-        <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-3 rounded-lg">
-          <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans mb-1">Lệnh đầy đủ</span>
+        <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-3 rounded-lg min-w-0">
+          <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans mb-1 whitespace-nowrap">Lệnh đầy đủ</span>
           <div id="inspectCommand" style="color: var(--text-main);" class="select-text break-all">uv run pytest tests/test_qml_backend.py</div>
         </div>
 
-        <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-3 rounded-lg">
-          <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans mb-1">Thư mục (CWD)</span>
+        <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-3 rounded-lg min-w-0">
+          <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans mb-1 whitespace-nowrap">Thư mục (CWD)</span>
           <div id="inspectCwd" style="color: var(--text-sub);" class="select-text break-all">/home/light/GitHub/botquanganh_mcp</div>
         </div>
 
         <div class="flex flex-col flex-1 min-h-[220px]">
-          <div style="color: var(--text-dim);" class="flex items-center justify-between text-[10px] uppercase font-sans mb-1">
+          <div style="color: var(--text-dim);" class="flex items-center justify-between text-[10px] uppercase font-sans mb-1 whitespace-nowrap">
             <span>Terminal Console Output</span>
             <span>UTF-8</span>
           </div>
@@ -468,16 +468,16 @@
   <!-- ==================== PAGE 3: NHẬT KÝ (AUDIT LOGS - 2 PANES RESIZABLE) ==================== -->
   <div id="pageLogs" class="flex-1 flex overflow-hidden hidden font-mono text-xs relative">
     <div id="paneLogStream" style="background-color: var(--bg-base); border-color: var(--border);" class="flex-1 min-w-[260px] flex flex-col overflow-hidden border-r">
-      <div style="background-color: var(--bg-header); border-color: var(--border); color: var(--text-sub);" class="px-4 py-2.5 border-b flex items-center justify-between shrink-0 text-xs">
-        <div class="flex items-center gap-2">
-          <span style="color: var(--text-main);" class="font-semibold">System Audit Log Stream</span>
-          <span style="color: var(--text-dim);" class="text-[10px] font-sans">Toàn bộ sự kiện bảo mật & tệp (Mới nhất ↓)</span>
+      <div style="background-color: var(--bg-header); border-color: var(--border); color: var(--text-sub);" class="px-3 py-2 border-b flex items-center justify-between gap-2 shrink-0 text-xs min-w-0 overflow-hidden">
+        <div class="flex items-center gap-1.5 min-w-0 truncate">
+          <span style="color: var(--text-main);" class="font-semibold whitespace-nowrap truncate">System Audit Logs</span>
+          <span style="color: var(--text-dim);" class="text-[10px] font-sans truncate hidden sm:inline">• Sự kiện bảo mật (Mới nhất ↓)</span>
         </div>
-        <div class="flex items-center gap-2">
-          <button onclick="refreshLogsFromDisk()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-2.5 py-1 border rounded-md text-[11px] font-sans transition">
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button onclick="refreshLogsFromDisk()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-2 py-0.5 border rounded-md text-[11px] font-sans transition whitespace-nowrap shrink-0">
             Làm mới
           </button>
-          <button onclick="toggleInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white transition" title="Ẩn/Hiện Chi tiết Log">
+          <button onclick="toggleInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white transition shrink-0" title="Ẩn/Hiện Chi tiết Log">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" stroke-width="2"></rect><path d="M15 4v16" stroke-width="2"></path></svg>
           </button>
         </div>
@@ -1134,15 +1134,15 @@
       container.innerHTML = '';
       sessions.forEach(s => {
         const item = document.createElement('div');
-        item.className = `session-item ${s.active ? 'active' : ''} p-2 rounded-lg cursor-pointer transition flex items-center justify-between font-mono text-xs`;
+        item.className = `session-item ${s.active ? 'active' : ''} p-2 rounded-lg cursor-pointer transition flex items-center justify-between gap-1.5 font-mono text-xs min-w-0 overflow-hidden`;
         item.style.backgroundColor = s.active ? 'var(--bg-selected)' : 'transparent';
         item.style.borderColor = s.active ? 'var(--border)' : 'transparent';
         item.style.color = s.active ? 'var(--text-main)' : 'var(--text-sub)';
         if (s.active) item.classList.add('border', 'shadow-xs', 'font-medium');
 
         item.innerHTML = `
-          <span class="truncate">${s.label}</span>
-          <span style="color: ${s.active ? 'var(--accent)' : 'var(--text-dim)'};" class="text-[10px] ${s.active ? 'font-bold' : ''}">${s.ops} ops</span>
+          <span class="truncate min-w-0 flex-1">${s.label}</span>
+          <span style="color: ${s.active ? 'var(--accent)' : 'var(--text-dim)'};" class="text-[10px] shrink-0 whitespace-nowrap ml-1 ${s.active ? 'font-bold' : ''}">${s.ops} ops</span>
         `;
         item.onclick = () => {
           document.querySelectorAll('.session-item').forEach(e => {
@@ -1159,7 +1159,9 @@
         };
         container.appendChild(item);
       });
-      document.getElementById('streamTitle').innerText = sessions[0]?.id || "cw-research_mcp_tunnel";
+      if (sessions.length > 0 && !document.getElementById('streamTitle').innerText.startsWith('cw-')) {
+        document.getElementById('streamTitle').innerText = sessions[0]?.id || "cw-research_mcp_tunnel";
+      }
     }
 
     function renderCommands(commands) {
@@ -1168,22 +1170,22 @@
       commands.forEach((c, idx) => {
         const isSelected = idx === 0;
         const row = document.createElement('div');
-        row.className = `action-row ${isSelected ? 'selected shadow-xs' : ''} p-2 rounded-lg border cursor-pointer transition flex flex-col gap-1`;
+        row.className = `action-row ${isSelected ? 'selected shadow-xs' : ''} p-2 rounded-lg border cursor-pointer transition flex flex-col gap-0.5 min-w-0 overflow-hidden`;
         row.style.backgroundColor = isSelected ? 'var(--bg-selected)' : 'var(--bg-header)';
         row.style.borderColor = isSelected ? 'var(--accent)' : 'var(--border)';
 
         row.innerHTML = `
-          <div class="flex items-center justify-between text-[11px]">
-            <div class="flex items-center gap-1.5">
-              <span style="color: var(--accent);" class="font-bold">${c.tool.replace('host_', '')}</span>
-              ${c.is_latest ? '<span style="color: var(--mint); background-color: var(--accent-soft);" class="text-[9px] px-1 rounded font-sans">Mới nhất</span>' : ''}
+          <div class="flex items-center justify-between gap-1 text-[11px] min-w-0 overflow-hidden">
+            <div class="flex items-center gap-1 min-w-0 truncate">
+              <span style="color: var(--accent);" class="font-bold text-[11px] truncate whitespace-nowrap">${c.tool.replace('host_', '')}</span>
+              ${c.is_latest ? '<span style="color: var(--mint); background-color: var(--accent-soft);" class="text-[8.5px] px-1 rounded font-sans shrink-0 whitespace-nowrap">Mới</span>' : ''}
             </div>
-            <div class="flex items-center gap-1.5">
-              <span style="color: var(--text-dim);">${c.time_short}</span>
-              <span style="color: var(--mint);" class="font-semibold">OK</span>
+            <div class="flex items-center gap-1 shrink-0 whitespace-nowrap text-[10px]">
+              <span style="color: var(--text-dim);" class="whitespace-nowrap">${c.time_short}</span>
+              <span style="color: var(--mint);" class="font-semibold whitespace-nowrap">OK</span>
             </div>
           </div>
-          <div style="color: var(--text-main);" class="font-medium truncate text-[11px]">${c.cmd}</div>
+          <div style="color: var(--text-main);" class="font-medium truncate text-[11px] min-w-0 mt-0.5">${c.cmd}</div>
         `;
 
         row.onclick = () => {
@@ -1209,7 +1211,7 @@
         container.appendChild(row);
       });
 
-      if (commands.length > 0) {
+      if (commands.length > 0 && (!document.getElementById('inspectCommand').innerText || document.getElementById('inspectCommand').innerText === 'uv run pytest tests/test_qml_backend.py')) {
         document.getElementById('inspectTool').innerText = commands[0].tool;
         document.getElementById('inspectTimestamp').innerText = commands[0].timestamp;
         document.getElementById('inspectExit').innerText = `${commands[0].exit_code} (Success) · ${commands[0].duration}`;
@@ -1224,18 +1226,18 @@
       logs.forEach((l, idx) => {
         const isSelected = idx === 0;
         const row = document.createElement('div');
-        row.className = `log-row ${isSelected ? 'selected shadow-xs' : ''} p-2.5 rounded-lg border flex items-center justify-between cursor-pointer transition`;
+        row.className = `log-row ${isSelected ? 'selected shadow-xs' : ''} p-2.5 rounded-lg border flex items-center justify-between gap-2 cursor-pointer transition min-w-0 overflow-hidden`;
         row.style.backgroundColor = isSelected ? 'var(--bg-selected)' : 'var(--bg-header)';
         row.style.borderColor = isSelected ? 'var(--accent)' : 'var(--border)';
 
         row.innerHTML = `
-          <div class="flex items-center gap-2 truncate">
-            <span style="color: var(--mint);" class="font-bold text-[10px]">[${l.severity}]</span>
-            <span style="color: var(--text-dim);">${l.time}</span>
-            <span style="color: var(--mint);" class="font-semibold">${l.action}</span>
-            <span style="color: var(--text-main);" class="truncate">${l.msg}</span>
+          <div class="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
+            <span style="color: var(--mint);" class="font-bold text-[10px] shrink-0 whitespace-nowrap">[${l.severity}]</span>
+            <span style="color: var(--text-dim);" class="text-[10px] shrink-0 whitespace-nowrap">${l.time}</span>
+            <span style="color: var(--mint);" class="font-semibold text-[11px] shrink-0 whitespace-nowrap">${l.action}</span>
+            <span style="color: var(--text-main);" class="truncate min-w-0 flex-1 text-[11px]">${l.msg}</span>
           </div>
-          <span style="color: var(--text-dim);" class="text-[10px] shrink-0">${l.session}</span>
+          <span style="color: var(--text-dim);" class="text-[10px] shrink-0 whitespace-nowrap ml-1">${l.session}</span>
         `;
 
         row.onclick = () => {
@@ -1261,13 +1263,54 @@
         container.appendChild(row);
       });
 
-      if (logs.length > 0) {
+      if (logs.length > 0 && !document.getElementById('logInspectId').innerText) {
         document.getElementById('logInspectId').innerText = logs[0].id;
         document.getElementById('logInspectCategory').innerText = `${logs[0].severity} · ${logs[0].cat}`;
         document.getElementById('logInspectAction').innerText = logs[0].action;
         document.getElementById('logInspectSession').innerText = logs[0].session;
         document.getElementById('logInspectJson').innerText = logs[0].json;
       }
+    }
+
+    // ==================== REAL-TIME AUTO-POLLING & LIVE UPDATES ====================
+    let autoPollTimer = null;
+
+    async function pollLiveActivityAndLogs(isManual = false) {
+      try {
+        // Fetch live logs from local REST bridge endpoint (:18427)
+        const res = await fetch('http://127.0.0.1:18427/api/v1/logs/tail?n=50', { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.events && Array.isArray(data.events) && data.events.length > 0) {
+            const mappedLogs = data.events.map((evt, i) => ({
+              id: evt.id || `evt-${i+1}`,
+              severity: evt.level || (evt.action?.includes('auth') ? 'AUTH' : 'SYSTEM'),
+              cat: evt.category || 'runtime',
+              action: evt.action || 'system_event',
+              time: evt.timestamp ? evt.timestamp.substring(5, 16).replace('T', ' ') : '01/09 20:26',
+              msg: evt.summary || evt.message || JSON.stringify(evt.data || {}),
+              session: evt.session_id || 'system',
+              json: JSON.stringify(evt, null, 2)
+            }));
+            renderLogs(mappedLogs);
+          }
+        }
+      } catch (err) {
+        // REST bridge offline or uninitialized
+      }
+
+      if (isManual) {
+        showToast('✓ Đã đồng bộ nhật ký và phiên');
+      }
+    }
+
+    function startAutoPolling() {
+      if (autoPollTimer) clearInterval(autoPollTimer);
+      pollLiveActivityAndLogs();
+      // Auto-poll every 2.5 seconds
+      autoPollTimer = setInterval(() => {
+        pollLiveActivityAndLogs(false);
+      }, 2500);
     }
 
     function refreshSessionsFromDisk() {
@@ -1277,9 +1320,7 @@
     }
 
     function refreshLogsFromDisk() {
-      sendToRust('get_logs').then(() => {
-        showToast('✓ Đã cập nhật logs hệ thống');
-      });
+      pollLiveActivityAndLogs(true);
     }
 
     function copyDetails() {
@@ -1410,6 +1451,7 @@
     renderCommands(sampleCommands);
     renderLogs(sampleLogs);
     setTheme(localStorage.getItem('bqa_theme') || 'rosepine');
+    startAutoPolling();
   </script>
 </body>
 </html>
