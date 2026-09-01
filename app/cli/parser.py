@@ -221,19 +221,21 @@ Output modes:
     commands.add_parser("url", help="Print the current connector URL")
     ui = commands.add_parser("ui", help="Open the Rust native Studio desktop control center")
     ui.add_argument(
+        "-f",
         "--foreground",
         action="store_true",
-        help="Compatibility alias: open the UI detached in the background",
+        help="Run attached to this terminal (foreground)",
     )
     ui.add_argument(
+        "-d",
         "--detach",
         action="store_true",
-        help="Open the UI detached in the background (the default)",
+        help="Open the UI detached in the background",
     )
     ui.add_argument(
         "--inline",
         action="store_true",
-        help="Run attached to this terminal until the UI window is closed",
+        help="Alias for --foreground",
     )
     ui.add_argument(
         "--classic",

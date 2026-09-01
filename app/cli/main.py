@@ -444,7 +444,11 @@ def _dispatch(ctx: CLIContext, args) -> int:
             finally:
                 release_desktop_ui_pid(ctx.repo_root, os.getpid())
 
-        if not getattr(args, "inline", False):
+        is_foreground = bool(
+            getattr(args, "foreground", False) or getattr(args, "inline", False)
+        )
+
+        if not is_foreground:
             if not graphical_session_available():
                 raise CLIError("Không có graphical display để mở BQA Center.")
             try:
@@ -463,7 +467,7 @@ def _dispatch(ctx: CLIContext, args) -> int:
                     renderer.status(
                         "success", f"BQA Center đã chạy nền (PID {running.pid})"
                     )
-                    renderer.hint("bqa ui --inline", "Chạy UI gắn với terminal bằng")
+                    renderer.hint("bqa ui --foreground", "Chạy UI trực tiếp với terminal bằng")
                 return 0
             if ctx.json_output:
                 emit_json({"ok": True, "status": "started", "pid": pid})
