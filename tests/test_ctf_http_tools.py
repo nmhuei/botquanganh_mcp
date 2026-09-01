@@ -76,8 +76,16 @@ import app.config
 
 
 @pytest.fixture(autouse=True)
-def default_env(monkeypatch):
+def default_env(monkeypatch, tmp_path):
     monkeypatch.setattr(app.config, "ATTRIBUTION_MODE", "off", raising=False)
+    monkeypatch.setattr(app.config, "HOST_CHAT_ROOT", str(tmp_path), raising=False)
+    from app.chat_identity import _CHAT_ID, _REGISTRY, _REGISTRY_LOCK
+
+    _CHAT_ID.set(None)
+    with _REGISTRY_LOCK:
+        _REGISTRY.clear()
+
+
 
 
 def test_tool_returns_shared_error_for_invalid_url():
@@ -88,6 +96,8 @@ def test_tool_returns_shared_error_for_invalid_url():
 
 def test_tool_gated_under_enforce(monkeypatch):
     monkeypatch.setattr(app.config, "ATTRIBUTION_MODE", "enforce", raising=False)
+    monkeypatch.setattr("app.chat_identity.get_active_workspace", lambda: None)
     result = ctf_fetch_url("https://challenge.example/")
     assert result["ok"] is False
     assert result["error"]["code"] == "E6"
+
