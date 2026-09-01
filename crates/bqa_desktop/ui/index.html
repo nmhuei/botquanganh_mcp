@@ -231,6 +231,17 @@
       transition: width 0.24s cubic-bezier(0.4, 0, 0.2, 1), flex 0.24s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
+    /* Enforce strict single-line text layout without line breaks */
+    .session-item, .session-item * {
+      white-space: nowrap !important;
+    }
+    .action-row, .action-row * {
+      white-space: nowrap !important;
+    }
+    .log-row, .log-row * {
+      white-space: nowrap !important;
+    }
+
     /* ==================== INTERACTIVE HOVER & CLICK MICRO-INTERACTIONS ==================== */
     button, [role="button"], .cursor-pointer {
       cursor: pointer !important;
@@ -485,7 +496,7 @@
   <div id="pageActivity" class="flex-1 flex overflow-hidden relative">
 
     <!-- CỘT 1: SESSIONS (CÓ NÚT THU GỌN INLINE « TRỰC TIẾP TRÊN HEADER) -->
-    <aside id="paneSidebar" style="background-color: var(--bg-header); border-color: var(--border);" class="w-56 min-w-[150px] max-w-[360px] border-r flex flex-col shrink-0">
+    <aside id="paneSidebar" style="background-color: var(--bg-header); border-color: var(--border);" class="w-56 min-w-[170px] max-w-[360px] border-r flex flex-col shrink-0">
       <div style="border-color: var(--border); color: var(--text-sub);" class="px-3 py-2 border-b flex items-center justify-between gap-1.5 text-xs shrink-0 min-w-0 overflow-hidden">
         <div class="flex items-center gap-1 min-w-0 truncate">
           <span class="font-semibold uppercase tracking-wider text-[10px] whitespace-nowrap">Sessions</span>
@@ -511,7 +522,7 @@
     <div id="resizerLeft" class="resizer"></div>
 
     <!-- CỘT 2: TÓM TẮT LỆNH (CÓ NÚT MỞ NHANH » KHI SIDEBAR BỊ THU GỌN) -->
-    <section id="paneStream" style="background-color: var(--bg-base); border-color: var(--border);" class="w-64 min-w-[180px] max-w-[460px] flex flex-col shrink-0 overflow-hidden border-r">
+    <section id="paneStream" style="background-color: var(--bg-base); border-color: var(--border);" class="w-72 min-w-[240px] max-w-[500px] flex flex-col shrink-0 overflow-hidden border-r">
       <div style="border-color: var(--border); color: var(--text-sub);" class="px-3 py-2 border-b text-xs shrink-0 flex items-center justify-between gap-2 min-w-0 overflow-hidden">
         <div class="flex items-center gap-1.5 min-w-0 truncate">
           <button id="btnExpandSidebar" onclick="toggleSidebar()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="hidden px-1.5 py-0.5 border rounded text-[10.5px] font-mono items-center gap-1 transition hover:border-[#4f46e5] whitespace-nowrap shrink-0" title="Mở lại danh sách phiên">
