@@ -219,7 +219,7 @@ Output modes:
     )
     commands.add_parser("status", help="Show runtime status")
     commands.add_parser("url", help="Print the current connector URL")
-    ui = commands.add_parser("ui", help="Open the Qt Quick/QML desktop control center")
+    ui = commands.add_parser("ui", help="Open the Rust native Studio desktop control center")
     ui.add_argument(
         "--foreground",
         action="store_true",
@@ -238,7 +238,7 @@ Output modes:
     ui.add_argument(
         "--classic",
         action="store_true",
-        help="Use the legacy Tkinter frontend instead of Qt Quick/QML",
+        help="Use the legacy Tkinter frontend instead of Rust Studio",
     )
 
 

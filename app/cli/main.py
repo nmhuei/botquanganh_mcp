@@ -418,14 +418,21 @@ def _dispatch(ctx: CLIContext, args) -> int:
         def run_selected_desktop() -> int:
             if classic:
                 return run_desktop_ui(ctx)
-            try:
-                from app.qml_ui.app import QmlUIUnavailable, run_qml_ui
-
-                return run_qml_ui(ctx)
-            except (ImportError, QmlUIUnavailable):
-                # Keep the mature Tk frontend as an emergency fallback on hosts
-                # whose Qt runtime cannot initialize; --classic selects it explicitly.
-                return run_desktop_ui(ctx)
+            import subprocess
+            rust_bin = ctx.repo_root / "target" / "release" / "bqa-desktop"
+            if not rust_bin.exists():
+                rust_bin = ctx.repo_root / "bin" / "bqa-desktop"
+            if rust_bin.exists() and os.access(rust_bin, os.X_OK):
+                res = subprocess.run([str(rust_bin)], cwd=ctx.repo_root)
+                return res.returncode
+            cargo_toml = ctx.repo_root / "crates" / "bqa_desktop" / "Cargo.toml"
+            if cargo_toml.exists():
+                res = subprocess.run(
+                    ["cargo", "run", "--release", "--manifest-path", str(cargo_toml)],
+                    cwd=ctx.repo_root,
+                )
+                return res.returncode
+            return run_desktop_ui(ctx)
 
         is_daemon_child = os.environ.get(BQA_UI_DAEMON_ENV) == "1"
         if is_daemon_child:
@@ -464,7 +471,7 @@ def _dispatch(ctx: CLIContext, args) -> int:
                 emit_quiet(pid)
             else:
                 renderer = renderer_for(ctx)
-                frontend = "Tk classic" if classic else "Qt Quick / QML"
+                frontend = "Tk classic" if classic else "Rust Native Studio"
                 renderer.header("BQA Center", f"Detached desktop window · {frontend}")
                 renderer.blank()
                 renderer.status("success", f"Đã mở nền (PID {pid})")
