@@ -232,7 +232,9 @@ HOST_KNOWLEDGE_DIR = HOST_KNOWLEDGE_DIR.resolve()
 HOST_TOOL_CACHE_SECONDS = max(0, int(os.getenv("HOST_TOOL_CACHE_SECONDS", "300")))
 
 MAX_SINGLE_FILE_BYTES = int(os.getenv("MAX_SINGLE_FILE_BYTES", "3000000"))
-MAX_OUTPUT_BYTES = int(os.getenv("MAX_OUTPUT_BYTES", "500000"))
+# Zero explicitly disables the per-stream output cap. Operators who need a
+# bounded response can set a positive value in .env.
+MAX_OUTPUT_BYTES = int(os.getenv("MAX_OUTPUT_BYTES", "0"))
 MAX_TIMEOUT_SECONDS = int(os.getenv("MAX_TIMEOUT_SECONDS", "60"))
 MAX_CONCURRENT_COMMANDS = max(1, int(os.getenv("MAX_CONCURRENT_COMMANDS", "100")))
 COMMAND_QUEUE_TIMEOUT_SECONDS = max(

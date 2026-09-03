@@ -5,6 +5,7 @@ from pathlib import Path
 import queue
 import subprocess
 import threading
+from types import SimpleNamespace
 
 import pytest
 
@@ -83,35 +84,136 @@ def test_backend_badge_reflects_server_liveness():
     assert backend_badge({})[0] == "backend: ○ down"
 
 
-def test_dashboard_activates_and_focuses_a_session_when_new_activity_arrives():
-    """A post-startup command must reveal its hidden session and pop up the view."""
+def test_dashboard_refresh_keeps_the_operator_session_and_window_unfocused(tmp_path):
+    """A new command elsewhere must not steal the current session or window focus."""
+    from app.cli.desktop_views.activity import ActivityView, WorkspaceSession
 
-    class ActivityView:
+    class Root:
         def __init__(self):
             self.calls = []
 
-        def activate_session(self, chat_id):
-            self.calls.append(("activate", chat_id))
-            return True
+        def deiconify(self):
+            self.calls.append("deiconify")
 
-        def focus(self):
-            self.calls.append(("focus",))
+        def lift(self):
+            self.calls.append("lift")
+
+        def after(self, _delay, _callback):
+            return "refresh-job"
+
+    class Variable:
+        def __init__(self, value=""):
+            self.value = value
+
+        def get(self):
+            return self.value
+
+        def set(self, value):
+            self.value = value
+
+    class RuntimeView:
+        def render(self, _data):
+            return SimpleNamespace(color="#4ade80", summary="Ready")
+
+        def set_message(self, _message):
+            pass
+
+    root = Root()
+    activity_view = ActivityView(
+        root=root,
+        tk=type("Tk", (), {"TclError": RuntimeError}),
+        ttk=None,
+        parent=None,
+        workspace_root=lambda: tmp_path,
+        on_message=lambda _kind, _message: None,
+        on_refresh=lambda: None,
+    )
+    session_a = WorkspaceSession("chat-a", tmp_path / "chat-a", 1.0)
+    session_b = WorkspaceSession("chat-b", tmp_path / "chat-b", 2.0)
+    session_a.path.mkdir()
+    session_b.path.mkdir()
+    activity_view.refresh([session_a, session_b], [])
+    assert activity_view.activate_session("chat-a") is True
 
     dashboard = object.__new__(_DesktopDashboard)
-    dashboard.activity_view = ActivityView()
+    dashboard.root = root
+    dashboard.closed = False
+    dashboard.refresh_job = None
+    dashboard.status_reader = lambda _repo_root, _values: {"ok": True}
+    dashboard.ctx = SimpleNamespace(repo_root=tmp_path, values={"HOST_CHAT_ROOT": str(tmp_path)})
+    dashboard.runtime_view = RuntimeView()
+    dashboard.status_label = None
+    dashboard.backend_label = None
+    dashboard.backend_var = Variable()
+    dashboard.workspace_var = Variable()
+    dashboard.status_var = Variable()
+    dashboard.message_var = Variable()
+    dashboard.refresh_var = Variable()
+    dashboard.busy = False
+    dashboard.workspace_selection_dirty = True
+    dashboard.activity_view = activity_view
     dashboard.translator = DesktopTranslator("en")
     dashboard.seen_activity_notification_ids = set()
-    messages = []
-    dashboard._set_message = lambda kind, message: messages.append((kind, message))
-    notification = type(
-        "Notification", (), {"chat_id": "chat-a", "operation_id": "op-shared"}
-    )()
+    dashboard.activity_reader = lambda _limit: [
+        {"event_id": "event-b", "chat_id": "chat-b", "command": "whoami"}
+    ]
 
-    dashboard._on_workspace_activity(notification)
-    dashboard._on_workspace_activity(notification)
+    dashboard.refresh()
 
-    assert dashboard.activity_view.calls == [("activate", "chat-a"), ("focus",)]
-    assert messages and messages[0][0] == "success"
+    assert activity_view.visible_session_ids == {"chat-a", "chat-b"}
+    assert activity_view.session_selected_id == "chat-a"
+    assert root.calls == []
+
+
+def test_workspace_log_sse_keeps_the_operator_session_and_window_unfocused(tmp_path):
+    """A live SSE event is logged without navigating the desktop UI."""
+    from app.cli.desktop_views.activity import ActivityView
+    from app.cli.desktop_views.workspace_logs import WorkspaceLogView
+
+    class Root:
+        def __init__(self):
+            self.calls = []
+
+        def deiconify(self):
+            self.calls.append("deiconify")
+
+        def lift(self):
+            self.calls.append("lift")
+
+    root = Root()
+    activity_view = ActivityView(
+        root=root,
+        tk=type("Tk", (), {"TclError": RuntimeError}),
+        ttk=None,
+        parent=None,
+        workspace_root=lambda: tmp_path,
+        on_message=lambda _kind, _message: None,
+        on_refresh=lambda: None,
+    )
+    assert activity_view.activate_session("chat-a") is True
+    dashboard = object.__new__(_DesktopDashboard)
+    dashboard.activity_view = activity_view
+    dashboard.translator = DesktopTranslator("en")
+    dashboard.seen_activity_notification_ids = set()
+    dashboard._set_message = lambda _kind, _message: None
+    workspace_logs = WorkspaceLogView(on_new_activity=dashboard._on_workspace_activity)
+
+    workspace_logs.accept_event(
+        {
+            "id": "event-b",
+            "event": "workspace_log",
+            "data": {
+                "chat_id": "chat-b",
+                "interaction_id": "operation-b",
+                "event_action": "host_run_command",
+            },
+        }
+    )
+
+    assert [row.chat_id for row in workspace_logs.rows] == ["chat-b"]
+    assert activity_view.visible_session_ids == {"chat-a", "chat-b"}
+    assert activity_view.session_selected_id == "chat-a"
+    assert root.calls == []
 
 
 def test_dashboard_language_change_persists_then_relabels_every_live_view(monkeypatch, tmp_path):

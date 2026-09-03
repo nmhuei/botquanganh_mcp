@@ -76,6 +76,37 @@ def test_activity_view_starts_empty_then_reveals_a_session_for_new_command(tmp_p
     assert view.visible_session_ids == {"chat-a"}
 
 
+def test_activity_view_keeps_existing_session_positions_when_activity_updates_time(tmp_path):
+    view = ActivityView(
+        root=None,
+        tk=None,
+        ttk=None,
+        parent=None,
+        workspace_root=lambda: tmp_path,
+        on_message=lambda _kind, _message: None,
+        on_refresh=lambda: None,
+    )
+    older_running_session = WorkspaceSession("chat-a", tmp_path / "chat-a", 1.0)
+    newer_idle_session = WorkspaceSession("chat-b", tmp_path / "chat-b", 2.0)
+
+    view.refresh([newer_idle_session, older_running_session], [])
+    refreshed_running_session = WorkspaceSession("chat-a", tmp_path / "chat-a", 3.0)
+    view.refresh(
+        [refreshed_running_session, newer_idle_session],
+        [
+            {
+                "event_id": "event-a",
+                "chat_id": "chat-a",
+                "operation_id": "operation-a",
+                "phase": "started",
+                "status": "running",
+            }
+        ],
+    )
+
+    assert [session.chat_id for session in view.sessions] == ["chat-b", "chat-a"]
+
+
 def test_activity_view_treats_command_lifecycle_as_one_popup_candidate(tmp_path):
     """A completed event must not re-alert for a command already seen running."""
     view = ActivityView(

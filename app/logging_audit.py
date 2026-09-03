@@ -90,17 +90,20 @@ _INLINE_SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 
-def _redact_string(value: str) -> str:
+def _redact_string(value: str, *, max_chars: int | None = None) -> str:
     cleaned = value
     for pattern, replacement in _INLINE_SECRET_PATTERNS:
         cleaned = pattern.sub(replacement, cleaned)
-    if len(cleaned) > AUDIT_MAX_FIELD_CHARS:
-        cleaned = cleaned[:AUDIT_MAX_FIELD_CHARS] + "... [TRUNCATED]"
+    if max_chars is not None and len(cleaned) > max_chars:
+        cleaned = cleaned[:max_chars] + "... [TRUNCATED]"
     return cleaned
 
 
-def redact_sensitive_data(data: Any) -> Any:
+def redact_sensitive_data(
+    data: Any, *, max_chars: int | None = None, truncate: bool = True
+) -> Any:
     """Recursively redact secret keys and inline secret-shaped string values."""
+    limit = AUDIT_MAX_FIELD_CHARS if truncate and max_chars is None else max_chars
     if isinstance(data, dict):
         redacted: dict[str, Any] = {}
         for raw_key, value in data.items():
@@ -108,12 +111,17 @@ def redact_sensitive_data(data: Any) -> Any:
             if _SENSITIVE_KEY_RE.search(key):
                 redacted[key] = "[REDACTED]"
             else:
-                redacted[key] = redact_sensitive_data(value)
+                redacted[key] = redact_sensitive_data(
+                    value, max_chars=limit, truncate=False
+                )
         return redacted
     if isinstance(data, (list, tuple, set)):
-        return [redact_sensitive_data(item) for item in data]
+        return [
+            redact_sensitive_data(item, max_chars=limit, truncate=False)
+            for item in data
+        ]
     if isinstance(data, str):
-        return _redact_string(data)
+        return _redact_string(data, max_chars=limit)
     return data
 
 

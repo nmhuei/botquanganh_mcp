@@ -314,6 +314,7 @@ class ActivityView:
         self.translator = translator or DesktopTranslator()
         self.bindings = TranslationBindings(self.translator)
         self.sessions: list[WorkspaceSession] = []
+        self.session_order_ids: list[str] = []
         self.records: list[dict[str, Any]] = []
         self.running_session_ids: set[str] = set()
         self.visible_session_ids: set[str] = set()
@@ -365,7 +366,15 @@ class ActivityView:
         records: Sequence[dict[str, Any]],
     ) -> set[ActivityNotification]:
         """Store both snapshots atomically and return unseen activity chats."""
-        self.sessions = list(sessions)
+        sessions_by_id = {session.chat_id: session for session in sessions}
+        retained_ids = [
+            chat_id for chat_id in self.session_order_ids if chat_id in sessions_by_id
+        ]
+        retained_id_set = set(retained_ids)
+        self.session_order_ids = retained_ids + [
+            session.chat_id for session in sessions if session.chat_id not in retained_id_set
+        ]
+        self.sessions = [sessions_by_id[chat_id] for chat_id in self.session_order_ids]
         self.records = project_command_activity_records(records)
         self.running_session_ids = {
             str(record.get("chat_id"))
@@ -431,6 +440,15 @@ class ActivityView:
         self.session_selected_id = chat_id
         self._render_sessions()
         self._render_records()
+        return True
+
+    def reveal_session(self, chat_id: str) -> bool:
+        """Reveal a workplace after activity without changing the operator's focus."""
+        if not chat_id:
+            return False
+        self.closed_session_ids.discard(chat_id)
+        self.visible_session_ids.add(chat_id)
+        self._render_sessions()
         return True
 
     def reopen_session(self, chat_id: str) -> bool:

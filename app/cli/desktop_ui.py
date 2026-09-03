@@ -22,6 +22,7 @@ from app.cli.desktop_views.activity import (
     ActivityView,
     discover_workspace_sessions,
 )
+from app.cli.desktop_views.boot import DesktopBootScreen
 from app.cli.desktop_views.i18n import DesktopTranslator, TranslationBindings
 from app.cli.desktop_views.runtime import (
     BACKEND_DOWN_BADGE,
@@ -245,7 +246,6 @@ class _DesktopDashboard:
         self.backend_label: Any = None
         self.activity_view: ActivityView | None = None
         self.workspace_log_view: WorkspaceLogView | None = None
-        self.seen_activity_notification_ids: set[tuple[str, str]] = set()
         self._build(initial_message, workspace_log_stream_reader)
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.refresh()
@@ -449,18 +449,9 @@ class _DesktopDashboard:
         return Path.home() / "Downloads" / "bqa-workspaces"
 
     def _on_workspace_activity(self, notification: ActivityNotification) -> None:
-        identity = (notification.chat_id, notification.operation_id)
-        if identity in self.seen_activity_notification_ids:
-            return
-        self.seen_activity_notification_ids.add(identity)
-        if self.activity_view is not None and self.activity_view.activate_session(notification.chat_id):
-            self.activity_view.focus()
-            self._set_message(
-                "success",
-                self.translator.text(
-                    "message.session_reopened", session=notification.chat_id
-                ),
-            )
+        """Reveal new activity while preserving the operator's current focus."""
+        if self.activity_view is not None:
+            self.activity_view.reveal_session(notification.chat_id)
 
     def _set_sse_status(self, state: str) -> None:
         self.sse_var.set(f"SSE: {state.upper()}")
@@ -689,6 +680,14 @@ class _DesktopDashboard:
         self.root.destroy()
 
 
+def _start_desktop_boot(root: Any, tk: Any) -> DesktopBootScreen:
+    """Hide the dashboard root until the short startup sequence is complete."""
+    root.withdraw()
+    boot_screen = DesktopBootScreen(root, tk, on_ready=root.deiconify)
+    boot_screen.start()
+    return boot_screen
+
+
 def run_desktop_ui(
     ctx: CLIContext,
     *,
@@ -709,6 +708,12 @@ def run_desktop_ui(
         root = tk.Tk()
     except tk.TclError as exc:
         raise DesktopUIUnavailable("No graphical display is available for the BQA window.") from exc
-    _DesktopDashboard(root, tk, ttk, ctx, initial_message=initial_message, status_reader=status_reader, start_action=start_action, restart_action=restart_action, activity_reader=activity_reader, workspace_log_stream_reader=workspace_log_stream_reader)
+    boot_screen = _start_desktop_boot(root, tk)
+    try:
+        _DesktopDashboard(root, tk, ttk, ctx, initial_message=initial_message, status_reader=status_reader, start_action=start_action, restart_action=restart_action, activity_reader=activity_reader, workspace_log_stream_reader=workspace_log_stream_reader)
+    except Exception:
+        boot_screen.close()
+        root.destroy()
+        raise
     root.mainloop()
     return 0

@@ -37,7 +37,7 @@ Toàn bộ cấu hình nằm trong `.env` ở thư mục repo, được nạp kh
 | `HOST_ENV_ALLOWLIST` | *(trống)* | Danh sách biến môi trường cho phép thêm khi chạy command |
 | `MAX_CONCURRENT_COMMANDS` | `100` | Số lệnh chạy đồng thời tối đa |
 | `MAX_TIMEOUT_SECONDS` | `60` | Thời gian chờ tối đa của một lệnh (giây) |
-| `MAX_OUTPUT_BYTES` | `500000` | Giới hạn byte stdout/stderr trả về |
+| `MAX_OUTPUT_BYTES` | `0` | Giới hạn byte stdout/stderr trả về cho mỗi stream; `0` là không giới hạn |
 | `MAX_SINGLE_FILE_BYTES` | `3000000` | Giới hạn kích thước file tối đa khi đọc/ghi |
 | `SEARCH_TEXT_DEADLINE_SECONDS` | `15` | Giới hạn thời gian quét text đệ quy trước khi trả kết quả một phần |
 | `MCP_PORT` | `18427` | Cổng MCP bridge cục bộ |

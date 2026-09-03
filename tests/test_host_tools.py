@@ -135,6 +135,7 @@ def test_allowlist_policy_permits_all_when_configured_all(host_workspace, monkey
 def test_host_knowledge_reads_guides_and_detects_tools(monkeypatch):
     repo_root = Path(__file__).resolve().parents[1]
     monkeypatch.setattr(app.config, "HOST_KNOWLEDGE_DIR", repo_root / "knowledge")
+    monkeypatch.setattr(app.config, "MAX_OUTPUT_BYTES", 0)
     monkeypatch.setattr(app.config, "ATTRIBUTION_MODE", "off")
 
     guides = read_guides()
