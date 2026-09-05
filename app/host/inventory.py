@@ -209,12 +209,7 @@ def read_guides(query: str = "") -> dict[str, Any]:
     normalized_query = query.strip().lower()
     documents: list[dict[str, Any]] = []
     total_bytes = 0
-    configured_output_limit = app.config.MAX_OUTPUT_BYTES
-    max_total = (
-        500_000
-        if configured_output_limit == 0
-        else min(configured_output_limit, 500_000)
-    )
+    max_total = min(app.config.MAX_OUTPUT_BYTES, 500_000)
     for path in list_guide_files():
         content = path.read_text(encoding="utf-8", errors="replace")
         if normalized_query and normalized_query not in (

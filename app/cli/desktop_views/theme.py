@@ -6,21 +6,22 @@ from typing import Any
 
 
 PALETTE = {
-    "app_background": "#10151d",
-    "surface": "#18212c",
-    "surface_muted": "#223044",
-    "border": "#334155",
-    "text": "#e5edf7",
-    "text_muted": "#b6c4d6",
-    "text_subtle": "#8ea1b8",
-    "accent": "#60a5fa",
-    "success": "#4ade80",
-    "warning": "#fbbf24",
-    "danger": "#fb7185",
-    "running": "#2dd4bf",
-    "tab_background": "#070b0b",
-    "tab_green": "#4ade80",
-    "tab_green_active": "#a3ff12",
+    "app_background": "#090d0c",
+    "surface": "#121918",
+    "surface_muted": "#192321",
+    "border": "#2a3632",
+    "text": "#f2f5f2",
+    "text_muted": "#a9b5af",
+    "text_subtle": "#81908a",
+    "lime": "#b8f23d",
+    "accent": "#b8f23d",
+    "success": "#42d5ad",
+    "warning": "#f4b942",
+    "danger": "#ff6b61",
+    "running": "#42d5ad",
+    "tab_background": "#090d0c",
+    "tab_green": "#8fbd30",
+    "tab_green_active": "#b8f23d",
 }
 
 
@@ -57,6 +58,43 @@ def apply_desktop_theme(style: Any, root: Any) -> None:
         "TEntry",
         fieldbackground=[("readonly", PALETTE["surface_muted"])],
         foreground=[("readonly", PALETTE["text"])],
+        bordercolor=[("focus", PALETTE["lime"])],
+    )
+    style.configure(
+        "SectionHeader.TLabel",
+        background=PALETTE["surface"],
+        foreground=PALETTE["text"],
+        font=("TkDefaultFont", 11, "bold"),
+        padding=(8, 4),
+    )
+    style.configure(
+        "Filter.TEntry",
+        fieldbackground=PALETTE["surface_muted"],
+        foreground=PALETTE["text"],
+        bordercolor=PALETTE["border"],
+        focuscolor=PALETTE["lime"],
+        padding=(8, 4),
+    )
+    style.map(
+        "Filter.TEntry",
+        fieldbackground=[("readonly", PALETTE["surface_muted"])],
+        foreground=[("readonly", PALETTE["text"])],
+        bordercolor=[("focus", PALETTE["lime"])],
+    )
+    style.configure(
+        "Filter.TCombobox",
+        fieldbackground=PALETTE["surface_muted"],
+        background=PALETTE["surface_muted"],
+        foreground=PALETTE["text"],
+        bordercolor=PALETTE["border"],
+        focuscolor=PALETTE["lime"],
+        padding=(8, 4),
+    )
+    style.map(
+        "Filter.TCombobox",
+        fieldbackground=[("readonly", PALETTE["surface_muted"])],
+        foreground=[("readonly", PALETTE["text"])],
+        bordercolor=[("focus", PALETTE["lime"])],
     )
     style.configure(
         "TButton",
@@ -70,6 +108,110 @@ def apply_desktop_theme(style: Any, root: Any) -> None:
         background=[("active", PALETTE["border"]), ("pressed", PALETTE["accent"])],
         foreground=[("pressed", PALETTE["app_background"])],
     )
+    style.configure("Shell.TFrame", background=PALETTE["app_background"])
+    style.configure("Rail.TFrame", background=PALETTE["surface"], padding=(8, 8))
+    style.configure(
+        "Rail.TButton",
+        background=PALETTE["surface"],
+        foreground=PALETTE["text_muted"],
+        bordercolor=PALETTE["surface"],
+        padding=(8, 8),
+        anchor="w",
+    )
+    style.map(
+        "Rail.TButton",
+        background=[("active", PALETTE["surface_muted"]), ("pressed", PALETTE["surface_muted"])],
+        bordercolor=[("focus", PALETTE["lime"])],
+        foreground=[("active", PALETTE["text"]), ("disabled", PALETTE["text_subtle"])],
+    )
+    style.configure(
+        "RailActive.TButton",
+        background=PALETTE["surface_muted"],
+        foreground=PALETTE["lime"],
+        bordercolor=PALETTE["lime"],
+        padding=(8, 8),
+        anchor="w",
+    )
+    style.map(
+        "RailActive.TButton",
+        background=[("active", PALETTE["border"]), ("pressed", PALETTE["lime"])],
+        bordercolor=[("focus", PALETTE["lime"])],
+        foreground=[("pressed", PALETTE["app_background"]), ("disabled", PALETTE["text_subtle"])],
+    )
+    for name, background, foreground in (
+        ("Primary.TButton", PALETTE["lime"], PALETTE["app_background"]),
+        ("Secondary.TButton", PALETTE["surface_muted"], PALETTE["text"]),
+        ("Danger.TButton", PALETTE["surface_muted"], PALETTE["danger"]),
+    ):
+        style.configure(
+            name,
+            background=background,
+            foreground=foreground,
+            bordercolor=PALETTE["border"],
+            padding=(8, 8),
+        )
+    style.map(
+        "Primary.TButton",
+        background=[
+            ("active", PALETTE["text"]),
+            ("pressed", PALETTE["lime"]),
+            ("disabled", PALETTE["surface_muted"]),
+        ],
+        bordercolor=[("focus", PALETTE["lime"])],
+        foreground=[("disabled", PALETTE["text_subtle"])],
+    )
+    style.map(
+        "Secondary.TButton",
+        background=[
+            ("active", PALETTE["border"]),
+            ("pressed", PALETTE["accent"]),
+            ("disabled", PALETTE["surface"]),
+        ],
+        bordercolor=[("focus", PALETTE["lime"])],
+        foreground=[("pressed", PALETTE["app_background"]), ("disabled", PALETTE["text_subtle"])],
+    )
+    style.map(
+        "Danger.TButton",
+        background=[
+            ("active", PALETTE["border"]),
+            ("pressed", PALETTE["danger"]),
+            ("disabled", PALETTE["surface"]),
+        ],
+        bordercolor=[("focus", PALETTE["lime"])],
+        foreground=[("pressed", PALETTE["app_background"]), ("disabled", PALETTE["text_subtle"])],
+    )
+    style.configure(
+        "RuntimeCard.TLabelframe",
+        background=PALETTE["surface"],
+        foreground=PALETTE["text_muted"],
+        bordercolor=PALETTE["border"],
+        relief="solid",
+        padding=(8, 8),
+    )
+    for name, background in (
+        ("InspectorCard.TLabelframe", PALETTE["surface"]),
+        ("RailPanel.TLabelframe", PALETTE["surface_muted"]),
+    ):
+        style.configure(
+            name,
+            background=background,
+            foreground=PALETTE["text_muted"],
+            bordercolor=PALETTE["border"],
+            relief="solid",
+            padding=(8, 4),
+        )
+        style.configure(
+            f"{name}.Label",
+            background=background,
+            foreground=PALETTE["text_muted"],
+            font=("TkDefaultFont", 9, "bold"),
+        )
+    style.configure(
+        "Footer.TLabel",
+        background=PALETTE["app_background"],
+        foreground=PALETTE["text_subtle"],
+        padding=(8, 8),
+    )
     style.configure("App.TFrame", background=PALETTE["app_background"])
     style.configure("Surface.TFrame", background=PALETTE["surface"])
     style.configure(
@@ -82,6 +224,22 @@ def apply_desktop_theme(style: Any, root: Any) -> None:
         "Subtle.TLabel",
         background=PALETTE["app_background"],
         foreground=PALETTE["text_muted"],
+    )
+    style.configure(
+        "SurfaceSubtle.TLabel",
+        background=PALETTE["surface"],
+        foreground=PALETTE["text_muted"],
+    )
+    style.configure(
+        "RuntimeState.TLabel",
+        background=PALETTE["surface"],
+        foreground=PALETTE["accent"],
+        font=("TkDefaultFont", 10, "bold"),
+    )
+    style.configure(
+        "CardValue.TLabel",
+        background=PALETTE["surface"],
+        foreground=PALETTE["text"],
     )
     style.configure(
         "Brand.TLabel",
@@ -131,16 +289,24 @@ def apply_desktop_theme(style: Any, root: Any) -> None:
     style.map("App.TNotebook", background=[("selected", PALETTE["tab_background"])])
     style.configure(
         "App.TNotebook.Tab",
-        padding=(14, 7),
+        padding=(0, 0),
         background=PALETTE["tab_background"],
         foreground=PALETTE["tab_green"],
         font=("TkDefaultFont", 10, "bold"),
     )
     style.map(
         "App.TNotebook.Tab",
-        foreground=[("selected", PALETTE["tab_green_active"]), ("active", PALETTE["tab_green_active"])],
+        foreground=[
+            ("selected", PALETTE["tab_green_active"]),
+            ("active", PALETTE["tab_green_active"]),
+            ("focus", PALETTE["lime"]),
+        ],
         background=[("selected", PALETTE["tab_background"]), ("active", PALETTE["tab_background"])],
     )
+    try:
+        style.layout("App.TNotebook.Tab", [])
+    except Exception:
+        pass
     style.configure(
         "Table.Treeview",
         background=PALETTE["surface"],
@@ -151,7 +317,7 @@ def apply_desktop_theme(style: Any, root: Any) -> None:
     )
     style.map(
         "Table.Treeview",
-        background=[("selected", PALETTE["accent"])],
+        background=[("selected", PALETTE["accent"]), ("focus", PALETTE["border"])],
         foreground=[("selected", PALETTE["app_background"])],
     )
     style.configure(
@@ -165,14 +331,18 @@ def apply_desktop_theme(style: Any, root: Any) -> None:
     style.map("Inspector.TNotebook", background=[("selected", PALETTE["tab_background"])])
     style.configure(
         "Inspector.TNotebook.Tab",
-        padding=(9, 4),
+        padding=(8, 4),
         background=PALETTE["tab_background"],
         foreground=PALETTE["tab_green"],
         font=("TkDefaultFont", 9, "bold"),
     )
     style.map(
         "Inspector.TNotebook.Tab",
-        foreground=[("selected", PALETTE["tab_green_active"]), ("active", PALETTE["tab_green_active"])],
+        foreground=[
+            ("selected", PALETTE["tab_green_active"]),
+            ("active", PALETTE["tab_green_active"]),
+            ("focus", PALETTE["lime"]),
+        ],
         background=[("selected", PALETTE["tab_background"]), ("active", PALETTE["tab_background"])],
     )
 

@@ -406,3 +406,216 @@ def test_activity_view_collapse_controls_preserve_splitter_membership():
         ("insert", 0, inputs),
         ("add", output),
     ]
+
+
+def test_activity_view_builds_premium_controls_without_breaking_local_callbacks(tmp_path):
+    """Dropping a shared activity style or local control callback is a regression."""
+    class Variable:
+        def __init__(self, value=""):
+            self.value = value
+
+        def get(self):
+            return self.value
+
+        def set(self, value):
+            self.value = value
+
+    class Widget:
+        def __init__(self, parent=None, **kwargs):
+            self.parent = parent
+            self.options = dict(kwargs)
+            self.bindings = {}
+
+        def bind(self, sequence, callback):
+            self.bindings[sequence] = callback
+
+        def configure(self, **kwargs):
+            self.options.update(kwargs)
+
+        def grid(self, **_kwargs):
+            pass
+
+        def pack(self, **_kwargs):
+            pass
+
+        def columnconfigure(self, *_args, **_kwargs):
+            pass
+
+        def rowconfigure(self, *_args, **_kwargs):
+            pass
+
+        def yview(self, *_args):
+            return (0.0, 1.0)
+
+        def xview(self, *_args):
+            return (0.0, 1.0)
+
+        def yview_moveto(self, _position):
+            pass
+
+        def set(self, *_args):
+            pass
+
+        def focus_set(self):
+            pass
+
+    class Tree(Widget):
+        def heading(self, *_args, **_kwargs):
+            pass
+
+        def column(self, *_args, **_kwargs):
+            pass
+
+        def tag_configure(self, *_args, **_kwargs):
+            pass
+
+        def get_children(self):
+            return ()
+
+        def delete(self, _item):
+            pass
+
+        def insert(self, *_args, **_kwargs):
+            pass
+
+        def selection(self):
+            return ()
+
+        def selection_set(self, _item):
+            pass
+
+        def see(self, _item):
+            pass
+
+    class Panedwindow(Widget):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.pane_calls = []
+
+        def add(self, panel, **kwargs):
+            self.pane_calls.append(("add", panel, kwargs))
+
+        def forget(self, panel):
+            self.pane_calls.append(("forget", panel, {}))
+
+        def insert(self, index, panel, **kwargs):
+            self.pane_calls.append(("insert", index, panel, kwargs))
+
+    class Notebook(Widget):
+        def add(self, _frame, **_kwargs):
+            pass
+
+        def select(self):
+            return ""
+
+        def tab(self, _frame, **_kwargs):
+            pass
+
+    class Text(Widget):
+        def get(self, *_args):
+            return ""
+
+    class Root:
+        def __init__(self):
+            self.bindings = {}
+            self.after_calls = []
+            self.cancelled_jobs = []
+
+        def bind(self, sequence, callback):
+            self.bindings[sequence] = callback
+
+        def after(self, delay, callback):
+            self.after_calls.append((delay, callback))
+            return len(self.after_calls)
+
+        def after_cancel(self, job):
+            self.cancelled_jobs.append(job)
+
+    class Ttk:
+        def __init__(self):
+            self.widgets = []
+            self.label_frame_styles = []
+            self.entry_styles = []
+            self.tree_styles = []
+            self.button_styles = []
+            self.notebook_styles = []
+
+        def _widget(self, kind, args, kwargs, widget_type=Widget):
+            widget = widget_type(args[0] if args else None, **kwargs)
+            widget.kind = kind
+            self.widgets.append(widget)
+            return widget
+
+        def Frame(self, *args, **kwargs):
+            return self._widget("Frame", args, kwargs)
+
+        def Label(self, *args, **kwargs):
+            return self._widget("Label", args, kwargs)
+
+        def LabelFrame(self, *args, **kwargs):
+            widget = self._widget("LabelFrame", args, kwargs)
+            self.label_frame_styles.append(widget.options.get("style"))
+            return widget
+
+        def Button(self, *args, **kwargs):
+            widget = self._widget("Button", args, kwargs)
+            self.button_styles.append(widget.options.get("style"))
+            return widget
+
+        def Entry(self, *args, **kwargs):
+            widget = self._widget("Entry", args, kwargs)
+            self.entry_styles.append(widget.options.get("style"))
+            return widget
+
+        def Panedwindow(self, *args, **kwargs):
+            return self._widget("Panedwindow", args, kwargs, Panedwindow)
+
+        def Treeview(self, *args, **kwargs):
+            widget = self._widget("Treeview", args, kwargs, Tree)
+            self.tree_styles.append(widget.options.get("style"))
+            return widget
+
+        def Scrollbar(self, *args, **kwargs):
+            return self._widget("Scrollbar", args, kwargs)
+
+        def Notebook(self, *args, **kwargs):
+            widget = self._widget("Notebook", args, kwargs, Notebook)
+            self.notebook_styles.append(widget.options.get("style"))
+            return widget
+
+    root = Root()
+    ttk = Ttk()
+    view = ActivityView(
+        root=root,
+        tk=type("Tk", (), {"StringVar": Variable, "Text": Text, "TclError": RuntimeError}),
+        ttk=ttk,
+        parent=Widget(),
+        workspace_root=lambda: tmp_path,
+        on_message=lambda _kind, _message: None,
+        on_refresh=lambda: None,
+    )
+
+    assert ttk.label_frame_styles == [
+        "RailPanel.TLabelframe",
+        "InspectorCard.TLabelframe",
+        "InspectorCard.TLabelframe",
+    ]
+    assert ttk.entry_styles == ["Filter.TEntry", "Filter.TEntry"]
+    assert ttk.tree_styles == ["Table.Treeview", "Table.Treeview"]
+    assert ttk.notebook_styles == ["Inspector.TNotebook"]
+    assert "SectionHeader.TLabel" in [
+        widget.options.get("style") for widget in ttk.widgets if widget.kind == "Label"
+    ]
+    assert set(ttk.button_styles) == {"Secondary.TButton"}
+    assert view.input_collapse_button is not None
+    assert view.output_collapse_button is not None
+
+    view.workplace_filter_entry.bindings["<KeyRelease>"](object())
+    view.command_filter_entry.bindings["<KeyRelease>"](object())
+    view.input_collapse_button.options["command"]()
+    view.output_collapse_button.options["command"]()
+
+    assert [delay for delay, _callback in root.after_calls] == [120, 120]
+    assert root.cancelled_jobs == [1]
+    assert ("forget", view.input_panel, {}) in view.activity_vertical_panes.pane_calls
+    assert ("forget", view.output_panel, {}) in view.activity_vertical_panes.pane_calls

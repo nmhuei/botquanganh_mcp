@@ -17,6 +17,7 @@ from typing import Any
 from app.activity_log import read_mcp_command_activity
 from app.cli.config_view import set_desktop_ui_language, set_workspace_config
 from app.cli.context import CLIContext
+from app.cli.desktop_identity import DESKTOP_APP_NAME, desktop_app_icon_path
 from app.cli.desktop_views.activity import (
     ActivityNotification,
     ActivityView,
@@ -34,17 +35,24 @@ from app.cli.desktop_views.workspace_logs import (
     WorkspaceLogView,
     make_workspace_log_stream_reader,
 )
-from app.cli.lifecycle import process_command_line, read_pid, restart, start, status_data
+from app.cli.lifecycle import (
+    process_command_line,
+    read_pid,
+    restart,
+    start,
+    status_data,
+    stop,
+)
 
 
 StatusReader = Callable[[Any, dict[str, str]], dict[str, Any]]
 LifecycleAction = Callable[..., dict[str, Any]]
+StopConfirmation = Callable[[Any, DesktopTranslator], bool]
 ActivityReader = Callable[[int], list[dict[str, Any]]]
 WorkspaceLogStreamReader = Callable[[str | None], Any]
 
 BQA_UI_DAEMON_ENV = "BQA_UI_DAEMON"
 DESKTOP_UI_PID_FILENAME = "desktop-ui.pid"
-DESKTOP_APP_NAME = "UCS-SecretAgent"
 MIN_COMPLETION_TOAST_SECONDS = 10.0
 COMPLETION_TOAST_LIFETIME_MS = 6000
 
@@ -55,6 +63,21 @@ class DesktopUIUnavailable(RuntimeError):
 
 class DesktopUILaunchError(RuntimeError):
     """Raised when a detached desktop window cannot be started."""
+
+
+def confirm_stop(root: Any, translator: DesktopTranslator) -> bool:
+    """Ask the user to confirm stopping every managed runtime component."""
+    from tkinter import messagebox
+
+    return bool(
+        messagebox.askyesno(
+            translator.text("dialog.stop_title"),
+            translator.text("dialog.stop_body"),
+            parent=root,
+            icon="warning",
+            default="no",
+        )
+    )
 
 
 class DesktopUIAlreadyRunning(RuntimeError):
@@ -147,10 +170,6 @@ def graphical_session_available(environ: dict[str, str] | None = None) -> bool:
     return bool(values.get("DISPLAY") or values.get("WAYLAND_DISPLAY"))
 
 
-def desktop_app_icon_path() -> Path:
-    return Path(__file__).resolve().parents[2] / "resources" / "ucs-secretagent.png"
-
-
 def load_desktop_icon(root: Any, tk: Any) -> Any | None:
     try:
         image = tk.PhotoImage(file=str(desktop_app_icon_path()))
@@ -170,6 +189,18 @@ def launch_desktop_ui_detached(ctx: CLIContext) -> int:
     command = [sys.executable, "-m", "app.cli.main", "ui"]
     child_env = dict(os.environ)
     child_env[BQA_UI_DAEMON_ENV] = "1"
+    # The detached child must start with a clean environment so its own
+    # ``app.config`` loads the repo ``.env`` fresh. Inheriting keys that the
+    # launcher process already loaded from dotenv makes the child believe they
+    # were shell overrides, which blocks in-UI settings changes (language,
+    # workspace) with a misleading "set in the current environment" error.
+    # Only explicitly exported variables survive into the child.
+    for key in (
+        "BQA_UI_LANGUAGE",
+        "HOST_WORKSPACE_DIR",
+        "HOST_DEFAULT_DIR",
+    ):
+        child_env.pop(key, None)
     try:
         with (log_dir / "desktop-ui.log").open("ab", buffering=0) as log_file:
             process = subprocess.Popen(  # nosec B603 - fixed local CLI invocation
@@ -206,11 +237,15 @@ class _DesktopDashboard:
         restart_action: LifecycleAction,
         activity_reader: ActivityReader,
         workspace_log_stream_reader: WorkspaceLogStreamReader | None = None,
+        stop_action: LifecycleAction = stop,
+        stop_confirmation: StopConfirmation = confirm_stop,
     ) -> None:
         self.root, self.tk, self.ttk, self.ctx = root, tk, ttk, ctx
         self.status_reader = status_reader
         self.start_action = start_action
         self.restart_action = restart_action
+        self.stop_action = stop_action
+        self.stop_confirmation = stop_confirmation
         self.activity_reader = activity_reader
         self.busy = False
         self.closed = False
@@ -225,11 +260,14 @@ class _DesktopDashboard:
         self.active_toast: Any = None
         self.translator = DesktopTranslator(ctx.values.get("BQA_UI_LANGUAGE", "en"))
         self.header_bindings = TranslationBindings(self.translator)
+        self.navigation_bindings = TranslationBindings(self.translator)
         self.language_choices: dict[str, str] = {}
         self.language_display_var = tk.StringVar()
         self.language_combo: Any = None
         self.notebook: Any = None
         self.notebook_tabs: dict[str, Any] = {}
+        self.navigation_buttons: dict[str, Any] = {}
+        self.footer_bindings: dict[str, Any] = {}
         self.runtime_view = RuntimeView(
             tk,
             (initial_message or ("", ""))[1],
@@ -264,14 +302,14 @@ class _DesktopDashboard:
         style = self.ttk.Style(self.root)
         apply_desktop_theme(style, self.root)
 
-        container = self.ttk.Frame(self.root, style="App.TFrame", padding=(12, 10))
+        container = self.ttk.Frame(self.root, style="Shell.TFrame", padding=(12, 10))
         container.pack(fill="both", expand=True)
-        container.columnconfigure(0, weight=1)
+        container.columnconfigure(1, weight=1)
         container.rowconfigure(1, weight=1)
-        header = self.ttk.Frame(container, style="App.TFrame")
-        header.grid(row=0, column=0, sticky="ew")
+        header = self.ttk.Frame(container, style="Shell.TFrame")
+        header.grid(row=0, column=0, columnspan=2, sticky="ew")
         header.columnconfigure(1, weight=1)
-        brand = self.ttk.Frame(header, style="App.TFrame")
+        brand = self.ttk.Frame(header, style="Shell.TFrame")
         brand.grid(row=0, column=0, sticky="w")
         brand.columnconfigure(1, weight=1)
         try:
@@ -290,7 +328,7 @@ class _DesktopDashboard:
         brand_subtitle.grid(row=1, column=1, sticky="w")
         self.status_label = self.ttk.Label(header, textvariable=self.status_var, style="Status.TLabel")
         self.status_label.grid(row=0, column=1, rowspan=2, sticky="e", padx=(8, 12))
-        actions = self.ttk.Frame(header, style="App.TFrame")
+        actions = self.ttk.Frame(header, style="Shell.TFrame")
         actions.grid(row=0, column=2, rowspan=2, sticky="e")
         language_label = self.ttk.Label(actions, style="Subtle.TLabel")
         self.header_bindings.bind(language_label, "label.language")
@@ -305,15 +343,24 @@ class _DesktopDashboard:
         self._refresh_language_selector()
         self.language_combo.bind("<<ComboboxSelected>>", self.change_language)
         self.language_combo.pack(side="left", padx=(0, 10))
-        self._add_action(actions, "action.start", self.start_service)
-        self._add_action(actions, "action.restart", self.restart_bridge)
-        self._add_action(actions, "action.refresh", self.refresh)
         close_button = self.ttk.Button(actions, style="Toolbar.TButton", command=self.close)
         self.header_bindings.bind(close_button, "action.close")
         close_button.pack(side="left")
 
+        rail = self.ttk.Frame(container, style="Rail.TFrame")
+        rail.grid(row=1, column=0, sticky="ns", pady=(8, 6), padx=(0, 8))
+        for key in ("runtime", "workspace_logs", "gpt_activity"):
+            button = self.ttk.Button(
+                rail,
+                style="RailActive.TButton" if key == "runtime" else "Rail.TButton",
+                command=lambda key=key: self._select_view(key),
+            )
+            self.navigation_bindings.bind(button, f"nav.{key}")
+            button.pack(fill="x", pady=(0, 4))
+            self.navigation_buttons[key] = button
+
         notebook = self.ttk.Notebook(container, style="App.TNotebook")
-        notebook.grid(row=1, column=0, sticky="nsew", pady=(8, 6))
+        notebook.grid(row=1, column=1, sticky="nsew", pady=(8, 6))
         runtime_tab = self.ttk.Frame(notebook, padding=14)
         workspace_logs_tab = self.ttk.Frame(notebook, padding=14)
         activity_tab = self.ttk.Frame(notebook, padding=14)
@@ -327,14 +374,9 @@ class _DesktopDashboard:
             "gpt_activity": activity_tab,
         }
         self._apply_notebook_labels()
-        self.runtime_view.build(
-            ttk=self.ttk,
-            parent=runtime_tab,
-            workspace_var=self.workspace_var,
-            on_copy_endpoint=self.copy_endpoint,
-            on_choose_workspace=self.choose_workspace,
-            on_apply_workspace=self.apply_workspace,
-        )
+        notebook.bind("<<NotebookTabChanged>>", self._sync_navigation)
+        self._sync_navigation()
+        self._build_runtime_view(runtime_tab)
         self.activity_view = ActivityView(
             root=self.root,
             tk=self.tk,
@@ -357,17 +399,72 @@ class _DesktopDashboard:
             on_status_change=self._set_sse_status,
             translator=self.translator,
         )
-        status_bar = self.ttk.Frame(container, style="App.TFrame")
-        status_bar.grid(row=2, column=0, sticky="ew")
-        status_bar.columnconfigure(4, weight=1)
-        self.backend_label = self.ttk.Label(status_bar, textvariable=self.backend_var, style="Subtle.TLabel")
-        self.backend_label.grid(row=0, column=0, sticky="w")
-        self.ttk.Label(status_bar, textvariable=self.workspace_var, style="Subtle.TLabel").grid(row=0, column=1, sticky="w", padx=(14, 0))
-        self.ttk.Label(status_bar, textvariable=self.refresh_var, style="Subtle.TLabel").grid(row=0, column=2, sticky="w", padx=(14, 0))
-        self.ttk.Label(status_bar, textvariable=self.sse_var, style="Subtle.TLabel").grid(row=0, column=3, sticky="w", padx=(14, 0))
-        self.ttk.Label(status_bar, textvariable=self.message_var, style="Subtle.TLabel", wraplength=400).grid(row=0, column=4, sticky="e", padx=(14, 0))
+        self._build_footer(container)
         if initial_message:
             self._set_message(*initial_message)
+
+    def _build_runtime_view(self, parent: Any) -> None:
+        self.runtime_view.build(
+            ttk=self.ttk,
+            parent=parent,
+            workspace_var=self.workspace_var,
+            on_copy_endpoint=self.copy_endpoint,
+            on_choose_workspace=self.choose_workspace,
+            on_apply_workspace=self.apply_workspace,
+            on_start=self.start_service,
+            on_stop=self.stop_service,
+            on_restart=self.restart_bridge,
+            on_refresh=self.refresh,
+        )
+
+    def _build_footer(self, parent: Any) -> None:
+        footer = self.ttk.Frame(parent, style="Shell.TFrame")
+        footer.grid(row=2, column=0, columnspan=2, sticky="ew")
+        footer.columnconfigure(4, weight=1)
+        self.footer_bindings.clear()
+        for column, (key, variable) in enumerate(
+            (
+                ("backend", self.backend_var),
+                ("workspace", self.workspace_var),
+                ("refresh", self.refresh_var),
+                ("sse", self.sse_var),
+                ("message", self.message_var),
+            )
+        ):
+            options: dict[str, Any] = {
+                "textvariable": variable,
+                "style": "Footer.TLabel",
+            }
+            if key == "message":
+                options["wraplength"] = 400
+            label = self.ttk.Label(footer, **options)
+            label.grid(
+                row=0,
+                column=column,
+                sticky="e" if key == "message" else "w",
+                padx=(8, 0) if column else 0,
+            )
+            self.footer_bindings[key] = label
+        self.backend_label = self.footer_bindings["backend"]
+
+    def _set_navigation_active(self, key: str) -> None:
+        for name, button in self.navigation_buttons.items():
+            button.configure(
+                style="RailActive.TButton" if name == key else "Rail.TButton"
+            )
+
+    def _select_view(self, key: str) -> None:
+        tab = self.notebook_tabs[key]
+        if str(self.notebook.select()) != str(tab):
+            self.notebook.select(tab)
+        self._set_navigation_active(key)
+
+    def _sync_navigation(self, _event: Any = None) -> None:
+        selected = str(self.notebook.select())
+        for key, tab in self.notebook_tabs.items():
+            if str(tab) == selected:
+                self._set_navigation_active(key)
+                return
 
     def _language_options(self) -> dict[str, str]:
         return {
@@ -411,6 +508,7 @@ class _DesktopDashboard:
         self.ctx.values.update(updated)
         self.translator = DesktopTranslator(updated["BQA_UI_LANGUAGE"])
         self.header_bindings.set_translator(self.translator)
+        self.navigation_bindings.set_translator(self.translator)
         self._refresh_language_selector()
         self._apply_notebook_labels()
         self.runtime_view.set_translator(self.translator)
@@ -425,12 +523,6 @@ class _DesktopDashboard:
                 language=self.translator.text(f"language.{self.translator.language}"),
             ),
         )
-
-    def _add_action(self, parent: Any, text_key: str, command: Callable[[], None]) -> None:
-        button = self.ttk.Button(parent, style="Toolbar.TButton", command=command)
-        self.header_bindings.bind(button, text_key)
-        button.pack(side="left", padx=(0, 7))
-        self.runtime_view.action_buttons.append(button)
 
     def _set_message(self, kind: str, text: str) -> None:
         colors = {
@@ -620,6 +712,14 @@ class _DesktopDashboard:
             lambda: self.start_action(self.ctx.repo_root),
         )
 
+    def stop_service(self) -> None:
+        if not self.stop_confirmation(self.root, self.translator):
+            return
+        self._run_action(
+            self.translator.text("action.stop"),
+            lambda: self.stop_action(self.ctx.repo_root),
+        )
+
     def restart_bridge(self) -> None:
         self._run_action(
             self.translator.text("action.restart_bridge"),
@@ -688,13 +788,15 @@ def _start_desktop_boot(root: Any, tk: Any) -> DesktopBootScreen:
     return boot_screen
 
 
-def run_desktop_ui(
+def run_tk_desktop_ui(
     ctx: CLIContext,
     *,
     initial_message: tuple[str, str] | None = None,
     status_reader: StatusReader = status_data,
     start_action: LifecycleAction = start,
     restart_action: LifecycleAction = restart,
+    stop_action: LifecycleAction = stop,
+    stop_confirmation: StopConfirmation = confirm_stop,
     activity_reader: ActivityReader = read_mcp_command_activity,
     workspace_log_stream_reader: WorkspaceLogStreamReader | None = None,
 ) -> int:
@@ -710,10 +812,59 @@ def run_desktop_ui(
         raise DesktopUIUnavailable("No graphical display is available for the BQA window.") from exc
     boot_screen = _start_desktop_boot(root, tk)
     try:
-        _DesktopDashboard(root, tk, ttk, ctx, initial_message=initial_message, status_reader=status_reader, start_action=start_action, restart_action=restart_action, activity_reader=activity_reader, workspace_log_stream_reader=workspace_log_stream_reader)
+        _DesktopDashboard(
+            root,
+            tk,
+            ttk,
+            ctx,
+            initial_message=initial_message,
+            status_reader=status_reader,
+            start_action=start_action,
+            restart_action=restart_action,
+            stop_action=stop_action,
+            stop_confirmation=stop_confirmation,
+            activity_reader=activity_reader,
+            workspace_log_stream_reader=workspace_log_stream_reader,
+        )
     except Exception:
         boot_screen.close()
         root.destroy()
         raise
     root.mainloop()
     return 0
+
+
+def run_desktop_ui(
+    ctx: CLIContext,
+    *,
+    initial_message: tuple[str, str] | None = None,
+    status_reader: StatusReader = status_data,
+    start_action: LifecycleAction = start,
+    restart_action: LifecycleAction = restart,
+    stop_action: LifecycleAction = stop,
+    stop_confirmation: StopConfirmation | None = None,
+    activity_reader: ActivityReader = read_mcp_command_activity,
+    workspace_log_stream_reader: WorkspaceLogStreamReader | None = None,
+) -> int:
+    """Route the public desktop launcher directly to the Qt implementation."""
+    try:
+        from app.cli.desktop_qt.app import run_qt_desktop_ui
+        from app.cli.desktop_qt.compat import QtBindingError
+    except ImportError as exc:
+        raise DesktopUIUnavailable(
+            "Cannot launch UCS-SecretAgent because the Qt desktop UI could not be imported."
+        ) from exc
+    try:
+        return run_qt_desktop_ui(
+            ctx,
+            initial_message=initial_message,
+            status_reader=status_reader,
+            start_action=start_action,
+            restart_action=restart_action,
+            stop_action=stop_action,
+            stop_confirmation=stop_confirmation,
+            activity_reader=activity_reader,
+            workspace_log_stream_reader=workspace_log_stream_reader,
+        )
+    except QtBindingError as exc:
+        raise DesktopUIUnavailable(str(exc)) from exc

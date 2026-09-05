@@ -89,6 +89,7 @@ class RuntimeView:
             for key in ("bridge", "server", "tunnel", "endpoint", "authentication")
         }
         self.status_var = tk.StringVar(value=self.translator.text("status.loading"))
+        self.summary_var = tk.StringVar(value="")
         self.backend_var = tk.StringVar(value="backend: …")
         self.message_var = tk.StringVar(value=initial_message)
         self.action_buttons: list[Any] = []
@@ -99,6 +100,7 @@ class RuntimeView:
         self.latest_data = dict(data)
         presentation = runtime_presentation(data, self.translator)
         self.status_var.set(presentation.status)
+        self.summary_var.set(presentation.summary)
         self.backend_var.set(
             self.translator.text("backend.alive")
             if (data.get("server") or {}).get("running")
@@ -132,50 +134,132 @@ class RuntimeView:
         on_copy_endpoint: Any,
         on_choose_workspace: Any,
         on_apply_workspace: Any,
+        on_start: Any = None,
+        on_stop: Any = None,
+        on_restart: Any = None,
+        on_refresh: Any = None,
     ) -> None:
-        """Attach the Runtime property grid without reaching into the dashboard."""
-        fields = ttk.LabelFrame(parent, padding=14)
-        self.bindings.bind(fields, "field.runtime_status")
-        fields.pack(fill="both", expand=True)
-        fields.columnconfigure(1, weight=1)
-        rows = (
-            ("field.mcp_bridge", "bridge"),
-            ("field.server", "server"),
-            ("field.tunnel", "tunnel"),
-            ("field.endpoint", "endpoint"),
-            ("field.authentication", "authentication"),
-            ("field.workspace", "workspace"),
+        """Compose factual runtime controls without reaching into the dashboard."""
+        on_start = on_start or (lambda: None)
+        on_stop = on_stop or (lambda: None)
+        on_restart = on_restart or (lambda: None)
+        on_refresh = on_refresh or (lambda: None)
+        self.action_buttons = []
+
+        surface = ttk.Frame(parent, style="Surface.TFrame")
+        surface.pack(fill="both", expand=True)
+
+        health = ttk.Frame(surface, style="Surface.TFrame")
+        health.pack(fill="x", pady=(0, 14))
+        status_label = ttk.Label(health, textvariable=self.status_var, style="Status.TLabel")
+        status_label.pack(side="left")
+        ttk.Label(
+            health,
+            textvariable=self.summary_var,
+            style="SurfaceSubtle.TLabel",
+            wraplength=620,
+        ).pack(side="left", padx=(12, 0))
+
+        cards = ttk.Frame(surface, style="Surface.TFrame")
+        cards.pack(fill="x", pady=(0, 14))
+        for column in range(3):
+            cards.columnconfigure(column, weight=1)
+        card_specs = (
+            ("field.mcp_bridge", "bridge", "field.authentication", "authentication"),
+            ("field.server", "server", "field.endpoint", "endpoint"),
+            ("field.tunnel", "tunnel", "field.endpoint", "endpoint"),
         )
-        for index, (label_key, key) in enumerate(rows):
-            label = ttk.Label(fields, style="FieldName.TLabel")
-            self.bindings.bind(label, label_key)
-            label.grid(
-                row=index, column=0, sticky="nw", padx=(0, 18), pady=5
+        for column, (title_key, state_key, detail_key, detail_value_key) in enumerate(card_specs):
+            self._service_card(
+                ttk,
+                cards,
+                title_key=title_key,
+                state_var=self.values[state_key],
+                detail_key=detail_key,
+                detail_var=self.values[detail_value_key],
+            ).grid(
+                row=0,
+                column=column,
+                sticky="nsew",
+                padx=(0, 10) if column < 2 else 0,
             )
-            value = (
-                ttk.Entry(fields, textvariable=workspace_var, state="readonly", width=58)
-                if key == "workspace"
-                else ttk.Label(fields, textvariable=self.values[key], wraplength=500)
-            )
-            value.grid(row=index, column=1, sticky="ew" if key == "workspace" else "w", pady=5)
-            if key == "endpoint":
-                copy_button = ttk.Button(fields, command=on_copy_endpoint)
-                self.bindings.bind(copy_button, "action.copy")
-                copy_button.grid(
-                    row=index, column=2, sticky="e", padx=(10, 0), pady=5
-                )
-            if key == "workspace":
-                choose_button = ttk.Button(fields, command=on_choose_workspace)
-                self.bindings.bind(choose_button, "action.choose_folder")
-                choose_button.grid(
-                    row=index, column=2, sticky="e", padx=(10, 0), pady=5
-                )
-                apply_button = ttk.Button(fields, command=on_apply_workspace)
-                self.bindings.bind(apply_button, "action.apply")
-                apply_button.grid(
-                    row=index, column=3, sticky="e", padx=(8, 0), pady=5
-                )
-                self.action_buttons.append(apply_button)
+
+        controls = ttk.Frame(surface, style="Surface.TFrame")
+        controls.pack(fill="x", pady=(0, 14))
+        controls_label = ttk.Label(controls, style="FieldName.TLabel")
+        self.bindings.bind(controls_label, "runtime.controls")
+        controls_label.pack(side="left", padx=(0, 12))
+        for key, callback, style in (
+            ("action.start", on_start, "Primary.TButton"),
+            ("action.stop", on_stop, "Danger.TButton"),
+            ("action.restart", on_restart, "Secondary.TButton"),
+            ("action.refresh", on_refresh, "Secondary.TButton"),
+        ):
+            button = ttk.Button(controls, style=style, command=callback)
+            self.bindings.bind(button, key)
+            button.pack(side="left", padx=(0, 8))
+            self.action_buttons.append(button)
+
+        endpoint = ttk.Frame(surface, style="Surface.TFrame")
+        endpoint.pack(fill="x", pady=(0, 10))
+        endpoint_label = ttk.Label(endpoint, style="FieldName.TLabel")
+        self.bindings.bind(endpoint_label, "field.endpoint")
+        endpoint_label.grid(row=0, column=0, sticky="w", padx=(0, 12))
+        endpoint.columnconfigure(1, weight=1)
+        ttk.Label(
+            endpoint,
+            textvariable=self.values["endpoint"],
+            style="CardValue.TLabel",
+            wraplength=520,
+        ).grid(row=0, column=1, sticky="w")
+        copy_button = ttk.Button(endpoint, style="Secondary.TButton", command=on_copy_endpoint)
+        self.bindings.bind(copy_button, "action.copy")
+        copy_button.grid(row=0, column=2, sticky="e", padx=(12, 0))
+
+        workspace = ttk.Frame(surface, style="Surface.TFrame")
+        workspace.pack(fill="x")
+        workspace_label = ttk.Label(workspace, style="FieldName.TLabel")
+        self.bindings.bind(workspace_label, "field.workspace")
+        workspace_label.grid(row=0, column=0, sticky="w", padx=(0, 12))
+        workspace.columnconfigure(1, weight=1)
+        ttk.Entry(workspace, textvariable=workspace_var, state="readonly", width=58).grid(
+            row=0, column=1, sticky="ew"
+        )
+        choose_button = ttk.Button(
+            workspace, style="Secondary.TButton", command=on_choose_workspace
+        )
+        self.bindings.bind(choose_button, "action.choose_folder")
+        choose_button.grid(row=0, column=2, sticky="e", padx=(12, 0))
+        apply_button = ttk.Button(
+            workspace, style="Primary.TButton", command=on_apply_workspace
+        )
+        self.bindings.bind(apply_button, "action.apply")
+        apply_button.grid(row=0, column=3, sticky="e", padx=(8, 0))
+        self.action_buttons.append(apply_button)
+
+    def _service_card(
+        self,
+        ttk: Any,
+        parent: Any,
+        *,
+        title_key: str,
+        state_var: Any,
+        detail_key: str,
+        detail_var: Any,
+    ) -> Any:
+        """Build one factual service card bound to RuntimeView variables."""
+        card = ttk.LabelFrame(parent, style="RuntimeCard.TLabelframe", padding=16)
+        self.bindings.bind(card, title_key)
+        ttk.Label(card, textvariable=state_var, style="RuntimeState.TLabel").grid(
+            row=0, column=0, sticky="w"
+        )
+        detail = ttk.Label(card, style="FieldName.TLabel")
+        self.bindings.bind(detail, detail_key)
+        detail.grid(row=1, column=0, sticky="w", pady=(12, 2))
+        ttk.Label(card, textvariable=detail_var, style="CardValue.TLabel", wraplength=220).grid(
+            row=2, column=0, sticky="w"
+        )
+        return card
 
     def set_busy(self, busy: bool) -> None:
         """Enable or disable only the actions registered by this view."""

@@ -723,7 +723,11 @@ class ActivityView:
         split_panes.grid(row=0, column=0, sticky="nsew")
         self.activity_split_panes = split_panes
 
-        sessions = self.ttk.LabelFrame(split_panes, padding=10)
+        sessions = self.ttk.LabelFrame(
+            split_panes,
+            padding=8,
+            style="RailPanel.TLabelframe",
+        )
         self.bindings.bind(sessions, "activity.workplaces")
         self.sessions_panel = sessions
         sessions.columnconfigure(0, weight=1)
@@ -739,12 +743,17 @@ class ActivityView:
         self.bindings.bind(session_intro_label, "activity.folder_source")
         session_intro_label.grid(row=0, column=0, sticky="w")
         self.ttk.Button(
-            session_intro, text="‹", width=3, command=self.toggle_sessions_panel
+            session_intro,
+            text="‹",
+            width=3,
+            style="Secondary.TButton",
+            command=self.toggle_sessions_panel,
         ).grid(row=0, column=1, sticky="e")
         self.workplace_filter_var = self.tk.StringVar(value="")
         self.workplace_filter_entry = self.ttk.Entry(
             sessions,
             textvariable=self.workplace_filter_var,
+            style="Filter.TEntry",
         )
         self.workplace_filter_entry.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(7, 3))
         self.workplace_filter_entry.bind("<KeyRelease>", self._schedule_local_filter)
@@ -776,26 +785,46 @@ class ActivityView:
         self._apply_tree_labels()
 
         session_actions = self.ttk.Frame(sessions)
-        session_actions.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(9, 0))
+        session_actions.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(8, 0))
         session_actions.columnconfigure(0, weight=1)
         session_actions.columnconfigure(1, weight=1)
-        show_all = self.ttk.Button(session_actions, command=self.show_all_sessions)
+        show_all = self.ttk.Button(
+            session_actions,
+            style="Secondary.TButton",
+            command=self.show_all_sessions,
+        )
         self.bindings.bind(show_all, "action.all")
         show_all.grid(
             row=0, column=0, sticky="ew", padx=(0, 3), pady=(0, 3)
         )
-        enable_tracking = self.ttk.Button(session_actions, command=self.enable_selected_session)
+        enable_tracking = self.ttk.Button(
+            session_actions,
+            style="Secondary.TButton",
+            command=self.enable_selected_session,
+        )
         self.bindings.bind(enable_tracking, "action.enable_tracking")
         enable_tracking.grid(row=0, column=1, sticky="ew", padx=(3, 0), pady=(0, 3))
-        disable_tracking = self.ttk.Button(session_actions, command=self.disable_selected_session)
+        disable_tracking = self.ttk.Button(
+            session_actions,
+            style="Secondary.TButton",
+            command=self.disable_selected_session,
+        )
         self.bindings.bind(disable_tracking, "action.disable_tracking")
         disable_tracking.grid(row=1, column=0, sticky="ew", padx=(0, 3))
-        close_tab = self.ttk.Button(session_actions, command=self.close_selected_session)
+        close_tab = self.ttk.Button(
+            session_actions,
+            style="Secondary.TButton",
+            command=self.close_selected_session,
+        )
         self.bindings.bind(close_tab, "action.close_tab")
         close_tab.grid(
             row=1, column=1, sticky="ew", padx=(3, 0)
         )
-        rescan = self.ttk.Button(sessions, command=self.on_refresh)
+        rescan = self.ttk.Button(
+            sessions,
+            style="Secondary.TButton",
+            command=self.on_refresh,
+        )
         self.bindings.bind(rescan, "action.rescan_folders")
         rescan.grid(
             row=5, column=0, columnspan=2, sticky="ew", pady=(8, 0)
@@ -803,16 +832,20 @@ class ActivityView:
 
         session_stub = self.ttk.Frame(split_panes, padding=3)
         self.ttk.Button(
-            session_stub, text="›", width=3, command=self.toggle_sessions_panel
+            session_stub,
+            text="›",
+            width=3,
+            style="Secondary.TButton",
+            command=self.toggle_sessions_panel,
         ).pack(anchor="n")
         self.sessions_stub = session_stub
 
-        activity = self.ttk.Frame(split_panes)
+        activity = self.ttk.Frame(split_panes, style="Surface.TFrame")
         activity.columnconfigure(0, weight=1)
         activity.rowconfigure(1, weight=1)
         self.activity_content = activity
 
-        toolbar = self.ttk.Frame(activity)
+        toolbar = self.ttk.Frame(activity, style="Surface.TFrame")
         toolbar.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         toolbar.columnconfigure(0, weight=1)
         self.activity_filter_var = self.tk.StringVar(
@@ -822,27 +855,48 @@ class ActivityView:
                 count=0,
             )
         )
-        self.ttk.Label(toolbar, textvariable=self.activity_filter_var, style="Subtle.TLabel").grid(
+        self.ttk.Label(
+            toolbar,
+            textvariable=self.activity_filter_var,
+            style="SectionHeader.TLabel",
+        ).grid(
             row=0, column=0, sticky="w"
         )
         self.command_filter_var = self.tk.StringVar(value="")
-        self.command_filter_entry = self.ttk.Entry(toolbar, textvariable=self.command_filter_var, width=24)
+        self.command_filter_entry = self.ttk.Entry(
+            toolbar,
+            textvariable=self.command_filter_var,
+            width=24,
+            style="Filter.TEntry",
+        )
         self.command_filter_entry.grid(row=0, column=1, sticky="e", padx=(6, 0))
         self.command_filter_entry.bind("<KeyRelease>", self._schedule_local_filter)
-        clear_filters = self.ttk.Button(toolbar, command=self.clear_local_filters)
+        clear_filters = self.ttk.Button(
+            toolbar,
+            style="Secondary.TButton",
+            command=self.clear_local_filters,
+        )
         self.bindings.bind(clear_filters, "action.clear")
         clear_filters.grid(
             row=0, column=2, sticky="e", padx=(6, 0)
         )
         self.input_collapse_button = self.ttk.Button(
-            toolbar, command=self.toggle_input_panel
+            toolbar,
+            style="Secondary.TButton",
+            command=self.toggle_input_panel,
         )
         self.input_collapse_button.grid(row=0, column=3, sticky="e", padx=(6, 0))
         self.output_collapse_button = self.ttk.Button(
-            toolbar, command=self.toggle_output_panel
+            toolbar,
+            style="Secondary.TButton",
+            command=self.toggle_output_panel,
         )
         self.output_collapse_button.grid(row=0, column=4, sticky="e", padx=(6, 0))
-        refresh = self.ttk.Button(toolbar, command=self.on_refresh)
+        refresh = self.ttk.Button(
+            toolbar,
+            style="Secondary.TButton",
+            command=self.on_refresh,
+        )
         self.bindings.bind(refresh, "action.refresh")
         refresh.grid(
             row=0, column=5, sticky="e", padx=(6, 0)
@@ -853,7 +907,11 @@ class ActivityView:
         vertical_panes.grid(row=1, column=0, sticky="nsew")
         self.activity_vertical_panes = vertical_panes
 
-        inputs = self.ttk.LabelFrame(vertical_panes, padding=8)
+        inputs = self.ttk.LabelFrame(
+            vertical_panes,
+            padding=8,
+            style="InspectorCard.TLabelframe",
+        )
         self.bindings.bind(inputs, "activity.commands")
         self.input_panel = inputs
         inputs.columnconfigure(0, weight=1)
@@ -882,7 +940,11 @@ class ActivityView:
         self.activity_tree = tree
         self._apply_tree_labels()
 
-        output = self.ttk.LabelFrame(vertical_panes, padding=8)
+        output = self.ttk.LabelFrame(
+            vertical_panes,
+            padding=8,
+            style="InspectorCard.TLabelframe",
+        )
         self.bindings.bind(output, "activity.output")
         self.output_panel = output
         output.columnconfigure(0, weight=1)
@@ -904,7 +966,11 @@ class ActivityView:
             copy_selection_success_message=self.translator.text("inspector.copy_selection_success"),
         )
         self.activity_inspector.grid(row=0, column=0, sticky="nsew")
-        copy_tab = self.ttk.Button(output, command=self.copy_selected_activity_output)
+        copy_tab = self.ttk.Button(
+            output,
+            style="Secondary.TButton",
+            command=self.copy_selected_activity_output,
+        )
         self.bindings.bind(copy_tab, "action.copy_tab")
         copy_tab.grid(
             row=1, column=0, sticky="e", pady=(7, 0)

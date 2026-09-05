@@ -232,9 +232,7 @@ HOST_KNOWLEDGE_DIR = HOST_KNOWLEDGE_DIR.resolve()
 HOST_TOOL_CACHE_SECONDS = max(0, int(os.getenv("HOST_TOOL_CACHE_SECONDS", "300")))
 
 MAX_SINGLE_FILE_BYTES = int(os.getenv("MAX_SINGLE_FILE_BYTES", "3000000"))
-# Zero explicitly disables the per-stream output cap. Operators who need a
-# bounded response can set a positive value in .env.
-MAX_OUTPUT_BYTES = int(os.getenv("MAX_OUTPUT_BYTES", "0"))
+MAX_OUTPUT_BYTES = int(os.getenv("MAX_OUTPUT_BYTES", "500000"))
 MAX_TIMEOUT_SECONDS = int(os.getenv("MAX_TIMEOUT_SECONDS", "60"))
 MAX_CONCURRENT_COMMANDS = max(1, int(os.getenv("MAX_CONCURRENT_COMMANDS", "100")))
 COMMAND_QUEUE_TIMEOUT_SECONDS = max(
@@ -281,4 +279,32 @@ HOST_CHAT_RESUME_HINT_MINUTES = max(
 HOST_CHAT_ROOT_MAX_GB = max(0.0, float(os.getenv("HOST_CHAT_ROOT_MAX_GB", "24")))
 HOST_CHAT_JOURNAL_MAX_BYTES = max(
     1024, int(os.getenv("HOST_CHAT_JOURNAL_MAX_BYTES", "8388608"))
+)
+
+# --- Scoped CTF case authority ----------------------------------------------
+# These caps can only be made more restrictive by environment configuration;
+# they never widen the public case contract.
+CTF_CASE_MAX_LABEL_CHARS = min(
+    120, max(1, int(os.getenv("CTF_CASE_MAX_LABEL_CHARS", "120")))
+)
+CTF_CASE_MAX_ORIGINS = min(8, max(1, int(os.getenv("CTF_CASE_MAX_ORIGINS", "8"))))
+
+# Passive artifact profiling is deliberately capped independently from the
+# generic host-file limits.  These values bound synchronous, caller-triggered
+# inspection and cannot enable extraction or execution.
+CTF_ARTIFACT_HASH_MAX_BYTES = min(
+    16 * 1024 * 1024, max(1, int(os.getenv("CTF_ARTIFACT_HASH_MAX_BYTES", "4194304")))
+)
+CTF_ARTIFACT_ENTROPY_MAX_BYTES = min(
+    2 * 1024 * 1024, max(1, int(os.getenv("CTF_ARTIFACT_ENTROPY_MAX_BYTES", "262144")))
+)
+CTF_ARTIFACT_MAX_MANIFEST_MEMBERS = min(
+    256, max(1, int(os.getenv("CTF_ARTIFACT_MAX_MANIFEST_MEMBERS", "64")))
+)
+CTF_ARTIFACT_ARCHIVE_METADATA_MAX_BYTES = min(
+    4 * 1024 * 1024,
+    max(1024, int(os.getenv("CTF_ARTIFACT_ARCHIVE_METADATA_MAX_BYTES", "1048576"))),
+)
+CTF_ARTIFACT_TAR_MAX_HEADERS = min(
+    2048, max(1, int(os.getenv("CTF_ARTIFACT_TAR_MAX_HEADERS", "512")))
 )

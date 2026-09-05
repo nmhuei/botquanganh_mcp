@@ -108,9 +108,6 @@ command_capacity = CommandCapacity(
     app.config.COMMAND_QUEUE_TIMEOUT_SECONDS,
 )
 
-_OUTPUT_DRAIN_IDLE_SECONDS = 2.0
-_OUTPUT_DRAIN_POLL_SECONDS = 0.05
-
 
 def _build_environment() -> dict[str, str]:
     explicit = set(app.config.HOST_ENV_ALLOWLIST)
@@ -132,70 +129,23 @@ def _build_environment() -> dict[str, str]:
 def _drain_limited(pipe: BinaryIO, max_bytes: int, result: dict[str, Any]) -> None:
     stored = bytearray()
     truncated = False
-    capture_all = max_bytes == 0
     try:
         while True:
             chunk = pipe.read(64 * 1024)
             if not chunk:
                 break
-            result["last_progress_at"] = time.monotonic()
-            if capture_all:
-                stored.extend(chunk)
-            else:
-                remaining = max_bytes - len(stored)
-                if remaining > 0:
-                    stored.extend(chunk[:remaining])
-                if len(chunk) > max(0, remaining):
-                    truncated = True
+            remaining = max_bytes - len(stored)
+            if remaining > 0:
+                stored.extend(chunk[:remaining])
+            if len(chunk) > max(0, remaining):
+                truncated = True
     finally:
         pipe.close()
-    result["eof_at"] = time.monotonic()
     text = bytes(stored).decode("utf-8", errors="replace")
     if truncated:
         text += "\n... [TRUNCATED]"
     result["text"] = text
     result["truncated"] = truncated
-
-
-def _wait_for_active_output_drains(
-    stdout_thread: threading.Thread,
-    stderr_thread: threading.Thread,
-    stdout_result: dict[str, Any],
-    stderr_result: dict[str, Any],
-) -> bool:
-    """Wait for active readers, stopping only after both streams go idle.
-
-    A shell can exit while a detached child retains an inherited pipe. In that
-    case there is no more output progress and returning an incomplete result is
-    preferable to waiting forever. Active readers, including large unlimited
-    output, are allowed to finish without a fixed post-exit deadline.
-    """
-    last_progress = time.monotonic()
-    while stdout_thread.is_alive() or stderr_thread.is_alive():
-        stdout_thread.join(timeout=_OUTPUT_DRAIN_POLL_SECONDS)
-        stderr_thread.join(timeout=_OUTPUT_DRAIN_POLL_SECONDS)
-        readers_waiting_for_eof = [
-            (thread, result)
-            for thread, result in (
-                (stdout_thread, stdout_result),
-                (stderr_thread, stderr_result),
-            )
-            if thread.is_alive() and "eof_at" not in result
-        ]
-        if not readers_waiting_for_eof:
-            stdout_thread.join()
-            stderr_thread.join()
-            return False
-        current_progress = max(
-            *(float(result.get("last_progress_at", 0.0) or 0.0)
-              for _, result in readers_waiting_for_eof),
-            0.0,
-        )
-        if current_progress:
-            last_progress = max(last_progress, current_progress)
-        if time.monotonic() - last_progress >= _OUTPUT_DRAIN_IDLE_SECONDS:
-            return True
-    return False
 
 
 def _terminate_process_group(process: subprocess.Popen[bytes]) -> int:
@@ -274,13 +224,13 @@ def _execute_host_command_impl(
         timed_out = True
         exit_code = _terminate_process_group(process)
     finally:
-        output_incomplete = _wait_for_active_output_drains(
-            stdout_thread, stderr_thread, stdout_result, stderr_result
-        )
-        if output_incomplete:
+        stdout_thread.join(timeout=2)
+        stderr_thread.join(timeout=2)
+        if stdout_thread.is_alive() or stderr_thread.is_alive():
             _terminate_process_group(process)
-            stdout_thread.join(timeout=_OUTPUT_DRAIN_POLL_SECONDS)
-            stderr_thread.join(timeout=_OUTPUT_DRAIN_POLL_SECONDS)
+            stdout_thread.join(timeout=1)
+            stderr_thread.join(timeout=1)
+    output_incomplete = stdout_thread.is_alive() or stderr_thread.is_alive()
 
     stdout = str(stdout_result.get("text", ""))
     stderr = str(stderr_result.get("text", ""))

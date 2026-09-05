@@ -341,9 +341,12 @@ class WorkspaceLogView:
 
     def _build(self, parent: Any) -> None:
         parent.columnconfigure(0, weight=1)
-        parent.rowconfigure(2, weight=1)
+        parent.rowconfigure(3, weight=1)
+        title = self.ttk.Label(parent, style="SectionHeader.TLabel")
+        self.bindings.bind(title, "tab.workspace_logs")
+        title.grid(row=0, column=0, sticky="w", pady=(0, 8))
         toolbar = self.ttk.Frame(parent)
-        toolbar.grid(row=0, column=0, sticky="ew")
+        toolbar.grid(row=1, column=0, sticky="ew")
         toolbar.columnconfigure(1, weight=1)
         chips = self.ttk.Frame(toolbar)
         chips.grid(row=0, column=0, sticky="w")
@@ -362,7 +365,12 @@ class WorkspaceLogView:
         self.bindings.bind(chat_filter_label, "field.chat_filter")
         chat_filter_label.pack(side="left", padx=(10, 6))
         self.chat_filter_var = self.tk.StringVar(value="")
-        chat_entry = self.ttk.Entry(filter_box, textvariable=self.chat_filter_var, width=28)
+        chat_entry = self.ttk.Entry(
+            filter_box,
+            textvariable=self.chat_filter_var,
+            width=28,
+            style="Filter.TEntry",
+        )
         chat_entry.pack(side="left")
         chat_entry.bind("<KeyRelease>", lambda _event: self.render())
         self.outcome_var = self.tk.StringVar(value="all")
@@ -372,6 +380,7 @@ class WorkspaceLogView:
             values=("all", "success", "failure", "unknown"),
             state="readonly",
             width=10,
+            style="Filter.TCombobox",
         )
         outcome.pack(side="left", padx=(6, 0))
         outcome.bind("<<ComboboxSelected>>", lambda _event: self.render())
@@ -381,9 +390,9 @@ class WorkspaceLogView:
         self.notice_var = self.tk.StringVar(
             value=self.translator.text("workspace_logs.connecting")
         )
-        self.ttk.Label(parent, textvariable=self.notice_var, style="Subtle.TLabel").grid(row=1, column=0, sticky="w", pady=(7, 5))
+        self.ttk.Label(parent, textvariable=self.notice_var, style="Subtle.TLabel").grid(row=2, column=0, sticky="w", pady=(7, 5))
         panes = self.ttk.Panedwindow(parent, orient="vertical")
-        panes.grid(row=2, column=0, sticky="nsew")
+        panes.grid(row=3, column=0, sticky="nsew")
         table = self.ttk.Frame(panes, style="Surface.TFrame")
         table.columnconfigure(0, weight=1)
         table.rowconfigure(0, weight=1)
@@ -401,7 +410,7 @@ class WorkspaceLogView:
         tree.bind("<Down>", lambda _event: self.move_selection(1) or "break")
         self.tree = tree
         self._apply_tree_labels()
-        holder = self.ttk.LabelFrame(panes, padding=6)
+        holder = self.ttk.LabelFrame(panes, padding=6, style="InspectorCard.TLabelframe")
         self.bindings.bind(holder, "workspace_logs.inspector")
         holder.columnconfigure(0, weight=1)
         holder.rowconfigure(0, weight=1)

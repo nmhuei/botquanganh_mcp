@@ -1,1 +1,1 @@
-"""Core CTF utilities and engines for BotQuangAnh MCP."""
+"""Bounded, workspace-scoped services for authorized CTF analysis."""

@@ -4,13 +4,15 @@ import os
 from pathlib import Path
 import queue
 import subprocess
+import sys
 import threading
+import types
 from types import SimpleNamespace
 
 import pytest
 
 from app.cli.context import CLIContext
-from app.cli.desktop_views.i18n import DesktopTranslator
+from app.cli.desktop_views.i18n import DesktopTranslator, TranslationBindings
 from app.cli.desktop_ui import (
     BQA_UI_DAEMON_ENV,
     DESKTOP_APP_NAME,
@@ -25,6 +27,210 @@ from app.cli.desktop_ui import (
 )
 from app.cli.desktop_ui import _DesktopDashboard
 from app.cli.main import main
+from app.cli.desktop_views.theme import PALETTE
+
+
+class ShellVariable:
+    def __init__(self, value=""):
+        self.value = value
+
+    def get(self):
+        return self.value
+
+    def set(self, value):
+        self.value = value
+
+
+class ShellWidget:
+    def __init__(self, parent=None, **values):
+        self.parent = parent
+        self.configured = dict(values)
+        self.grid_calls = []
+        self.pack_calls = []
+        self.bind_calls = []
+
+    def configure(self, **values):
+        self.configured.update(values)
+
+    def grid(self, **values):
+        self.grid_calls.append(values)
+
+    def pack(self, **values):
+        self.pack_calls.append(values)
+
+    def bind(self, event, callback):
+        self.bind_calls.append((event, callback))
+
+    def columnconfigure(self, *_args, **_values):
+        pass
+
+    def rowconfigure(self, *_args, **_values):
+        pass
+
+
+class ShellButton(ShellWidget):
+    def invoke(self):
+        return self.configured["command"]()
+
+
+class ShellNotebook(ShellWidget):
+    def __init__(self, parent=None, **values):
+        super().__init__(parent, **values)
+        self.tabs = []
+        self.selected = ""
+        self.select_calls = []
+        self.tab_calls = []
+
+    def add(self, tab):
+        self.tabs.append(tab)
+        if not self.selected:
+            self.selected = tab
+
+    def select(self, tab=None):
+        if tab is not None:
+            self.select_calls.append(tab)
+            self.selected = tab
+        return self.selected
+
+    def tab(self, tab, **values):
+        self.tab_calls.append((tab, values))
+
+
+class ShellTtk:
+    def __init__(self):
+        self.frames = []
+        self.labels = []
+        self.buttons = []
+        self.comboboxes = []
+        self.notebooks = []
+
+    def Style(self, root):
+        return ShellWidget(root)
+
+    def Frame(self, parent=None, **values):
+        widget = ShellWidget(parent, **values)
+        self.frames.append(widget)
+        return widget
+
+    def Label(self, parent=None, **values):
+        widget = ShellWidget(parent, **values)
+        self.labels.append(widget)
+        return widget
+
+    def Button(self, parent=None, **values):
+        widget = ShellButton(parent, **values)
+        self.buttons.append(widget)
+        return widget
+
+    def Combobox(self, parent=None, **values):
+        widget = ShellWidget(parent, **values)
+        self.comboboxes.append(widget)
+        return widget
+
+    def Notebook(self, parent=None, **values):
+        widget = ShellNotebook(parent, **values)
+        self.notebooks.append(widget)
+        return widget
+
+
+class ShellRoot(ShellWidget):
+    def title(self, value):
+        self.title_value = value
+
+    def geometry(self, value):
+        self.geometry_value = value
+
+    def minsize(self, width, height):
+        self.minimum_size = (width, height)
+
+
+class RecordingBindings(TranslationBindings):
+    def __init__(self, translator):
+        super().__init__(translator)
+        self.records = []
+
+    def bind(self, widget, key, **values):
+        self.records.append((widget, key))
+        super().bind(widget, key, **values)
+
+
+class ShellRuntimeView:
+    def __init__(self):
+        self.build_values = {}
+        self.translators = []
+        self.messages = []
+
+    def build(self, **values):
+        self.build_values = values
+
+    def set_translator(self, translator):
+        self.translators.append(translator)
+
+    def set_message(self, message):
+        self.messages.append(message)
+
+
+class ShellActivityView:
+    def __init__(self, **values):
+        self.build_values = values
+        self.translators = []
+
+    def set_activity_tab(self, notebook, tab):
+        self.activity_tab = (notebook, tab)
+
+    def set_translator(self, translator):
+        self.translators.append(translator)
+
+
+class ShellWorkspaceLogView:
+    def __init__(self, **values):
+        self.build_values = values
+        self.translators = []
+
+    def set_translator(self, translator):
+        self.translators.append(translator)
+
+
+def build_dashboard_shell(monkeypatch, tmp_path):
+    ttk = ShellTtk()
+    dashboard = object.__new__(_DesktopDashboard)
+    dashboard.root = ShellRoot()
+    dashboard.tk = type("Tk", (), {"TclError": Exception})()
+    dashboard.ttk = ttk
+    dashboard.ctx = type(
+        "Context",
+        (),
+        {"repo_root": tmp_path, "values": {"BQA_UI_LANGUAGE": "en"}},
+    )()
+    dashboard.translator = DesktopTranslator("en")
+    dashboard.header_bindings = TranslationBindings(dashboard.translator)
+    dashboard.navigation_bindings = RecordingBindings(dashboard.translator)
+    dashboard.language_choices = {}
+    dashboard.language_display_var = ShellVariable()
+    dashboard.language_combo = None
+    dashboard.notebook = None
+    dashboard.notebook_tabs = {}
+    dashboard.navigation_buttons = {}
+    dashboard.footer_bindings = {}
+    dashboard.runtime_view = ShellRuntimeView()
+    dashboard.status_var = ShellVariable("Loading")
+    dashboard.backend_var = ShellVariable("backend")
+    dashboard.message_var = ShellVariable()
+    dashboard.workspace_var = ShellVariable("/workspace")
+    dashboard.refresh_var = ShellVariable("refresh: —")
+    dashboard.sse_var = ShellVariable("SSE: CONNECTING")
+    dashboard.status_label = None
+    dashboard.backend_label = None
+    dashboard.activity_view = None
+    dashboard.workspace_log_view = None
+
+    monkeypatch.setattr("app.cli.desktop_ui.load_desktop_icon", lambda _root, _tk: None)
+    monkeypatch.setattr("app.cli.desktop_ui.apply_desktop_theme", lambda _style, _root: None)
+    monkeypatch.setattr("app.cli.desktop_ui.ActivityView", ShellActivityView)
+    monkeypatch.setattr("app.cli.desktop_ui.WorkspaceLogView", ShellWorkspaceLogView)
+
+    dashboard._build(None, object())
+    return dashboard, ttk
 
 
 def test_desktop_ui_removes_retired_workflow_stream_contract():
@@ -78,10 +284,453 @@ def test_desktop_runtime_summary_covers_ready_degraded_and_stopped():
 def test_backend_badge_reflects_server_liveness():
     assert backend_badge({"server": {"running": True}}) == (
         "backend: ● alive",
-        "#4ade80",
+        PALETTE["success"],
     )
     assert backend_badge({"server": {"running": False}})[0] == "backend: ○ down"
     assert backend_badge({})[0] == "backend: ○ down"
+
+
+def test_dashboard_build_creates_one_notebook_three_tabs_and_passive_header(
+    monkeypatch, tmp_path
+):
+    dashboard, ttk = build_dashboard_shell(monkeypatch, tmp_path)
+
+    assert len(ttk.notebooks) == 1
+    notebook = ttk.notebooks[0]
+    assert tuple(notebook.tabs) == tuple(dashboard.notebook_tabs.values())
+    assert tuple(dashboard.notebook_tabs) == (
+        "runtime",
+        "workspace_logs",
+        "gpt_activity",
+    )
+    assert notebook.bind_calls == [
+        ("<<NotebookTabChanged>>", dashboard._sync_navigation)
+    ]
+
+    rail_buttons = [
+        button
+        for button in ttk.buttons
+        if button.parent.configured.get("style") == "Rail.TFrame"
+    ]
+    header_buttons = [button for button in ttk.buttons if button not in rail_buttons]
+    assert len(rail_buttons) == 3
+    assert len(header_buttons) == 1
+    assert header_buttons[0].configured["command"] == dashboard.close
+    assert all(
+        header_buttons[0].configured["command"] != action
+        for action in (
+            dashboard.start_service,
+            dashboard.restart_bridge,
+            dashboard.refresh,
+        )
+    )
+    assert len(ttk.comboboxes) == 1
+    assert ttk.comboboxes[0].parent is header_buttons[0].parent
+
+
+def test_dashboard_build_wires_translated_rail_to_existing_notebook_without_recursion(
+    monkeypatch, tmp_path
+):
+    dashboard, ttk = build_dashboard_shell(monkeypatch, tmp_path)
+    notebook = ttk.notebooks[0]
+    expected_keys = (
+        "nav.runtime",
+        "nav.workspace_logs",
+        "nav.gpt_activity",
+    )
+    assert tuple(key for _button, key in dashboard.navigation_bindings.records) == (
+        expected_keys
+    )
+
+    buttons_by_key = {
+        key.removeprefix("nav."): button
+        for button, key in dashboard.navigation_bindings.records
+    }
+    assert buttons_by_key == dashboard.navigation_buttons
+    for key, tab in dashboard.notebook_tabs.items():
+        notebook.selected = object()
+        notebook.select_calls.clear()
+        buttons_by_key[key].invoke()
+        assert notebook.selected is tab
+        assert notebook.select_calls == [tab]
+        assert buttons_by_key[key].configured["style"] == "RailActive.TButton"
+
+    notebook.selected = dashboard.notebook_tabs["workspace_logs"]
+    notebook.select_calls.clear()
+    dashboard._sync_navigation()
+    assert notebook.select_calls == []
+    assert dashboard.navigation_buttons["workspace_logs"].configured["style"] == (
+        "RailActive.TButton"
+    )
+    assert dashboard.navigation_buttons["runtime"].configured["style"] == (
+        "Rail.TButton"
+    )
+
+    monkeypatch.setattr(
+        "app.cli.desktop_ui.set_desktop_ui_language",
+        lambda _root, language: {"BQA_UI_LANGUAGE": language},
+    )
+    dashboard.language_display_var.set("Tiếng Việt")
+    dashboard.change_language()
+    assert tuple(
+        dashboard.navigation_buttons[key].configured["text"]
+        for key in dashboard.notebook_tabs
+    ) == ("Runtime", "Nhật ký Workspace", "Hoạt động GPT")
+
+
+def test_dashboard_navigation_selects_named_notebook_tab_and_marks_only_it_active():
+    class Notebook:
+        def __init__(self):
+            self.selected = "runtime-tab"
+
+        def select(self, tab=None):
+            if tab is not None:
+                self.selected = tab
+            return self.selected
+
+        def tab(self, _tab, **_values):
+            pass
+
+        def bind(self, _event, _callback):
+            pass
+
+    class Button:
+        def __init__(self):
+            self.configured = {}
+
+        def configure(self, **values):
+            self.configured.update(values)
+
+    dashboard = object.__new__(_DesktopDashboard)
+    dashboard.notebook = Notebook()
+    dashboard.notebook_tabs = {
+        "runtime": "runtime-tab",
+        "workspace_logs": "workspace-tab",
+        "gpt_activity": "activity-tab",
+    }
+    dashboard.navigation_buttons = {
+        "runtime": Button(),
+        "workspace_logs": Button(),
+        "gpt_activity": Button(),
+    }
+
+    dashboard._select_view("workspace_logs")
+
+    assert dashboard.notebook.selected == "workspace-tab"
+    assert dashboard.navigation_buttons["workspace_logs"].configured["style"] == (
+        "RailActive.TButton"
+    )
+    assert dashboard.navigation_buttons["runtime"].configured["style"] == (
+        "Rail.TButton"
+    )
+    assert dashboard.navigation_buttons["gpt_activity"].configured["style"] == (
+        "Rail.TButton"
+    )
+
+
+def test_dashboard_navigation_syncs_rail_when_notebook_selection_changes_elsewhere():
+    class Notebook:
+        def select(self):
+            return "activity-tab"
+
+    class Button:
+        def __init__(self):
+            self.configured = {}
+
+        def configure(self, **values):
+            self.configured.update(values)
+
+    dashboard = object.__new__(_DesktopDashboard)
+    dashboard.notebook = Notebook()
+    dashboard.notebook_tabs = {
+        "runtime": "runtime-tab",
+        "workspace_logs": "workspace-tab",
+        "gpt_activity": "activity-tab",
+    }
+    dashboard.navigation_buttons = {
+        key: Button() for key in dashboard.notebook_tabs
+    }
+
+    dashboard._sync_navigation()
+
+    assert dashboard.navigation_buttons["gpt_activity"].configured["style"] == (
+        "RailActive.TButton"
+    )
+    assert dashboard.navigation_buttons["runtime"].configured["style"] == (
+        "Rail.TButton"
+    )
+
+
+def test_dashboard_footer_labels_stay_bound_to_existing_status_variables():
+    class Widget:
+        def __init__(self, parent=None, **values):
+            self.parent = parent
+            self.configured = dict(values)
+
+        def grid(self, **_values):
+            pass
+
+        def columnconfigure(self, *_args, **_values):
+            pass
+
+    class Ttk:
+        Frame = Widget
+        Label = Widget
+
+    dashboard = object.__new__(_DesktopDashboard)
+    dashboard.ttk = Ttk()
+    dashboard.backend_var = object()
+    dashboard.workspace_var = object()
+    dashboard.refresh_var = object()
+    dashboard.sse_var = object()
+    dashboard.message_var = object()
+    dashboard.footer_bindings = {}
+
+    dashboard._build_footer(Widget())
+
+    assert set(dashboard.footer_bindings) == {
+        "backend",
+        "workspace",
+        "refresh",
+        "sse",
+        "message",
+    }
+    assert dashboard.footer_bindings["backend"].configured["textvariable"] is (
+        dashboard.backend_var
+    )
+    assert dashboard.footer_bindings["workspace"].configured["textvariable"] is (
+        dashboard.workspace_var
+    )
+    assert dashboard.footer_bindings["refresh"].configured["textvariable"] is (
+        dashboard.refresh_var
+    )
+    assert dashboard.footer_bindings["sse"].configured["textvariable"] is (
+        dashboard.sse_var
+    )
+    assert dashboard.footer_bindings["message"].configured["textvariable"] is (
+        dashboard.message_var
+    )
+    assert all(
+        label.configured["style"] == "Footer.TLabel"
+        for label in dashboard.footer_bindings.values()
+    )
+
+
+def test_dashboard_navigation_shell_wires_existing_safe_runtime_actions_once():
+    class RuntimeView:
+        def build(self, **values):
+            self.build_values = values
+
+    dashboard = object.__new__(_DesktopDashboard)
+    dashboard.ttk = object()
+    dashboard.runtime_view = RuntimeView()
+    dashboard.workspace_var = object()
+    dashboard.copy_endpoint = lambda: None
+    dashboard.choose_workspace = lambda: None
+    dashboard.apply_workspace = lambda: None
+    calls = []
+    dashboard.start_service = lambda: calls.append("start")
+    dashboard.stop_service = lambda: calls.append("stop")
+    dashboard.restart_bridge = lambda: calls.append("restart")
+    dashboard.refresh = lambda: calls.append("refresh")
+
+    dashboard._build_runtime_view("runtime-tab")
+
+    callbacks = dashboard.runtime_view.build_values
+    assert callbacks["on_start"] is dashboard.start_service
+    assert callbacks["on_stop"] is dashboard.stop_service
+    assert callbacks["on_restart"] is dashboard.restart_bridge
+    assert callbacks["on_refresh"] is dashboard.refresh
+    callbacks["on_start"]()
+    callbacks["on_stop"]()
+    callbacks["on_restart"]()
+    callbacks["on_refresh"]()
+    assert calls == ["start", "stop", "restart", "refresh"]
+
+
+def test_stop_cancellation_launches_no_lifecycle_action(tmp_path):
+    dashboard = object.__new__(_DesktopDashboard)
+    dashboard.root = object()
+    dashboard.ctx = type("Context", (), {"repo_root": tmp_path})()
+    dashboard.translator = DesktopTranslator()
+    dashboard.stop_confirmation = lambda _root, _translator: False
+    lifecycle_calls = []
+    dashboard.stop_action = lambda repo_root: lifecycle_calls.append(repo_root)
+    queued_actions = []
+    dashboard._run_action = lambda label, action: queued_actions.append((label, action))
+
+    dashboard.stop_service()
+
+    assert queued_actions == []
+    assert lifecycle_calls == []
+
+
+def test_confirmed_stop_uses_existing_lifecycle_worker_path(tmp_path):
+    dashboard = object.__new__(_DesktopDashboard)
+    dashboard.root = object()
+    dashboard.ctx = type("Context", (), {"repo_root": tmp_path})()
+    dashboard.translator = DesktopTranslator()
+    dashboard.stop_confirmation = lambda _root, _translator: True
+    lifecycle_calls = []
+    dashboard.stop_action = (
+        lambda repo_root: lifecycle_calls.append(repo_root) or {"ok": True}
+    )
+    queued_actions = []
+    dashboard._run_action = lambda label, action: queued_actions.append((label, action))
+
+    dashboard.stop_service()
+
+    assert len(queued_actions) == 1
+    assert queued_actions[0][0] == DesktopTranslator().text("action.stop")
+    assert lifecycle_calls == []
+    assert queued_actions[0][1]() == {"ok": True}
+    assert lifecycle_calls == [tmp_path]
+
+
+@pytest.mark.parametrize("language", ("en", "vi"))
+def test_default_stop_confirmation_is_translated_warning_and_defaults_to_no(
+    monkeypatch, language
+):
+    import tkinter.messagebox as messagebox
+    import app.cli.desktop_ui as desktop_ui
+
+    root = object()
+    calls = []
+    monkeypatch.setattr(
+        messagebox,
+        "askyesno",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or False,
+    )
+
+    translator = DesktopTranslator(language)
+
+    assert desktop_ui.confirm_stop(root, translator) is False
+    assert calls == [
+        (
+            (
+                translator.text("dialog.stop_title"),
+                translator.text("dialog.stop_body"),
+            ),
+            {"parent": root, "icon": "warning", "default": "no"},
+        )
+    ]
+
+
+def test_legacy_tk_desktop_ui_starts_boot_before_dashboard_and_forwards_stop_dependencies(
+    monkeypatch,
+):
+    import app.cli.desktop_ui as desktop_ui
+
+    class Root:
+        def __init__(self):
+            self.mainloop_calls = 0
+
+        def mainloop(self):
+            self.mainloop_calls += 1
+
+    class BootScreen:
+        def close(self):
+            raise AssertionError("boot screen should remain open during dashboard launch")
+
+    captured = {}
+    boot_calls = []
+    launch_order = []
+    root = Root()
+
+    def dashboard(*_args, **kwargs):
+        launch_order.append("dashboard")
+        captured.update(kwargs)
+
+    fake_tk = types.ModuleType("tkinter")
+    fake_tk.Tk = lambda: root
+    fake_tk.TclError = RuntimeError
+    fake_tk.ttk = object()
+    monkeypatch.setitem(sys.modules, "tkinter", fake_tk)
+    monkeypatch.setattr(desktop_ui, "_DesktopDashboard", dashboard)
+
+    def start_boot(received_root, received_tk):
+        launch_order.append("boot")
+        boot_calls.append((received_root, received_tk))
+        return BootScreen()
+
+    monkeypatch.setattr(
+        desktop_ui,
+        "_start_desktop_boot",
+        start_boot,
+    )
+    stop_action = lambda _repo_root: {"ok": True}
+    stop_confirmation = lambda _root, _translator: True
+
+    assert (
+        desktop_ui.run_tk_desktop_ui(
+            object(),
+            stop_action=stop_action,
+            stop_confirmation=stop_confirmation,
+        )
+        == 0
+    )
+    assert captured["stop_action"] is stop_action
+    assert captured["stop_confirmation"] is stop_confirmation
+    assert boot_calls == [(root, fake_tk)]
+    assert launch_order == ["boot", "dashboard"]
+    assert root.mainloop_calls == 1
+
+
+def test_legacy_tk_desktop_ui_boot_and_stop_launcher_cleans_up_dashboard_error(monkeypatch):
+    import app.cli.desktop_ui as desktop_ui
+
+    class Root:
+        def __init__(self):
+            self.destroy_calls = 0
+            self.mainloop_calls = 0
+
+        def destroy(self):
+            launch_order.append("destroy")
+            self.destroy_calls += 1
+
+        def mainloop(self):
+            self.mainloop_calls += 1
+
+    class BootScreen:
+        def __init__(self):
+            self.close_calls = 0
+
+        def close(self):
+            launch_order.append("boot.close")
+            self.close_calls += 1
+
+    launch_order = []
+    root = Root()
+    boot_screen = BootScreen()
+    fake_tk = types.ModuleType("tkinter")
+    fake_tk.Tk = lambda: root
+    fake_tk.TclError = RuntimeError
+    fake_tk.ttk = object()
+    monkeypatch.setitem(sys.modules, "tkinter", fake_tk)
+
+    def start_boot(_received_root, _received_tk):
+        launch_order.append("boot")
+        return boot_screen
+
+    monkeypatch.setattr(
+        desktop_ui,
+        "_start_desktop_boot",
+        start_boot,
+    )
+
+    def failing_dashboard(*_args, **_kwargs):
+        launch_order.append("dashboard")
+        raise RuntimeError("dashboard initialization failed")
+
+    monkeypatch.setattr(desktop_ui, "_DesktopDashboard", failing_dashboard)
+
+    with pytest.raises(RuntimeError, match="dashboard initialization failed"):
+        desktop_ui.run_tk_desktop_ui(object())
+
+    assert launch_order == ["boot", "dashboard", "boot.close", "destroy"]
+    assert boot_screen.close_calls == 1
+    assert root.destroy_calls == 1
+    assert root.mainloop_calls == 0
 
 
 def test_dashboard_refresh_keeps_the_operator_session_and_window_unfocused(tmp_path):
@@ -252,6 +901,7 @@ def test_dashboard_language_change_persists_then_relabels_every_live_view(monkey
     dashboard.ctx = type("Context", (), {"repo_root": tmp_path, "values": {}})()
     dashboard.translator = DesktopTranslator("en")
     dashboard.header_bindings = Bindings()
+    dashboard.navigation_bindings = Bindings()
     dashboard.language_display_var = Variable("Tiếng Việt")
     dashboard.language_combo = None
     dashboard.language_choices = {"English": "en", "Tiếng Việt": "vi"}
@@ -286,6 +936,7 @@ def test_dashboard_language_change_persists_then_relabels_every_live_view(monkey
         dashboard.activity_view,
         dashboard.workspace_log_view,
     ))
+    assert dashboard.navigation_bindings.translators[-1].language == "vi"
     assert messages == [("success", "Đã đổi ngôn ngữ sang Tiếng Việt.")]
 
 

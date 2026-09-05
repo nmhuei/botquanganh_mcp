@@ -158,7 +158,7 @@ No progress for instant display/streaming operations:
 
 Interactive interfaces (own full screens; no uv progress region):
 
-- `bqa ui` — UCS-SecretAgent desktop control center (native Tkinter window); detaches from the
+- `bqa ui` — UCS-SecretAgent desktop control center (native PySide6/Qt Widgets window); detaches from the
   terminal by default via the background launcher (PID in `logs/desktop-ui.pid`,
   follow with `bqa logs launcher -n 100`); `--foreground` and `--detach` also
   detach for compatibility; use `--inline` to keep it attached to the terminal
@@ -198,16 +198,16 @@ command data.
 
 ### UCS-SecretAgent desktop layout
 
-`bqa ui` opens the native Tkinter **UCS-SecretAgent** console. Its thin header
-contains the UCS icon, a runtime badge, and Start, Restart, and Refresh
-actions. Runtime, Workspace Logs, and GPT Activity use the same notebook
-surface; the fixed status strip reports backend state, selected workspace, last
-refresh, SSE state, and the newest short message. The shared visual language is
-a graphite console (`#10151d` background, layered dark surfaces, blue focus),
-with black notebook rails and green tab captions; the smaller inspector tabs in
-Workspace Logs and GPT Activity use the same active/inactive treatment. Textual
-plus color status indicators cover running, success, warning, and error so
-command state never depends on color alone.
+`bqa ui` opens the native PySide6/Qt Widgets **UCS-SecretAgent** console. Its thin header
+contains the unchanged compact UCS emblem, a runtime badge, language selector,
+and Close control. A left navigation rail selects the existing Runtime,
+Workspace Logs, and GPT Activity notebook views; the fixed footer reports
+backend state, selected workspace, last refresh, SSE state, and the newest
+short message. The shared visual language is a graphite security console with
+near-black surfaces, lime only for active/focus state, and semantic teal,
+amber, and coral status accents. Text plus colour always communicate running,
+success, warning, and error states, so command state never depends on colour
+alone.
 
 `BQA_UI_LANGUAGE=en` is the official default language preference for this
 desktop UI; set it to `vi` for Vietnamese. The Language selector persists the
@@ -216,12 +216,17 @@ does not alter terminal CLI output, MCP/API contracts, or journal data. If the
 process already exports `BQA_UI_LANGUAGE`, that environment value wins and the
 selector refuses to write a conflicting `.env` value.
 
-The Runtime tab is a compact property grid. Endpoint can be copied; workspace
-can be selected and then applied without moving lifecycle actions away from the
-header. Workspace Logs keeps up to 500 cached journal rows and exposes category
-chips, a Chat ID filter, an outcome menu, and Clear. Its drag splitter separates
-the table from a Summary, Metadata, and pretty-JSON Payload inspector. A stream
-reset deliberately clears the cursor, cached rows, and selection.
+Runtime is a factual control centre: it shows an overall health banner plus MCP
+Bridge, Server, and Cloudflare Tunnel cards, followed by Start, Stop, Restart,
+Refresh, endpoint-copy, and workspace controls. Stop always asks for a native
+confirmation before taking effect. A confirmed Stop uses the existing managed
+runtime operation to stop the supervisor, MCP server, and Cloudflare tunnel;
+canceling it does nothing. This UI action does not change MCP tools, API
+contracts, lifecycle implementation, or journal data. Workspace Logs keeps up
+to 500 cached journal rows and exposes category chips, a Chat ID filter, an
+outcome menu, and Clear. Its drag splitter separates the table from a Summary,
+Metadata, and pretty-JSON Payload inspector. A stream reset deliberately
+clears the cursor, cached rows, and selection.
 
 The GPT activity rail and COMMAND ACTIVITY table filter only the data already cached by
 the client; no keystroke makes a backend request. Column headings sort the
