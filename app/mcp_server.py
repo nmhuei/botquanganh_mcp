@@ -26,7 +26,7 @@ from app.request_context import (
 )
 
 logger = logging.getLogger("botquanganh_host_mcp")
-FASTMCP_COMPAT_VERSION = "3.4.0"
+FASTMCP_COMPAT_VERSION = "3.4.7"
 
 if getattr(fastmcp, "__version__", "") != FASTMCP_COMPAT_VERSION:
     logger.warning(
@@ -403,7 +403,14 @@ mcp = FastMCP(
         "fetch, use ctf_fetch_url for one read-only GET. Do not scan, fuzz, crawl, or "
         "enumerate unless the user provides explicit scope and limits. After a successful "
         "ctf_fetch_url, use ctf_render_fetch_result with its complete result when an inline "
-        "result card would help the user inspect the response."
+        "result card would help the user inspect the response. "
+        "ALWAYS call ctf_triage_artifact FIRST when you need to identify a file or binary, "
+        "or check its header, format, architecture, or security mitigations. It returns "
+        "magic/format, architecture, checksec (NX, PIE, Canary, RELRO, Stripped), Shannon "
+        "entropy, and suspicious strings in a single read-only call. Do NOT run file, "
+        "checksec, strings, readelf, objdump, or binwalk via host_run_command just to "
+        "identify a file; use ctf_triage_artifact and only fall back to those commands for "
+        "details it does not cover."
     ),
 )
 mcp.add_middleware(MCPForensicsMiddleware())

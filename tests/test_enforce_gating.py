@@ -16,6 +16,7 @@ import pytest
 
 import app.config
 from app.tools.ctf_http import ctf_fetch_url, ctf_render_fetch_result
+from app.tools.ctf_suite import ctf_triage_artifact
 from app.tools.health import HOST_TOOLS
 from app.tools.host import (
     BIND_EXEMPT_TOOLS,
@@ -52,6 +53,7 @@ TOOL_FUNCTIONS = {
     "host_run_command": host_run_command,
     "ctf_fetch_url": ctf_fetch_url,
     "ctf_render_fetch_result": ctf_render_fetch_result,
+    "ctf_triage_artifact": ctf_triage_artifact,
     "host_knowledge": host_knowledge,
     "host_workspace_bind": host_workspace_bind,
     "host_save_note": host_save_note,

@@ -1,17 +1,34 @@
 # BotQuangAnh Host MCP
 
-Máy chủ Host MCP và CLI vận hành `bqa` để thực thi các lệnh cho phép trên máy này qua MCP.
+Máy chủ Host MCP và CLI vận hành `bqa` để thực thi các lệnh cho phép trên máy này qua MCP. Nhánh phát hành hiện tại là `feature/vjp-pro`; nhánh này bao gồm desktop UI, chat workspace isolation và bộ tool CTF `ctf_triage_artifact` đang được dùng trong bản hiện tại.
 
 ## Cài đặt
 
-Yêu cầu: Python >= 3.10, `git` và `uv` (cài nếu thiếu: `curl -LsSf https://astral.sh/uv/install.sh | sh`).
+Yêu cầu: Python >= 3.10, `git` và `uv` (cài nếu thiếu: `curl -LsSf https://astral.sh/uv/install.sh | sh`). Các dependency được khóa trong `uv.lock`, vì vậy mọi máy cài từ nhánh này sẽ nhận đúng dependency đã kiểm thử (`FastMCP 3.4.7`, `httpx 0.28.1`, `python-dotenv 1.2.3`).
+
+Clone đúng nhánh phát hành và chạy installer ngay trong clone:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nmhuei/botquanganh_mcp/main/install.sh | bash
+git clone --branch feature/vjp-pro --single-branch https://github.com/nmhuei/botquanganh_mcp.git
+cd botquanganh_mcp
+./install.sh
+```
+
+Hoặc cài trực tiếp không cần clone thủ công:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nmhuei/botquanganh_mcp/feature/vjp-pro/install.sh | BQA_BRANCH=feature/vjp-pro bash
 ```
 
 Installer sẽ clone repo về `~/.botquanganh_mcp` (nếu chạy ngoài thư mục repo), tạo virtualenv `.venv` bằng `uv venv --seed`,
-cài dependencies và CLI, sinh `.env` từ `.env.example`, rồi symlink `bqa` vào `~/.local/bin/bqa`.
+đồng bộ dependency đúng theo `uv.lock`, sinh `.env` từ `.env.example`, rồi symlink `bqa` vào `~/.local/bin/bqa`.
+
+Mẫu `.env.example` là cấu hình production an toàn, tương đương cách bản này đang chạy: host tool chỉ đọc/ghi trong `~/Downloads/bqa-host-workspace`, chặn đọc `.env*`, workspace theo chat được cô lập và đặt dưới `~/Downloads/bqa-chat-workspaces`. Sau khi cài, tạo thư mục host workspace rồi kiểm tra cấu hình:
+
+```bash
+mkdir -p ~/Downloads/bqa-host-workspace
+bqa config validate
+```
 
 Khởi động service; khi từng thành phần sẵn sàng (server → tunnel → bridge → endpoint), URL connector được in ra như một dòng copy-safe:
 
@@ -25,12 +42,12 @@ Toàn bộ cấu hình nằm trong `.env` ở thư mục repo, được nạp kh
 
 | Khóa | Mặc định | Ý nghĩa |
 | --- | --- | --- |
-| `HOST_WORKSPACE_DIR` | `~` (`$HOME`) | Thư mục gốc mà tool được phép thao tác |
-| `HOST_DEFAULT_DIR` | `~` (`$HOME`) | Thư mục mặc định cho đường dẫn tương đối |
+| `HOST_WORKSPACE_DIR` | `~/Downloads/bqa-host-workspace` | Thư mục gốc mà tool được phép thao tác |
+| `HOST_DEFAULT_DIR` | `~` (`$HOME`) | Thư mục mặc định cho đường dẫn tương đối; vẫn bị giới hạn bởi workspace/scope |
 | `HOST_RESTRICT_TO_WORKSPACE` | `true` | Giới hạn mọi thao tác file nằm trong workspace |
-| `HOST_READ_SCOPE` | *(trống)* | Phạm vi đọc hẹp hơn (mặc định lấy `HOST_WORKSPACE_DIR`) |
-| `HOST_WRITE_SCOPE` | *(trống)* | Phạm vi ghi hẹp hơn (mặc định lấy `HOST_WORKSPACE_DIR`) |
-| `HOST_READ_DENY_GLOBS` | *(trống)* | Danh sách mẫu glob từ chối đọc, phân tách bằng dấu phẩy |
+| `HOST_READ_SCOPE` | `~/Downloads/bqa-host-workspace` | Phạm vi đọc của host tool |
+| `HOST_WRITE_SCOPE` | `~/Downloads/bqa-host-workspace` | Phạm vi ghi của host tool |
+| `HOST_READ_DENY_GLOBS` | `.env,.env.*,**/.env,**/.env.*` | Chặn đọc file môi trường trong cả workspace |
 | `HOST_COMMAND_POLICY` | `guarded` | `guarded` chặn mẫu lệnh phá hủy; `allowlist` chỉ cho phép lệnh được liệt kê |
 | `HOST_ALLOWED_COMMANDS` | `all` | Danh sách lệnh cho phép, phân tách bằng dấu phẩy |
 | `HOST_INHERIT_ENV` | `true` | Kế thừa biến môi trường khi chạy command (đã lọc secret/token) |
@@ -45,17 +62,17 @@ Toàn bộ cấu hình nằm trong `.env` ở thư mục repo, được nạp kh
 | `REQUIRE_AUTH` | `false` | Bật xác thực token cho HTTP API |
 | `GATEWAY_TOKEN` | *(trống)* | Token dùng cùng `REQUIRE_AUTH=true` |
 | `ALLOWED_ORIGINS` | *(trống)* | Danh sách CORS origin cho phép qua HTTP API |
-| `TRUST_PROXY_HEADERS` | `false` | Tin cậy header proxy khi đứng sau Cloudflare Tunnel / reverse proxy |
+| `TRUST_PROXY_HEADERS` | `true` | Tin cậy header proxy khi đứng sau Cloudflare Tunnel / reverse proxy |
 | `HOST_TOOL_CACHE_SECONDS` | `300` | Thời gian cache catalog tool |
 | `ATTRIBUTION_MODE` | `enforce` | Gán thao tác host về chat: `off` / `tag` / `strict` / `enforce` (mặc định yêu cầu bind ID trước khi thao tác) |
 | `BQA_UI_LANGUAGE` | `en` | Ngôn ngữ `bqa ui`: `en` (mặc định) hoặc `vi`; chỉ ảnh hưởng desktop UI |
 | `HOST_CHAT_WORKSPACES` | `true` | Bật tính năng tạo workspace riêng cho từng chat |
-| `HOST_CHAT_ROOT` | `~/Downloads/bqa-workspaces` | Thư mục gốc chứa các chat workspace |
-| `HOST_CHAT_ISOLATE` | `false` | Khóa ghi: không cho ghi ra ngoài workspace riêng của chat |
+| `HOST_CHAT_ROOT` | `~/Downloads/bqa-chat-workspaces` | Thư mục gốc chứa các chat workspace |
+| `HOST_CHAT_ISOLATE` | `true` | Khóa ghi: không cho ghi ra ngoài workspace riêng của chat |
 | `HOST_CHAT_QUOTA_MB` | `2048` | Dung lượng tối đa của một chat workspace (MB) |
 | `HOST_CHAT_IDLE_ARCHIVE_HOURS` | `72` | Số giờ không hoạt động trước khi tự động archive workspace |
 | `HOST_CHAT_RETENTION_DAYS` | `30` | Số ngày lưu giữ workspace trước khi dọn dẹp vĩnh viễn |
-| `HOST_CHAT_MAX_WORKSPACES` | `128` | Giới hạn số lượng workspace tồn tại đồng thời |
+| `HOST_CHAT_MAX_WORKSPACES` | `500` | Giới hạn số lượng workspace tồn tại đồng thời |
 
 `BQA_UI_LANGUAGE` là tuỳ chọn chính thức cho desktop UI; `bqa ui` mặc định
 tiếng Anh và Language selector ghi giá trị `en`/`vi` vào `.env`. Nếu biến này
@@ -116,7 +133,7 @@ bqa help [command]
 
 Khi cần debug runtime, `bqa logs all` gộp log server, tunnel, launcher và audit; REST `GET /api/v1/logs/tail` trả cùng bản chụp qua HTTP. Với log theo chat/workspace, dùng `bqa chats logs <chat_id>` hoặc live SSE `GET /api/v1/activity/stream`; Control Center có tab `Workspace Logs` dùng chính stream này.
 
-Chat workspace cục bộ mặc định nằm dưới `~/Downloads/bqa-workspaces`.
+Chat workspace cục bộ mặc định nằm dưới `~/Downloads/bqa-chat-workspaces`.
 
 Probe sức khỏe trực tiếp: `curl -s http://127.0.0.1:18427/healthz` · endpoint MCP: `<URL>/mcp`.
 
