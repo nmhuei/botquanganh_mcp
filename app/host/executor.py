@@ -7,7 +7,8 @@ import shutil
 import subprocess  # nosec B404
 import threading
 import time
-from typing import Any, BinaryIO, Optional
+import uuid
+from typing import Any, BinaryIO, Callable, Optional
 
 import app.config
 from app.error_contract import ServiceBusyError
@@ -133,6 +134,9 @@ def _drain_limited(pipe: BinaryIO, max_bytes: int, result: dict[str, Any]) -> No
             chunk = pipe.read(64 * 1024)
             if not chunk:
                 break
+            if max_bytes == 0:
+                stored.extend(chunk)
+                continue
             remaining = max_bytes - len(stored)
             if remaining > 0:
                 stored.extend(chunk[:remaining])
@@ -167,6 +171,7 @@ def _execute_host_command_impl(
     *,
     cwd: Optional[str] = None,
     timeout_seconds: int = 30,
+    on_started: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """Execute a command with bounded output, sanitized environment, and cleanup."""
     if not isinstance(timeout_seconds, int):
@@ -184,6 +189,9 @@ def _execute_host_command_impl(
     )
     command_hash = hashlib.sha256(command.encode("utf-8")).hexdigest()
     started = time.monotonic()
+
+    if on_started is not None:
+        on_started(display_host_path(resolved_cwd))
 
     process = subprocess.Popen(  # nosec B603
         [_BASH_PATH, "--noprofile", "--norc", "-c", command],
@@ -257,6 +265,7 @@ def _execute_host_command_impl(
         "stderr_truncated": stderr_truncated,
         "output_incomplete": output_incomplete,
         "duration_ms": duration_ms,
+        "timed_out": timed_out,
         "policy": policy,
     }
     if timed_out:
@@ -277,35 +286,77 @@ def execute_host_command(
     cwd: Optional[str] = None,
     timeout_seconds: int = 30,
     activity_source: str | None = None,
+    activity_chat_id: str | None = None,
+    activity_operation_id: str | None = None,
 ) -> dict[str, Any]:
     """Execute a host command within the configured concurrency capacity."""
     command_capacity.acquire()
     activity_started = time.monotonic()
+    operation_id = (
+        activity_operation_id or f"act-{uuid.uuid4().hex}"
+        if activity_source == "mcp"
+        else None
+    )
+    started_cwd: str | None = None
+
+    def record_activity(
+        *, cwd_value: str, result_value: dict[str, Any], phase: str, status: str
+    ) -> None:
+        if activity_source != "mcp":
+            return
+        record_mcp_command_activity(
+            command=command,
+            cwd=cwd_value,
+            chat_id=activity_chat_id,
+            operation_id=operation_id,
+            phase=phase,
+            status=status,
+            result=result_value,
+        )
+
+    def record_started(resolved_cwd: str) -> None:
+        nonlocal started_cwd
+        started_cwd = resolved_cwd
+        record_activity(
+            cwd_value=resolved_cwd,
+            result_value={"ok": False, "stdout": "", "stderr": ""},
+            phase="started",
+            status="running",
+        )
+
     try:
         try:
             result = _execute_host_command_impl(
                 command,
                 cwd=cwd,
                 timeout_seconds=timeout_seconds,
+                on_started=record_started if activity_source == "mcp" else None,
             )
         except Exception as exc:
-            if activity_source == "mcp":
-                record_mcp_command_activity(
-                    command=command,
-                    cwd=cwd or ".",
-                    result={
-                        "ok": False,
-                        "stderr": str(exc),
-                        "duration_ms": int((time.monotonic() - activity_started) * 1000),
-                    },
-                )
-            raise
-        if activity_source == "mcp":
-            record_mcp_command_activity(
-                command=command,
-                cwd=str(result.get("cwd", cwd or ".")),
-                result=result,
+            record_activity(
+                cwd_value=started_cwd or cwd or ".",
+                result_value={
+                    "ok": False,
+                    "stderr": str(exc),
+                    "duration_ms": int((time.monotonic() - activity_started) * 1000),
+                },
+                phase="completed",
+                status="failed",
             )
+            raise
+        status = (
+            "timed_out"
+            if result.get("timed_out")
+            else "succeeded"
+            if result.get("ok")
+            else "failed"
+        )
+        record_activity(
+            cwd_value=str(result.get("cwd", cwd or ".")),
+            result_value=result,
+            phase="completed",
+            status=status,
+        )
         return result
     finally:
         command_capacity.release()

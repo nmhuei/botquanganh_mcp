@@ -72,7 +72,22 @@ def test_rejects_non_public_or_non_https_urls(url, public_dns):
         fetch_ctf_url(url)
 
 
+import app.config
+
+
+@pytest.fixture(autouse=True)
+def default_env(monkeypatch):
+    monkeypatch.setattr(app.config, "ATTRIBUTION_MODE", "off", raising=False)
+
+
 def test_tool_returns_shared_error_for_invalid_url():
     result = ctf_fetch_url("http://challenge.example/")
     assert result["ok"] is False
     assert result["error"]["code"] == "INVALID_ARGUMENT"
+
+
+def test_tool_gated_under_enforce(monkeypatch):
+    monkeypatch.setattr(app.config, "ATTRIBUTION_MODE", "enforce", raising=False)
+    result = ctf_fetch_url("https://challenge.example/")
+    assert result["ok"] is False
+    assert result["error"]["code"] == "E6"

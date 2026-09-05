@@ -244,11 +244,11 @@ Health exposes:
 ### Liveness checks under load
 
 Use `/healthz` when checking whether the server is alive under load: it bypasses
-the REST blocking pool and always answers, even during command storms.
-`/api/v1/*` endpoints share the 16-slot blocking limiter, so they may queue
-behind long-running commands and appear unresponsive while the server is
-healthy (**pending fix**: a routing change is expected to move `/api/v1/*` off
-the shared limiter — update this entry once it merges).
+the REST blocking pool and always answers, even during command storms. Cheap
+in-memory REST handlers such as health, capabilities, and jobs also use the
+non-blocking fast path. Filesystem, command, log-tail, and activity requests
+that touch disk or other blocking resources continue to use the shared
+16-slot limiter so expensive work remains bounded.
 
 Audit logs rotate according to:
 
@@ -257,7 +257,65 @@ AUDIT_LOG_MAX_BYTES=10000000
 AUDIT_LOG_BACKUP_COUNT=5
 ```
 
-## 9. Production checklist
+## 9. Quan sát & dọn dẹp
+
+### Watch every log from one place
+
+`bqa logs all` merges server, tunnel, launcher, and audit output into a single
+view, prefixing each line with its `[source]` tag. The shared filters work on
+the merged view; `-f` follows all sources at once.
+
+```bash
+bqa logs all -n 200                  # last 200 merged lines
+bqa logs all --since 10m             # entries newer than ten minutes
+bqa logs all --grep error            # only lines containing "error"
+bqa logs all -f --grep Traceback     # follow all sources, filtered live
+bqa logs all --json                  # machine-readable snapshot (--quiet drops headers)
+```
+
+The same snapshot is available over REST without following:
+
+```bash
+curl -s "http://127.0.0.1:18427/api/v1/logs/tail?lines=100&grep=error"
+```
+
+Query parameters: `sources` (comma-separated stream names; defaults to all),
+`lines` (capped at 500), `grep`. The endpoint is stateless — one snapshot per
+request, no follow mode.
+
+### Lifecycle sweeper for chat workspaces
+
+Plan first, apply deliberately. Without `--apply` the sweeper is a dry run:
+
+```bash
+python -m app.chat_sweeper           # dry-run: prints planned actions only
+python -m app.chat_sweeper --apply   # archive/delete for real
+./scripts/sweep_chat_workspaces.sh   # shell wrapper around the same sweep
+```
+
+Automation: the managed supervisor triggers the sweep once per hour
+(`HOST_CHAT_SWEEP_INTERVAL_MINUTES`, default `60`) and the gate only fires when
+chat workspaces are enabled (`HOST_CHAT_WORKSPACES=true`). Sweeps run by the
+supervisor stay dry-run unless `HOST_CHAT_SWEEP_APPLY=true`.
+
+The sweep acts in order: delete archived workspaces past retention, archive
+idle ones, then enforce workspace count and root footprint thresholds.
+
+### Where the underlying files live
+
+You rarely need these directly — `bqa logs all` and `/api/v1/logs/tail`
+aggregate everything below.
+
+| File | Content |
+| --- | --- |
+| `logs/server.log` | MCP bridge/server runtime output |
+| `logs/cloudflared.log` | Quick Tunnel process output |
+| `logs/launcher.log` | Desktop UI / background launcher output |
+| `logs/gateway.log` | Rotating audit trail (`AUDIT_LOG_*` controls rotation) |
+| `<HOST_CHAT_ROOT>/<chat_id>/journal.jsonl` | Per-chat activity journal |
+| `<HOST_CHAT_ROOT>/.archive/<chat_id>/` | Archived workspaces awaiting retention deletion |
+
+## 10. Production checklist
 
 Before deployment:
 
@@ -269,3 +327,16 @@ Before deployment:
 6. Confirm no uncommitted or unreviewed changes.
 7. Confirm request-rate limits and host resources are appropriate for expected parallel load.
 8. Record rollback and recovery commands.
+
+
+### Live workspace journal stream
+
+For per-chat structured operation logs, prefer `/api/v1/activity/stream` over repeatedly tailing `journal.jsonl` by hand. The endpoint is an SSE stream with bounded replay, `Last-Event-ID` resume, reconnect hints, heartbeat comments, and the same workspace classification filters as `/api/v1/activity`.
+
+```bash
+curl -N \
+  -H 'Accept: text/event-stream' \
+  'http://127.0.0.1:18427/api/v1/activity/stream?severity=ERROR&replay=50'
+```
+
+If a reverse proxy is introduced, verify that it does not buffer `text/event-stream`; the application sends `X-Accel-Buffering: no` and `Cache-Control: no-cache, no-transform`. The BQA desktop Control Center reconnects automatically and resumes from the last event id.

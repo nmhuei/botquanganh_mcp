@@ -5,7 +5,6 @@ import pytest
 
 import app.config
 import app.host.executor as executor
-from app.error_contract import ServiceBusyError
 from app.host.executor import CommandCapacity, execute_host_command
 
 

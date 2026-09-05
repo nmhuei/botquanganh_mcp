@@ -117,6 +117,35 @@ def redact_sensitive_data(data: Any) -> Any:
     return data
 
 
+# Mirrors the validated values in app.config; unknown settings degrade to "off".
+ATTRIBUTION_MODES = frozenset({"off", "tag", "strict", "enforce"})
+
+
+def effective_attribution_mode() -> str:
+    """Read ``ATTRIBUTION_MODE`` defensively; unknown values degrade to "off".
+
+    Read through getattr instead of a top-level import so callers can
+    monkeypatch app.config at runtime and so partial deployments stay inert.
+    """
+    from app import config as config_module
+
+    raw = str(getattr(config_module, "ATTRIBUTION_MODE", "") or "").strip().lower()
+    return raw if raw in ATTRIBUTION_MODES else "off"
+
+
+def stamp_chat_id(details: Dict[str, Any], chat_id: str | None) -> Dict[str, Any]:
+    """Stamping hook: attach ``chat_id`` to an audit payload.
+
+    "off" never records anything; "tag" and "strict" record whenever a chat id
+    is supplied.  The mapping is mutated in place and returned either way so a
+    caller can decide afterwards whether anything was worth emitting.
+    """
+    if not chat_id or effective_attribution_mode() == "off":
+        return details
+    details["chat_id"] = chat_id
+    return details
+
+
 def log_audit_event(event_type: str, details: Dict[str, Any] | None = None) -> None:
     """Write a versioned, redacted audit event to console and rotating JSONL log."""
     clean_details = redact_sensitive_data(details or {})

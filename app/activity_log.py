@@ -38,7 +38,14 @@ def _rotate_if_needed(path: Path) -> None:
 
 
 def record_mcp_command_activity(
-    *, command: str, cwd: str, result: dict[str, Any]
+    *,
+    command: str,
+    cwd: str,
+    result: dict[str, Any],
+    chat_id: str | None = None,
+    operation_id: str | None = None,
+    phase: str | None = None,
+    status: str | None = None,
 ) -> None:
     """Append a redacted command/result record for the local desktop UI.
 
@@ -67,6 +74,17 @@ def record_mcp_command_activity(
         "stdout_truncated": bool(result.get("stdout_truncated", False)) or stdout_limited,
         "stderr_truncated": bool(result.get("stderr_truncated", False)) or stderr_limited,
     }
+    if chat_id:
+        # The command transcript is already a local 0600 operator journal.
+        # Keep the opaque chat id beside it so the desktop UI can group calls
+        # by the workplace folder that initiated them.
+        record["chat_id"] = str(chat_id)
+    if operation_id:
+        record["operation_id"] = str(operation_id)
+    if phase:
+        record["phase"] = str(phase)
+    if status:
+        record["status"] = str(status)
     encoded = (json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n").encode(
         "utf-8"
     )

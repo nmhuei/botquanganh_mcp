@@ -8,8 +8,12 @@ import tempfile
 from pathlib import Path
 from typing import Any, Mapping
 
+from app.config import value_loaded_from_dotenv
+
 
 SECRET_MARKERS = ("TOKEN", "SECRET", "PASSWORD", "PASSWD", "API_KEY", "PRIVATE_KEY")
+DEFAULT_UI_LANGUAGE = "en"
+SUPPORTED_UI_LANGUAGES = ("en", "vi")
 DEFAULTS: dict[str, str] = {
     "MCP_BIND_HOST": "127.0.0.1",
     "MCP_CONNECT_HOST": "127.0.0.1",
@@ -20,8 +24,13 @@ DEFAULTS: dict[str, str] = {
     "REQUIRE_AUTH": "false",
     "GATEWAY_TOKEN": str(),
     "TRUST_PROXY_HEADERS": "false",
+    "ALLOWED_ORIGINS": "",
     "HOST_WORKSPACE_DIR": str(Path.home()),
     "HOST_RESTRICT_TO_WORKSPACE": "true",
+    "HOST_DEFAULT_DIR": str(Path.home()),
+    "HOST_READ_SCOPE": "",
+    "HOST_WRITE_SCOPE": "",
+    "HOST_READ_DENY_GLOBS": "",
     "HOST_COMMAND_POLICY": "guarded",
     "HOST_ALLOWED_COMMANDS": "all",
     "HOST_INHERIT_ENV": "true",
@@ -29,14 +38,29 @@ DEFAULTS: dict[str, str] = {
     "HOST_KNOWLEDGE_DIR": "./knowledge",
     "HOST_TOOL_CACHE_SECONDS": "300",
     "MAX_SINGLE_FILE_BYTES": "3000000",
-    "MAX_OUTPUT_BYTES": "500000",
+    "MAX_OUTPUT_BYTES": "0",
     "MAX_TIMEOUT_SECONDS": "60",
     "MAX_CONCURRENT_COMMANDS": "100",
     "COMMAND_QUEUE_TIMEOUT_SECONDS": "2",
+    "SEARCH_TEXT_DEADLINE_SECONDS": "15",
     "LOG_FILE": "./logs/gateway.log",
     "AUDIT_LOG_MAX_BYTES": "10000000",
     "AUDIT_LOG_BACKUP_COUNT": "5",
     "AUDIT_MAX_FIELD_CHARS": "4000",
+    "ATTRIBUTION_MODE": "enforce",
+    "HOST_CHAT_WORKSPACES": "true",
+    "HOST_CHAT_ROOT": str(Path.home() / "Downloads" / "bqa-workspaces"),
+    "HOST_CHAT_IDLE_ARCHIVE_HOURS": "72",
+    "HOST_CHAT_RETENTION_DAYS": "30",
+    "HOST_CHAT_MAX_WORKSPACES": "128",
+    "HOST_CHAT_QUOTA_MB": "2048",
+    "HOST_CHAT_ISOLATE": "false",
+    "HOST_CHAT_RESUME_HINT_MINUTES": "30",
+    "HOST_CHAT_ROOT_MAX_GB": "24",
+    "HOST_CHAT_JOURNAL_MAX_BYTES": "8388608",
+    "HOST_CHAT_SWEEP_INTERVAL_MINUTES": "60",
+    "HOST_CHAT_SWEEP_APPLY": "false",
+    "BQA_UI_LANGUAGE": DEFAULT_UI_LANGUAGE,
 }
 
 _BOOLEAN_KEYS = (
@@ -46,20 +70,32 @@ _BOOLEAN_KEYS = (
     "TRUST_PROXY_HEADERS",
     "HOST_RESTRICT_TO_WORKSPACE",
     "HOST_INHERIT_ENV",
+    "HOST_CHAT_WORKSPACES",
+    "HOST_CHAT_ISOLATE",
+    "HOST_CHAT_SWEEP_APPLY",
 )
 _INTEGER_LIMITS: dict[str, tuple[int, int | None]] = {
     "MCP_PORT": (1, 65535),
     "HOST_TOOL_CACHE_SECONDS": (0, None),
     "MAX_SINGLE_FILE_BYTES": (1, None),
-    "MAX_OUTPUT_BYTES": (1, None),
+    "MAX_OUTPUT_BYTES": (0, None),
     "MAX_TIMEOUT_SECONDS": (1, None),
     "MAX_CONCURRENT_COMMANDS": (1, 1024),
     "AUDIT_LOG_MAX_BYTES": (1024, None),
     "AUDIT_LOG_BACKUP_COUNT": (1, 1000),
     "AUDIT_MAX_FIELD_CHARS": (256, None),
+    "HOST_CHAT_IDLE_ARCHIVE_HOURS": (0, None),
+    "HOST_CHAT_RETENTION_DAYS": (0, None),
+    "HOST_CHAT_MAX_WORKSPACES": (1, None),
+    "HOST_CHAT_QUOTA_MB": (0, None),
+    "HOST_CHAT_RESUME_HINT_MINUTES": (0, None),
+    "HOST_CHAT_JOURNAL_MAX_BYTES": (1024, None),
+    "HOST_CHAT_SWEEP_INTERVAL_MINUTES": (1, None),
 }
 _FLOAT_LIMITS: dict[str, tuple[float, float | None]] = {
     "COMMAND_QUEUE_TIMEOUT_SECONDS": (0.0, None),
+    "SEARCH_TEXT_DEADLINE_SECONDS": (0.0, None),
+    "HOST_CHAT_ROOT_MAX_GB": (0.0, None),
 }
 _TRUE_VALUES = {"1", "true", "yes", "on"}
 _FALSE_VALUES = {"0", "false", "no", "off"}
@@ -111,30 +147,8 @@ def _dotenv_quote(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def set_workspace_config(repo_root: Path, raw_workspace: str) -> dict[str, str]:
-    """Persist a selected existing directory as the restricted host workspace.
-
-    The desktop UI intentionally updates both workspace and default directory so
-    the server's directory policy remains internally consistent after restart.
-    Explicit environment variables take priority over ``.env`` at runtime, so
-    refuse a misleading update when an operator exported either setting.
-    """
-    if any(key in os.environ for key in ("HOST_WORKSPACE_DIR", "HOST_DEFAULT_DIR")):
-        raise ValueError(
-            "HOST_WORKSPACE_DIR or HOST_DEFAULT_DIR is set in the current environment; "
-            "unset it before changing the workspace through the UI."
-        )
-
-    if not isinstance(raw_workspace, str) or not raw_workspace.strip():
-        raise ValueError("Selected workspace must be an existing directory.")
-    selected = Path(raw_workspace).expanduser().resolve(strict=False)
-    if not selected.is_dir():
-        raise ValueError("Selected workspace must be an existing directory.")
-
-    updates = {
-        "HOST_WORKSPACE_DIR": str(selected),
-        "HOST_DEFAULT_DIR": str(selected),
-    }
+def _persist_env_updates(repo_root: Path, updates: Mapping[str, str]) -> dict[str, str]:
+    """Atomically persist selected non-secret settings while preserving .env mode."""
     env_path = repo_root / ".env"
     try:
         existing = env_path.read_text(encoding="utf-8") if env_path.exists() else ""
@@ -142,7 +156,8 @@ def set_workspace_config(repo_root: Path, raw_workspace: str) -> dict[str, str]:
     except OSError as exc:
         raise ValueError(f"Unable to read configuration file: {exc}") from exc
 
-    pattern = re.compile(r"^(?P<prefix>\s*)(?P<key>HOST_WORKSPACE_DIR|HOST_DEFAULT_DIR)\s*=.*$")
+    key_pattern = "|".join(re.escape(key) for key in updates)
+    pattern = re.compile(rf"^(?P<prefix>\s*)(?P<key>{key_pattern})\s*=.*$")
     found: set[str] = set()
     rendered: list[str] = []
     for line in existing.splitlines():
@@ -174,7 +189,57 @@ def set_workspace_config(repo_root: Path, raw_workspace: str) -> dict[str, str]:
     except OSError as exc:
         raise ValueError(f"Unable to save configuration file: {exc}") from exc
 
-    return updates
+    return {key: str(value) for key, value in updates.items()}
+
+
+def normalize_desktop_ui_language(value: object) -> str:
+    """Return one supported desktop language or reject the setting explicitly."""
+    language = str(value or DEFAULT_UI_LANGUAGE).strip().lower()
+    if language not in SUPPORTED_UI_LANGUAGES:
+        raise ValueError("BQA_UI_LANGUAGE must be en or vi.")
+    return language
+
+
+def set_desktop_ui_language(repo_root: Path, raw_language: str) -> dict[str, str]:
+    """Persist the desktop language unless the process explicitly overrides it."""
+    if "BQA_UI_LANGUAGE" in os.environ and not value_loaded_from_dotenv("BQA_UI_LANGUAGE"):
+        raise ValueError(
+            "BQA_UI_LANGUAGE is set in the current environment; unset it before "
+            "changing language through the UI."
+        )
+    return _persist_env_updates(
+        repo_root,
+        {"BQA_UI_LANGUAGE": normalize_desktop_ui_language(raw_language)},
+    )
+
+
+def set_workspace_config(repo_root: Path, raw_workspace: str) -> dict[str, str]:
+    """Persist a selected existing directory as the restricted host workspace.
+
+    The desktop UI intentionally updates both workspace and default directory so
+    the server's directory policy remains internally consistent after restart.
+    Explicit environment variables take priority over ``.env`` at runtime, so
+    refuse a misleading update when an operator exported either setting.
+    """
+    if any(key in os.environ for key in ("HOST_WORKSPACE_DIR", "HOST_DEFAULT_DIR")):
+        raise ValueError(
+            "HOST_WORKSPACE_DIR or HOST_DEFAULT_DIR is set in the current environment; "
+            "unset it before changing the workspace through the UI."
+        )
+
+    if not isinstance(raw_workspace, str) or not raw_workspace.strip():
+        raise ValueError("Selected workspace must be an existing directory.")
+    selected = Path(raw_workspace).expanduser().resolve(strict=False)
+    if not selected.is_dir():
+        raise ValueError("Selected workspace must be an existing directory.")
+
+    return _persist_env_updates(
+        repo_root,
+        {
+            "HOST_WORKSPACE_DIR": str(selected),
+            "HOST_DEFAULT_DIR": str(selected),
+        },
+    )
 
 
 def safe_config(values: Mapping[str, str]) -> dict[str, str]:
@@ -232,6 +297,13 @@ def validate_config(
             raw,
         )
 
+    ui_language = str(values.get("BQA_UI_LANGUAGE", DEFAULT_UI_LANGUAGE)).strip().lower()
+    add(
+        "config_bqa_ui_language",
+        "pass" if ui_language in SUPPORTED_UI_LANGUAGES else "fail",
+        ui_language if ui_language in SUPPORTED_UI_LANGUAGES else f"{ui_language}; expected en or vi",
+    )
+
     for key, (minimum, maximum) in _INTEGER_LIMITS.items():
         valid, rendered = _parse_integer(values.get(key, DEFAULTS[key]), minimum, maximum)
         add(f"config_{key.lower()}", "pass" if valid else "fail", rendered)
@@ -266,6 +338,13 @@ def validate_config(
         "command_policy",
         "pass" if policy in {"guarded", "allowlist"} else "fail",
         policy,
+    )
+
+    mode = values.get("ATTRIBUTION_MODE", "off").strip().lower()
+    add(
+        "attribution_mode",
+        "pass" if mode in {"off", "tag", "strict", "enforce"} else "fail",
+        mode,
     )
 
     auth_required = bool_value(values, "REQUIRE_AUTH", False)

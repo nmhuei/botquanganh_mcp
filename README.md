@@ -1,17 +1,34 @@
 # BotQuangAnh Host MCP
 
-Máy chủ Host MCP và CLI vận hành `bqa` để thực thi các lệnh cho phép trên máy này qua MCP.
+Máy chủ Host MCP và CLI vận hành `bqa` để thực thi các lệnh cho phép trên máy này qua MCP. Nhánh phát hành hiện tại là `feature/vjp-pro`; nhánh này bao gồm desktop UI, chat workspace isolation và bộ tool CTF `ctf_triage_artifact` đang được dùng trong bản hiện tại.
 
 ## Cài đặt
 
-Yêu cầu: Python >= 3.10, `git` và `uv` (cài nếu thiếu: `curl -LsSf https://astral.sh/uv/install.sh | sh`).
+Yêu cầu: Python >= 3.10, `git` và `uv` (cài nếu thiếu: `curl -LsSf https://astral.sh/uv/install.sh | sh`). Các dependency được khóa trong `uv.lock`, vì vậy mọi máy cài từ nhánh này sẽ nhận đúng dependency đã kiểm thử (`FastMCP 3.4.7`, `httpx 0.28.1`, `python-dotenv 1.2.3`).
+
+Clone đúng nhánh phát hành và chạy installer ngay trong clone:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nmhuei/botquanganh_mcp/main/install.sh | bash
+git clone --branch feature/vjp-pro --single-branch https://github.com/nmhuei/botquanganh_mcp.git
+cd botquanganh_mcp
+./install.sh
+```
+
+Hoặc cài trực tiếp không cần clone thủ công:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nmhuei/botquanganh_mcp/feature/vjp-pro/install.sh | BQA_BRANCH=feature/vjp-pro bash
 ```
 
 Installer sẽ clone repo về `~/.botquanganh_mcp` (nếu chạy ngoài thư mục repo), tạo virtualenv `.venv` bằng `uv venv --seed`,
-cài dependencies và CLI, sinh `.env` từ `.env.example`, rồi symlink `bqa` vào `~/.local/bin/bqa`.
+đồng bộ dependency đúng theo `uv.lock`, sinh `.env` từ `.env.example`, rồi symlink `bqa` vào `~/.local/bin/bqa`.
+
+Mẫu `.env.example` là cấu hình production an toàn, tương đương cách bản này đang chạy: host tool chỉ đọc/ghi trong `~/Downloads/bqa-host-workspace`, chặn đọc `.env*`, workspace theo chat được cô lập và đặt dưới `~/Downloads/bqa-chat-workspaces`. Sau khi cài, tạo thư mục host workspace rồi kiểm tra cấu hình:
+
+```bash
+mkdir -p ~/Downloads/bqa-host-workspace
+bqa config validate
+```
 
 Khởi động service; khi từng thành phần sẵn sàng (server → tunnel → bridge → endpoint), URL connector được in ra như một dòng copy-safe:
 
@@ -25,18 +42,41 @@ Toàn bộ cấu hình nằm trong `.env` ở thư mục repo, được nạp kh
 
 | Khóa | Mặc định | Ý nghĩa |
 | --- | --- | --- |
-| `HOST_WORKSPACE_DIR` | `$HOME` | Thư mục gốc mà tool được phép thao tác |
-| `HOST_DEFAULT_DIR` | = `HOST_WORKSPACE_DIR` | Thư mục mặc định cho đường dẫn tương đối |
+| `HOST_WORKSPACE_DIR` | `~/Downloads/bqa-host-workspace` | Thư mục gốc mà tool được phép thao tác |
+| `HOST_DEFAULT_DIR` | `~` (`$HOME`) | Thư mục mặc định cho đường dẫn tương đối; vẫn bị giới hạn bởi workspace/scope |
+| `HOST_RESTRICT_TO_WORKSPACE` | `true` | Giới hạn mọi thao tác file nằm trong workspace |
+| `HOST_READ_SCOPE` | `~/Downloads/bqa-host-workspace` | Phạm vi đọc của host tool |
+| `HOST_WRITE_SCOPE` | `~/Downloads/bqa-host-workspace` | Phạm vi ghi của host tool |
+| `HOST_READ_DENY_GLOBS` | `.env,.env.*,**/.env,**/.env.*` | Chặn đọc file môi trường trong cả workspace |
 | `HOST_COMMAND_POLICY` | `guarded` | `guarded` chặn mẫu lệnh phá hủy; `allowlist` chỉ cho phép lệnh được liệt kê |
 | `HOST_ALLOWED_COMMANDS` | `all` | Danh sách lệnh cho phép, phân tách bằng dấu phẩy |
+| `HOST_INHERIT_ENV` | `true` | Kế thừa biến môi trường khi chạy command (đã lọc secret/token) |
+| `HOST_ENV_ALLOWLIST` | *(trống)* | Danh sách biến môi trường cho phép thêm khi chạy command |
 | `MAX_CONCURRENT_COMMANDS` | `100` | Số lệnh chạy đồng thời tối đa |
-| `MAX_TIMEOUT_SECONDS` | `60` | Thời gian chờ tối đa của một lệnh |
-| `MAX_OUTPUT_BYTES` | `500000` | Giới hạn byte stdout/stderr trả về |
+| `MAX_TIMEOUT_SECONDS` | `60` | Thời gian chờ tối đa của một lệnh (giây) |
+| `MAX_OUTPUT_BYTES` | `0` | Giới hạn byte stdout/stderr trả về cho mỗi stream; `0` là không giới hạn |
+| `MAX_SINGLE_FILE_BYTES` | `3000000` | Giới hạn kích thước file tối đa khi đọc/ghi |
+| `SEARCH_TEXT_DEADLINE_SECONDS` | `15` | Giới hạn thời gian quét text đệ quy trước khi trả kết quả một phần |
 | `MCP_PORT` | `18427` | Cổng MCP bridge cục bộ |
 | `MCP_BIND_HOST` | `127.0.0.1` | Địa chỉ bind của bridge |
 | `REQUIRE_AUTH` | `false` | Bật xác thực token cho HTTP API |
 | `GATEWAY_TOKEN` | *(trống)* | Token dùng cùng `REQUIRE_AUTH=true` |
+| `ALLOWED_ORIGINS` | *(trống)* | Danh sách CORS origin cho phép qua HTTP API |
+| `TRUST_PROXY_HEADERS` | `true` | Tin cậy header proxy khi đứng sau Cloudflare Tunnel / reverse proxy |
 | `HOST_TOOL_CACHE_SECONDS` | `300` | Thời gian cache catalog tool |
+| `ATTRIBUTION_MODE` | `enforce` | Gán thao tác host về chat: `off` / `tag` / `strict` / `enforce` (mặc định yêu cầu bind ID trước khi thao tác) |
+| `BQA_UI_LANGUAGE` | `en` | Ngôn ngữ `bqa ui`: `en` (mặc định) hoặc `vi`; chỉ ảnh hưởng desktop UI |
+| `HOST_CHAT_WORKSPACES` | `true` | Bật tính năng tạo workspace riêng cho từng chat |
+| `HOST_CHAT_ROOT` | `~/Downloads/bqa-chat-workspaces` | Thư mục gốc chứa các chat workspace |
+| `HOST_CHAT_ISOLATE` | `true` | Khóa ghi: không cho ghi ra ngoài workspace riêng của chat |
+| `HOST_CHAT_QUOTA_MB` | `2048` | Dung lượng tối đa của một chat workspace (MB) |
+| `HOST_CHAT_IDLE_ARCHIVE_HOURS` | `72` | Số giờ không hoạt động trước khi tự động archive workspace |
+| `HOST_CHAT_RETENTION_DAYS` | `30` | Số ngày lưu giữ workspace trước khi dọn dẹp vĩnh viễn |
+| `HOST_CHAT_MAX_WORKSPACES` | `500` | Giới hạn số lượng workspace tồn tại đồng thời |
+
+`BQA_UI_LANGUAGE` là tuỳ chọn chính thức cho desktop UI; `bqa ui` mặc định
+tiếng Anh và Language selector ghi giá trị `en`/`vi` vào `.env`. Nếu biến này
+đã được export trong môi trường hiện tại, selector sẽ từ chối ghi đè `.env`.
 
 ## Cách dùng
 
@@ -51,8 +91,9 @@ bqa server restart     # chỉ restart bridge cục bộ
 bqa server status      # trạng thái riêng của bridge
 bqa url                # in URL connector (--quiet: chỉ chuỗi URL)
 # Interface
-bqa ui                 # BQA Control Center trên desktop
-bqa ui --detach        # mở cửa sổ desktop tách khỏi terminal
+bqa ui                 # UCS-SecretAgent trên desktop, chạy nền
+bqa ui --foreground    # tương thích: vẫn mở UI chạy nền
+bqa ui --inline         # giữ UI gắn với terminal cho đến khi đóng cửa sổ
 bqa tui                # bản TUI trong terminal (dùng khi SSH/headless)
 # Inspection
 bqa status             # trạng thái runtime tổng thể
@@ -61,6 +102,14 @@ bqa capabilities       # capabilities của service
 bqa capabilities --tools|--limits|--host      # lọc: tools / limits / host
 bqa knowledge overview|guide|tools|search|all # guides + catalog tool (--query để lọc)
 bqa logs <server|tunnel|launcher|audit|follow> [-n 100] [-f] [--since 10m] [--grep TEXT]
+bqa logs all [-n 100] [-f] [--since 10m] [--grep TEXT]   # gộp cả 4 nguồn log, tiền tố [source]
+bqa chats list                                # liệt kê chat workspace cục bộ theo hoạt động gần nhất
+bqa chats show <chat_id>                      # xem path, STATE.md và thống kê journal
+bqa chats logs <chat_id> [--min-severity warn] [--category process]  # log phân loại/redact
+bqa chats archive|restore <chat_id>            # quản lý vòng đời workspace
+bqa chats delete <chat_id> --yes               # xóa vĩnh viễn workspace đã archive
+bqa chats prune [--apply]                      # dry-run/apply lifecycle sweep
+bqa chats stats                                # số lượng và dung lượng workspace
 # Files & commands
 bqa fs ls [path] --max 500                    # liệt kê thư mục (mặc định workspace root)
 bqa fs cat <path> --lines 1:50                # đọc file UTF-8 (--max-bytes N)
@@ -82,4 +131,12 @@ bqa version
 bqa help [command]
 ```
 
+Khi cần debug runtime, `bqa logs all` gộp log server, tunnel, launcher và audit; REST `GET /api/v1/logs/tail` trả cùng bản chụp qua HTTP. Với log theo chat/workspace, dùng `bqa chats logs <chat_id>` hoặc live SSE `GET /api/v1/activity/stream`; Control Center có tab `Workspace Logs` dùng chính stream này.
+
+Chat workspace cục bộ mặc định nằm dưới `~/Downloads/bqa-chat-workspaces`.
+
 Probe sức khỏe trực tiếp: `curl -s http://127.0.0.1:18427/healthz` · endpoint MCP: `<URL>/mcp`.
+
+## Tài liệu
+
+[Kiến trúc](docs/ARCHITECTURE.md) · [Vận hành](docs/OPERATIONS_RUNBOOK.md) · [Checklist phát hành](docs/RELEASE_CHECKLIST.md) · [Bảo mật](SECURITY.md) · [Giao diện CLI](docs/CLI_UI.md) · [Chat workspaces](docs/CHAT_WORKSPACES.md)
