@@ -97,3 +97,12 @@ def test_desktop_ui_language_rejects_invalid_value_and_environment_override(
         "status": "fail",
         "message": "fr; expected en or vi",
     }
+
+
+def test_config_validation_accepts_zero_for_unlimited_command_output(tmp_path):
+    checks = {
+        item["name"]: item
+        for item in validate_config(tmp_path, {**DEFAULTS, "MAX_OUTPUT_BYTES": "0"})
+    }
+
+    assert checks["config_max_output_bytes"]["status"] == "pass"

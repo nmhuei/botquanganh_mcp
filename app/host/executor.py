@@ -134,6 +134,9 @@ def _drain_limited(pipe: BinaryIO, max_bytes: int, result: dict[str, Any]) -> No
             chunk = pipe.read(64 * 1024)
             if not chunk:
                 break
+            if max_bytes == 0:
+                stored.extend(chunk)
+                continue
             remaining = max_bytes - len(stored)
             if remaining > 0:
                 stored.extend(chunk[:remaining])
