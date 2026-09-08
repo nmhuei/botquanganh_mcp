@@ -102,6 +102,29 @@
       --mint: #10b981; --sky: #0284c7;
     }
 
+    /* ===== VJP-PRO SUITE THEMES ===== */
+    html[data-theme="vjp-terminal"] {
+      --bg-base: #090d0c; --bg-header: #101615; --bg-surface: #121918; --bg-card: #17211f;
+      --bg-selected: #202b28; --bg-console: #060908; --border: #2a3632; --border-hover: #a3ff12;
+      --accent: #a3ff12; --accent-soft: rgba(163, 255, 18, 0.2);
+      --text-main: #f2f5f2; --text-sub: #a9b5af; --text-dim: #81908a;
+      --mint: #a3ff12; --sky: #42d5ad;
+    }
+    html[data-theme="vjp-command"] {
+      --bg-base: #0c1211; --bg-header: #101615; --bg-surface: #151e1b; --bg-card: #1b2522;
+      --bg-selected: #24332e; --bg-console: #080c0b; --border: #273631; --border-hover: #42d5ad;
+      --accent: #42d5ad; --accent-soft: rgba(66, 213, 173, 0.2);
+      --text-main: #f2f5f2; --text-sub: #a9b5af; --text-dim: #73827c;
+      --mint: #42d5ad; --sky: #38bdf8;
+    }
+    html[data-theme="vjp-light"] {
+      --bg-base: #f4f6f5; --bg-header: #ffffff; --bg-surface: #ffffff; --bg-card: #eef2f0;
+      --bg-selected: #dde5e1; --bg-console: #090d0c; --border: #d4ded9; --border-hover: #2e8b57;
+      --accent: #2e8b57; --accent-soft: rgba(46, 139, 87, 0.15);
+      --text-main: #0c1211; --text-sub: #4a5c55; --text-dim: #7a8f87;
+      --mint: #10b981; --sky: #0284c7;
+    }
+
     body {
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       -webkit-font-smoothing: antialiased;
@@ -351,6 +374,41 @@
   </style>
 </head>
 <body class="antialiased h-screen flex flex-col overflow-hidden select-none font-sans relative">
+
+  <!-- ==================== BOOT SCREEN OVERLAY ==================== -->
+  <div id="bootScreen" class="fixed inset-0 z-[9999] flex flex-col items-center justify-center transition-opacity duration-500 bg-[#090d0c] text-[#f2f5f2] select-none font-mono">
+    <!-- Matrix/Terminal Glow Backdrop -->
+    <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(163,255,18,0.08)_0%,transparent_70%)] pointer-events-none"></div>
+    <div class="relative z-10 flex flex-col items-center max-w-md w-full px-6 space-y-6">
+      <!-- Emblem & Title -->
+      <div class="flex items-center gap-3">
+        <div class="w-11 h-11 rounded-xl bg-[#121918] border border-[#2a3632] flex items-center justify-center shadow-[0_0_20px_rgba(163,255,18,0.25)]">
+          <svg class="w-6 h-6 text-[#a3ff12]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-sm font-bold tracking-widest text-[#f2f5f2]">UCS // SECRET AGENT</span>
+          <span class="text-[10px] tracking-wider text-[#a9b5af]">BOTQUANGANH RUST STUDIO</span>
+        </div>
+      </div>
+
+      <!-- Phase Progress Box -->
+      <div class="w-full bg-[#121918] border border-[#2a3632] rounded-xl p-4 shadow-2xl space-y-3">
+        <div class="flex items-center justify-between text-xs">
+          <span id="bootPhaseText" class="text-[#a3ff12] font-semibold tracking-wider">INITIALIZING INTERFACE</span>
+          <span id="bootPercent" class="text-[#a9b5af] font-mono">0%</span>
+        </div>
+        <div class="w-full bg-[#090d0c] h-2 rounded-full overflow-hidden border border-[#202b28]">
+          <div id="bootProgressBar" class="h-full bg-gradient-to-r from-[#42d5ad] via-[#a3ff12] to-[#00f0ff] transition-all duration-300 shadow-[0_0_10px_#a3ff12]" style="width: 0%;"></div>
+        </div>
+        <div class="flex items-center justify-between text-[10px] text-[#81908a]">
+          <span id="bootStepSubtext" class="truncate">Calibrating workspace subsystems...</span>
+          <button type="button" class="cursor-pointer hover:text-[#f2f5f2] transition px-1.5 py-0.5 rounded bg-[#17211f] border border-[#202b28]" onclick="dismissBootScreen()">[ESC] Bỏ qua</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- ==================== TOP NAVIGATION BAR ==================== -->
   <header style="background-color: var(--bg-header); border-color: var(--border);" class="h-11 border-b px-4 flex items-center justify-between shrink-0 z-20">
@@ -821,8 +879,8 @@
           <div class="flex items-center gap-2.5">
             <span class="text-sm">🎨</span>
             <div>
-              <h3 style="color: var(--text-main);" class="font-semibold text-xs">4. Giao Diện & Chủ Đề (13 Theme)</h3>
-              <p style="color: var(--text-dim);" class="text-[10px]">Tùy chọn phong cách phối màu developer</p>
+              <h3 style="color: var(--text-main);" class="font-semibold text-xs">4. Giao Diện & Chủ Đề (16 Theme · VJP-PRO Suite)</h3>
+              <p style="color: var(--text-dim);" class="text-[10px]">Tùy chọn phong cách phối màu developer & security console</p>
             </div>
           </div>
           <svg id="arrow-secTheme" class="w-3.5 h-3.5 text-slate-400 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
@@ -830,6 +888,18 @@
 
         <div id="secTheme" class="p-3 pt-0 border-t space-y-1.5 hidden" style="border-color: var(--border);">
           <div class="grid grid-cols-2 gap-1.5 pt-2">
+            <button onclick="selectThemeFromDrawer('vjp-terminal')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="vjp-terminal" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#a3ff12] shadow-[0_0_8px_#a3ff12] shrink-0"></span>
+              <span class="truncate text-[11px] font-bold text-[#a3ff12]">UCS Terminal (VJP)</span>
+            </button>
+            <button onclick="selectThemeFromDrawer('vjp-command')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="vjp-command" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#42d5ad] shadow-[0_0_8px_#42d5ad] shrink-0"></span>
+              <span class="truncate text-[11px] font-bold text-[#42d5ad]">Command Center (VJP)</span>
+            </button>
+            <button onclick="selectThemeFromDrawer('vjp-light')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="vjp-light" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#2e8b57] shrink-0"></span>
+              <span class="truncate text-[11px]">UCS Light Pro (VJP)</span>
+            </button>
             <button onclick="selectThemeFromDrawer('exodia')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="exodia" style="background-color: var(--bg-base); border-color: var(--border);">
               <span class="w-3 h-3 rounded-full bg-gradient-to-tr from-[#00f0ff] via-[#00ff88] to-[#c084fc] shadow-[0_0_8px_#00f0ff] shrink-0"></span>
               <span class="truncate text-[11px] font-bold text-[#00f0ff]">Exodia Neon</span>
@@ -1587,12 +1657,63 @@
       }, 2400);
     }
 
+    // ===== BOOT SEQUENCE ANIMATION (VJP-PRO CONTRACT) =====
+    const BOOT_PHASES = [
+      { title: "INITIALIZING INTERFACE", sub: "Khởi tạo hệ thống giao diện và visual token...", percent: 25, duration: 380 },
+      { title: "LOADING WORKSPACES", sub: "Quét nạp danh sách chat workspace và phiên làm việc...", percent: 55, duration: 420 },
+      { title: "CONNECTING ACTIVITY STREAM", sub: "Kết nối luồng giám sát Activity Stream thời gian thực...", percent: 85, duration: 420 },
+      { title: "SYSTEM READY", sub: "Đã sẵn sàng. Mở giao diện BQA Native Studio...", percent: 100, duration: 320 },
+    ];
+
+    let bootActive = true;
+    function runBootSequence() {
+      const screen = document.getElementById('bootScreen');
+      if (!screen) return;
+      let phaseIdx = 0;
+      function nextPhase() {
+        if (!bootActive) return;
+        if (phaseIdx >= BOOT_PHASES.length) {
+          dismissBootScreen();
+          return;
+        }
+        const p = BOOT_PHASES[phaseIdx];
+        const phaseEl = document.getElementById('bootPhaseText');
+        const subEl = document.getElementById('bootStepSubtext');
+        const pctEl = document.getElementById('bootPercent');
+        const barEl = document.getElementById('bootProgressBar');
+        if (phaseEl) phaseEl.textContent = p.title;
+        if (subEl) subEl.textContent = p.sub;
+        if (pctEl) pctEl.textContent = p.percent + '%';
+        if (barEl) barEl.style.width = p.percent + '%';
+        phaseIdx++;
+        setTimeout(nextPhase, p.duration);
+      }
+      nextPhase();
+    }
+
+    function dismissBootScreen() {
+      bootActive = false;
+      const screen = document.getElementById('bootScreen');
+      if (!screen) return;
+      screen.style.opacity = '0';
+      setTimeout(() => {
+        screen.style.display = 'none';
+      }, 500);
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && bootActive) {
+        dismissBootScreen();
+      }
+    });
+
     // Init App State
     renderSessions(sampleSessions);
     renderCommands(sampleCommands);
     renderLogs(sampleLogs);
-    setTheme(localStorage.getItem('bqa_theme') || 'exodia');
+    setTheme(localStorage.getItem('bqa_theme') || 'vjp-terminal');
     startAutoPolling();
+    runBootSequence();
   </script>
 </body>
 </html>
