@@ -377,18 +377,17 @@ def test_default_ui_detaches_instead_of_opening_inline(monkeypatch, capsys):
     assert opened_inline == []
 
 
-def test_foreground_ui_is_a_detached_compatibility_alias(monkeypatch, capsys):
+def test_foreground_ui_runs_attached(monkeypatch):
     monkeypatch.delenv(BQA_UI_DAEMON_ENV, raising=False)
-    started = []
+    attached = []
     monkeypatch.setattr("app.cli.desktop_ui.graphical_session_available", lambda: True)
     monkeypatch.setattr(
-        "app.cli.desktop_ui.launch_desktop_ui_detached",
-        lambda _ctx, **_kwargs: started.append(True) or 1357,
+        "app.cli.desktop_ui.run_rust_desktop",
+        lambda _ctx: attached.append(True) or 0,
     )
 
-    assert main(["ui", "--foreground", "--quiet"]) == 0
-    assert capsys.readouterr().out.strip() == "1357"
-    assert started == [True]
+    assert main(["ui", "--foreground"]) == 0
+    assert attached == [True]
 
 
 def test_launch_writes_pid_file_and_env_marker(monkeypatch, tmp_path):

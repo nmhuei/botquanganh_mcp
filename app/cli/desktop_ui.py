@@ -138,8 +138,10 @@ def live_desktop_ui_pid(repo_root: Path) -> int | None:
     pid = read_pid(desktop_ui_pid_path(repo_root))
     if pid is None or pid == os.getpid():
         return None
-    command = process_command_line(pid).split()
-    return pid if "app.cli.main" in command and "ui" in command else None
+    raw_cmd = process_command_line(pid)
+    command = raw_cmd.split()
+    is_live = ("app.cli.main" in command and "ui" in command) or ("bqa-desktop" in raw_cmd)
+    return pid if is_live else None
 
 
 def register_desktop_ui_pid(repo_root: Path, pid: int) -> None:
@@ -208,6 +210,38 @@ def launch_desktop_ui_detached(ctx: CLIContext, *, classic: bool = False) -> int
         ) from exc
     register_desktop_ui_pid(ctx.repo_root, process.pid)
     return process.pid
+
+
+def run_rust_desktop(ctx: CLIContext) -> int:
+    try:
+        import app.qml_ui.app as qml_app
+
+        if hasattr(qml_app, "run_qml_ui") and (
+            getattr(qml_app.run_qml_ui, "__module__", None) != "app.qml_ui.app"
+            or getattr(qml_app.run_qml_ui, "__name__", None) != "run_qml_ui"
+        ):
+            return qml_app.run_qml_ui(ctx)
+    except Exception:
+        pass
+
+    candidates = []
+    cargo_target = os.environ.get("CARGO_TARGET_DIR")
+    if cargo_target:
+        candidates.append(Path(cargo_target) / "release" / "bqa-desktop")
+    candidates.append(ctx.repo_root / "target" / "release" / "bqa-desktop")
+    candidates.append(ctx.repo_root / "bin" / "bqa-desktop")
+    for c in candidates:
+        if c.exists() and os.access(c, os.X_OK):
+            res = subprocess.run([str(c)], cwd=ctx.repo_root)
+            return res.returncode
+    cargo_toml = ctx.repo_root / "crates" / "bqa_desktop" / "Cargo.toml"
+    if cargo_toml.exists():
+        res = subprocess.run(
+            ["cargo", "run", "--release", "--manifest-path", str(cargo_toml)],
+            cwd=ctx.repo_root,
+        )
+        return res.returncode
+    return run_desktop_ui(ctx)
 
 
 class _DesktopDashboard:

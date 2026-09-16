@@ -2,9 +2,42 @@
 <html lang="vi" data-theme="rosepine">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BQA Bridge Center — Native Studio</title>
+  <script>
+    function sendToRust(action, payload = {}) {
+      return new Promise((resolve) => {
+        if (window.ipc) {
+          window.ipc.postMessage(JSON.stringify({ action, payload }));
+        }
+        resolve(true);
+      });
+    }
+
+    window.onerror = function(msg, url, line, col, error) {
+      sendToRust("console_error", { msg: String(msg) + " at " + String(url) + ":" + line + ":" + col + (error ? " " + String(error) : "") });
+      return false;
+    };
+    window.onunhandledrejection = function(event) {
+      sendToRust("console_error", { msg: "Unhandled rejection: " + String(event.reason) });
+    };
+    console.log = (function(oldLog) {
+      return function(...args) {
+        if (oldLog) oldLog.apply(console, args);
+        sendToRust("console_log", { msg: args.map(String).join(' ') });
+      };
+    })(console.log);
+    console.error = (function(oldErr) {
+      return function(...args) {
+        if (oldErr) oldErr.apply(console, args);
+        sendToRust("console_error", { msg: args.map(String).join(' ') });
+      };
+    })(console.error);
+
+    console.log("STEP 1: HEAD SCRIPT LOADED");
+  </script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    console.log("STEP 2: TAILWIND LOADED");
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -207,6 +240,19 @@
       from { opacity: 0; transform: translateY(6px); }
       to { opacity: 1; transform: translateY(0); }
     }
+    @keyframes slideDownCommand {
+      from {
+        opacity: 0;
+        transform: translateY(-8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    .animate-slide-down {
+      animation: slideDownCommand 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
 
     #paneSidebar {
       transition: width 0.24s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.24s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.18s ease, transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
@@ -265,35 +311,59 @@
       white-space: nowrap !important;
     }
 
-    /* ==================== INTERACTIVE HOVER & CLICK MICRO-INTERACTIONS ==================== */
-    button, [role="button"], .cursor-pointer {
+    /* ==================== HIGH-PERFORMANCE INTERACTION & BUTTON SYSTEM ==================== */
+    button, [role="button"], .cursor-pointer, .nav-tab, .session-item, .action-row, .log-row, .insp-tab, .log-filter-chip {
       cursor: pointer !important;
+      -webkit-font-smoothing: antialiased;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+      transform: translateZ(0);
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    /* Universal Button Click Feedback - snappy, crisp, zero-stutter */
+    button {
+      transition: transform 0.08s cubic-bezier(0.2, 0, 0, 1), opacity 0.08s ease, background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+      will-change: transform;
+    }
+    button:hover {
+      opacity: 0.92;
+    }
+    button:active {
+      transform: scale(0.96) translateZ(0) !important;
+      opacity: 0.8 !important;
+      transition-duration: 0.03s !important;
     }
 
     /* Session Item Hover & Click Feedback */
     .session-item {
-      transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1) !important;
+      transition: transform 0.08s cubic-bezier(0.2, 0, 0, 1), background-color 0.1s ease, border-color 0.1s ease, box-shadow 0.1s ease !important;
+      will-change: transform;
       position: relative;
     }
     .session-item:hover:not(.active) {
       background-color: var(--bg-surface) !important;
       border-color: var(--border) !important;
-      transform: translateX(3px);
+      transform: translateX(2px) translateZ(0);
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     }
     .session-item:active {
-      transform: scale(0.98);
+      transform: scale(0.98) translateZ(0) !important;
+      transition-duration: 0.03s !important;
     }
 
     /* Command Action Row Hover & Click Feedback */
     .action-row {
-      transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1) !important;
+      transition: transform 0.08s cubic-bezier(0.2, 0, 0, 1), background-color 0.1s ease, border-color 0.1s ease, box-shadow 0.1s ease !important;
+      will-change: transform;
       position: relative;
     }
     .action-row:hover:not(.selected) {
       background-color: var(--bg-surface) !important;
       border-color: var(--accent-soft) !important;
-      transform: translateX(3px);
+      transform: translateX(2px) translateZ(0);
       box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
     }
     .action-row:hover:not(.selected)::before {
@@ -307,18 +377,20 @@
       background: var(--accent);
     }
     .action-row:active {
-      transform: scale(0.985);
+      transform: scale(0.985) translateZ(0) !important;
+      transition-duration: 0.03s !important;
     }
 
     /* Log Stream Row Hover & Click Feedback */
     .log-row {
-      transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1) !important;
+      transition: transform 0.08s cubic-bezier(0.2, 0, 0, 1), background-color 0.1s ease, border-color 0.1s ease, box-shadow 0.1s ease !important;
+      will-change: transform;
       position: relative;
     }
     .log-row:hover:not(.selected) {
       background-color: var(--bg-surface) !important;
       border-color: var(--accent-soft) !important;
-      transform: translateX(3px);
+      transform: translateX(2px) translateZ(0);
       box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
     }
     .log-row:hover:not(.selected)::before {
@@ -332,44 +404,53 @@
       background: var(--mint);
     }
     .log-row:active {
-      transform: scale(0.985);
+      transform: scale(0.985) translateZ(0) !important;
+      transition-duration: 0.03s !important;
     }
 
     /* Navigation Tab Feedback */
     .nav-tab {
-      transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
+      transition: transform 0.08s cubic-bezier(0.2, 0, 0, 1), background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease !important;
+      will-change: transform;
     }
     .nav-tab:hover {
       background-color: var(--bg-surface) !important;
       color: var(--text-main) !important;
-      transform: translateY(-1px);
     }
     .nav-tab:active {
-      transform: translateY(0px) scale(0.97);
+      transform: scale(0.95) translateZ(0) !important;
+      transition-duration: 0.03s !important;
     }
 
-    /* Universal Button Click Feedback */
-    button {
-      transition: all 0.15s ease;
+    /* Inspector & Filter Tab Feedback */
+    .insp-tab, .log-filter-chip {
+      transition: transform 0.08s ease, background-color 0.1s ease, color 0.1s ease !important;
+      will-change: transform;
     }
-    button:hover {
-      filter: brightness(1.1);
-    }
-    button:active {
-      transform: scale(0.96);
+    .insp-tab:active, .log-filter-chip:active {
+      transform: scale(0.95) translateZ(0) !important;
+      transition-duration: 0.03s !important;
     }
 
     /* Theme Card Feedback */
     .theme-card {
-      transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
+      transition: transform 0.08s cubic-bezier(0.2, 0, 0, 1), border-color 0.12s ease, box-shadow 0.12s ease !important;
+      will-change: transform;
     }
     .theme-card:hover {
       border-color: var(--accent) !important;
-      transform: translateY(-1px) scale(1.02);
+      transform: translateY(-1px) scale(1.01) translateZ(0);
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     }
     .theme-card:active {
-      transform: scale(0.97);
+      transform: scale(0.97) translateZ(0) !important;
+      transition-duration: 0.03s !important;
+    }
+
+    /* List performance & smooth scroll */
+    #sessionListContainer, #commandStreamContainer, #logStreamContainer {
+      scroll-behavior: smooth;
+      contain: layout style;
     }
   </style>
 </head>
@@ -467,11 +548,11 @@
 
           <!-- Actions container -->
           <div id="bridgeActionsRunning" class="flex items-center gap-1.5">
-            <button onclick="handleRestartServer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-2.5 py-1 border hover:border-[#37425c] rounded-md text-[11px] font-medium transition flex items-center gap-1 active:scale-95 shadow-xs" title="Khởi động lại Bridge">
-              <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-              <span>Restart</span>
+            <button onclick="promptRestartServer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-2.5 py-1 border hover:border-[#37425c] rounded-md text-[11px] font-medium transition flex items-center gap-1 active:scale-95 shadow-xs" title="Khởi động lại Bridge">
+              <svg id="restartIcon" class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+              <span id="restartLabel">Restart</span>
             </button>
-            <button onclick="stopBridgeServer()" class="px-2.5 py-1 bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 rounded-md text-[11px] font-medium transition flex items-center gap-1 active:scale-95 shadow-xs" title="Dừng Bridge Server">
+            <button onclick="promptStopServer()" class="px-2.5 py-1 bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 rounded-md text-[11px] font-medium transition flex items-center gap-1 active:scale-95 shadow-xs" title="Dừng Bridge Server">
               <span class="w-2 h-2 rounded-xs bg-rose-400"></span>
               <span>Stop</span>
             </button>
@@ -492,10 +573,10 @@
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
             <span style="color: var(--text-sub);" class="text-[11px] uppercase tracking-wider font-sans font-semibold">MCP Cloudflare Tunnel Endpoint</span>
-            <span style="color: var(--mint); background-color: var(--accent-soft); border-color: var(--border);" class="text-[10px] border px-1.5 py-0.2 rounded font-sans">Đã kết nối Edge</span>
+            <span id="tunnelStatusBadge" style="color: var(--mint); background-color: var(--accent-soft); border-color: var(--border);" class="text-[10px] border px-1.5 py-0.2 rounded font-sans">Đã kết nối Edge</span>
           </div>
           <div class="flex items-center gap-2 font-sans">
-            <button onclick="copyBridgeUrl()" style="background-color: var(--accent); color: white;" class="px-3 py-1 rounded-md text-[11px] font-medium transition flex items-center gap-1.5 shadow-xs">
+            <button onclick="copyBridgeUrl()" style="background-color: var(--accent-soft); border: 1px solid var(--accent); color: var(--accent);" class="px-3 py-1 rounded-md text-[11px] font-medium hover:brightness-125 transition flex items-center gap-1.5 shadow-xs">
               <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" stroke-width="2"></rect><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke-width="2"></path></svg>
               <span id="copyUrlLabel">Sao chép Tunnel URL</span>
             </button>
@@ -508,9 +589,9 @@
         <div style="background-color: var(--bg-base); border-color: var(--border);" class="border px-3.5 py-2.5 rounded-lg flex items-center justify-between text-xs">
           <div class="flex items-center gap-2 truncate">
             <span style="color: var(--accent);" class="font-bold">TUNNEL ›</span>
-            <span id="bridgeUrlDisplay" style="color: var(--mint);" class="select-text font-medium">https://bqa-bridge-live.trycloudflare.com/sse</span>
+            <span id="bridgeUrlDisplay" style="color: var(--mint);" class="select-text font-medium font-mono">Đang đồng bộ Cloudflare Edge...</span>
           </div>
-          <span style="color: var(--text-dim);" class="text-[11px] shrink-0 font-sans">Giao thức SSE</span>
+          <span id="bridgeProtocolDisplay" style="color: var(--text-dim);" class="text-[11px] shrink-0 font-sans">Cloudflare Edge · MCP</span>
         </div>
       </div>
 
@@ -539,7 +620,7 @@
 
       <!-- Quick Action Buttons -->
       <div class="pt-2 flex gap-2.5 font-sans">
-        <button onclick="switchPage('activity')" style="background-color: var(--accent); color: white;" class="px-4 py-2 text-xs font-medium rounded-lg transition shadow-xs flex items-center gap-1.5">
+        <button onclick="switchPage('activity')" style="background-color: var(--accent-soft); border: 1px solid var(--accent); color: var(--accent);" class="px-4 py-2 text-xs font-medium rounded-lg hover:brightness-125 transition shadow-xs flex items-center gap-1.5">
           <span>Xem Hoạt động lệnh</span>
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
         </button>
@@ -612,7 +693,7 @@
         <span style="color: var(--text-main);" class="font-semibold whitespace-nowrap truncate min-w-0">Chi tiết Thực thi (Inspector)</span>
         <div class="flex items-center gap-2 shrink-0">
           <button onclick="copyDetails()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-2.5 py-1 border rounded-md text-[11px] transition whitespace-nowrap shrink-0">
-            <span id="copyBtnLabel">Sao chép Output</span>
+            <span id="copyBtnLabel">Sao chép</span>
           </button>
           <button onclick="toggleInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white hover:bg-slate-700/30 transition shrink-0" title="Thu gọn Khung Chi tiết">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
@@ -620,7 +701,16 @@
         </div>
       </div>
 
+      <!-- 4 Inspector Tabs -->
+      <div style="background-color: var(--bg-surface); border-color: var(--border);" class="px-3 py-1.5 border-b flex items-center gap-1 shrink-0 text-[11px] font-sans">
+        <button id="tabInspOutput" onclick="switchInspectorTab('output')" class="insp-tab px-2.5 py-0.5 rounded font-medium transition" style="background-color: var(--accent); color: var(--bg-base);">Output (STDOUT)</button>
+        <button id="tabInspMeta" onclick="switchInspectorTab('meta')" class="insp-tab px-2.5 py-0.5 rounded font-medium transition" style="background-color: transparent; color: var(--text-sub);">Metadata</button>
+        <button id="tabInspStderr" onclick="switchInspectorTab('stderr')" class="insp-tab px-2.5 py-0.5 rounded font-medium transition" style="background-color: transparent; color: var(--text-sub);">STDERR</button>
+        <button id="tabInspRaw" onclick="switchInspectorTab('raw')" class="insp-tab px-2.5 py-0.5 rounded font-medium transition" style="background-color: transparent; color: var(--text-sub);">Raw JSON</button>
+      </div>
+
       <div class="flex-1 overflow-y-auto p-4 space-y-3.5 text-xs font-mono">
+        <!-- Section: Overview badges (always visible) -->
         <div class="grid grid-cols-3 gap-2.5">
           <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-2.5 rounded-lg min-w-0">
             <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans whitespace-nowrap truncate">Tác vụ</span>
@@ -638,22 +728,44 @@
           </div>
         </div>
 
-        <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-3 rounded-lg min-w-0">
-          <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans mb-1 whitespace-nowrap">Lệnh đầy đủ</span>
-          <div id="inspectCommand" style="color: var(--text-main);" class="select-text break-all">uv run pytest tests/test_qml_backend.py</div>
-        </div>
-
-        <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-3 rounded-lg min-w-0">
-          <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans mb-1 whitespace-nowrap">Thư mục (CWD)</span>
-          <div id="inspectCwd" style="color: var(--text-sub);" class="select-text break-all">/home/light/GitHub/botquanganh_mcp</div>
-        </div>
-
-        <div class="flex flex-col flex-1 min-h-[220px]">
+        <!-- Section: Output Tab View -->
+        <div id="inspViewOutput" class="flex flex-col flex-1 min-h-[220px]">
           <div style="color: var(--text-dim);" class="flex items-center justify-between text-[10px] uppercase font-sans mb-1 whitespace-nowrap">
             <span>Terminal Console Output</span>
             <span>UTF-8</span>
           </div>
           <pre id="inspectOutput" style="background-color: var(--bg-console); border-color: var(--border); color: var(--mint);" class="flex-1 border rounded-xl p-3.5 text-[11px] leading-relaxed overflow-auto select-text font-mono whitespace-pre-wrap"></pre>
+        </div>
+
+        <!-- Section: Metadata Tab View -->
+        <div id="inspViewMeta" class="space-y-2.5 hidden">
+          <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-3 rounded-lg min-w-0">
+            <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans mb-1 whitespace-nowrap">Lệnh đầy đủ</span>
+            <div id="inspectCommand" style="color: var(--text-main);" class="select-text break-all font-mono">uv run pytest tests/test_qml_backend.py</div>
+          </div>
+
+          <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-3 rounded-lg min-w-0">
+            <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans mb-1 whitespace-nowrap">Thư mục (CWD)</span>
+            <div id="inspectCwd" style="color: var(--text-sub);" class="select-text break-all font-mono">/home/light/GitHub/botquanganh_mcp</div>
+          </div>
+        </div>
+
+        <!-- Section: Stderr Tab View -->
+        <div id="inspViewStderr" class="flex flex-col flex-1 min-h-[220px] hidden">
+          <div style="color: var(--text-dim);" class="flex items-center justify-between text-[10px] uppercase font-sans mb-1 whitespace-nowrap">
+            <span>Standard Error (STDERR)</span>
+            <span id="inspectStderrBadge" style="color: var(--mint);">None</span>
+          </div>
+          <pre id="inspectStderr" style="background-color: var(--bg-console); border-color: var(--border); color: #ff6b61;" class="flex-1 border rounded-xl p-3.5 text-[11px] leading-relaxed overflow-auto select-text font-mono whitespace-pre-wrap">Không có lỗi phát sinh (Exit Code 0).</pre>
+        </div>
+
+        <!-- Section: Raw JSON Tab View -->
+        <div id="inspViewRaw" class="flex flex-col flex-1 min-h-[220px] hidden">
+          <div style="color: var(--text-dim);" class="flex items-center justify-between text-[10px] uppercase font-sans mb-1 whitespace-nowrap">
+            <span>Complete Event JSON Record</span>
+            <span>JSON</span>
+          </div>
+          <pre id="inspectRawJson" style="background-color: var(--bg-console); border-color: var(--border); color: var(--sky);" class="flex-1 border rounded-xl p-3.5 text-[11px] leading-relaxed overflow-auto select-text font-mono whitespace-pre-wrap">{}</pre>
         </div>
       </div>
     </aside>
@@ -676,6 +788,17 @@
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" stroke-width="2"></rect><path d="M15 4v16" stroke-width="2"></path></svg>
           </button>
         </div>
+      </div>
+
+      <!-- Log Category Filter Chips -->
+      <div style="background-color: var(--bg-surface); border-color: var(--border);" class="px-3 py-1.5 border-b flex items-center gap-1.5 overflow-x-auto text-[11px] font-sans shrink-0">
+        <span style="color: var(--text-dim);" class="text-[10px] uppercase font-sans mr-1">Lọc:</span>
+        <button onclick="setLogCategoryFilter('all')" class="log-filter-chip px-2 py-0.5 rounded font-medium transition" data-chip="all" style="background-color: var(--accent); color: var(--bg-base);">Tất cả</button>
+        <button onclick="setLogCategoryFilter('error')" class="log-filter-chip px-2 py-0.5 rounded font-medium transition" data-chip="error" style="background-color: var(--bg-card); color: var(--text-sub); border: 1px solid var(--border);">Lỗi (Error)</button>
+        <button onclick="setLogCategoryFilter('process')" class="log-filter-chip px-2 py-0.5 rounded font-medium transition" data-chip="process" style="background-color: var(--bg-card); color: var(--text-sub); border: 1px solid var(--border);">Process</button>
+        <button onclick="setLogCategoryFilter('file')" class="log-filter-chip px-2 py-0.5 rounded font-medium transition" data-chip="file" style="background-color: var(--bg-card); color: var(--text-sub); border: 1px solid var(--border);">Tệp tin</button>
+        <button onclick="setLogCategoryFilter('session')" class="log-filter-chip px-2 py-0.5 rounded font-medium transition" data-chip="session" style="background-color: var(--bg-card); color: var(--text-sub); border: 1px solid var(--border);">Phiên làm việc</button>
+        <button onclick="setLogCategoryFilter('network')" class="log-filter-chip px-2 py-0.5 rounded font-medium transition" data-chip="network" style="background-color: var(--bg-card); color: var(--text-sub); border: 1px solid var(--border);">Mạng (HTTP)</button>
       </div>
 
       <div id="logStreamContainer" class="flex-1 overflow-y-auto p-2 space-y-1">
@@ -1002,35 +1125,65 @@
     </div>
   </aside>
 
+  <!-- Modal Xác nhận Lifecycle Action (Start / Stop / Restart) -->
+  <div id="lifecycleModal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center hidden p-4">
+    <div style="background-color: var(--bg-header); border-color: var(--border);" class="max-w-md w-full border rounded-2xl p-5 shadow-2xl space-y-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center shrink-0">
+          <span class="text-amber-400 text-lg">⚠️</span>
+        </div>
+        <div>
+          <h3 id="modalTitle" style="color: var(--text-main);" class="font-bold text-sm">Xác nhận thao tác</h3>
+          <p id="modalDesc" style="color: var(--text-dim);" class="text-xs mt-0.5">Bạn có chắc chắn muốn thực hiện hành động này?</p>
+        </div>
+      </div>
+      <div class="flex items-center justify-end gap-2 pt-2 border-t" style="border-color: var(--border);">
+        <button type="button" onclick="closeLifecycleModal()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-3 py-1.5 border rounded-lg text-xs font-sans transition">Hủy bỏ</button>
+        <button id="modalConfirmBtn" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-sans font-semibold transition" style="background-color: var(--accent); color: var(--bg-base);">Xác nhận</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Rust IPC & Interactive Logic -->
   <script>
-    // Native Rust IPC Bridge Dispatcher
-    function sendToRust(action, payload) {
-      return new Promise((resolve) => {
-        if (window.ipc) {
-          window.ipc.postMessage(JSON.stringify({ action, payload }));
-        }
-        // Fallback for standalone preview
-        resolve(true);
-      });
+    console.log("STEP 3: BODY SCRIPT STARTED");
+
+    // Safe Storage Access (Protects against WebKit SecurityError on opaque origins)
+    function safeGetStorage(key, fallback = null) {
+      try {
+        return window.localStorage ? window.localStorage.getItem(key) : fallback;
+      } catch (e) {
+        return fallback;
+      }
+    }
+    function safeSetStorage(key, val) {
+      try {
+        if (window.localStorage) window.localStorage.setItem(key, val);
+      } catch (e) {
+        // Ignored in opaque contexts
+      }
     }
 
-    // Set & Persist Theme
+    // ==================== THEME MANAGEMENT ====================
     function setTheme(theme) {
-      document.documentElement.setAttribute('data-theme', theme);
-      document.querySelectorAll('.theme-card').forEach(card => {
-        if (card.getAttribute('data-theme-val') === theme) {
-          card.style.borderColor = 'var(--accent)';
-          card.style.backgroundColor = 'var(--bg-selected)';
-          card.style.fontWeight = 'bold';
-        } else {
-          card.style.borderColor = 'var(--border)';
-          card.style.backgroundColor = 'var(--bg-base)';
-          card.style.fontWeight = 'normal';
-        }
-      });
-      localStorage.setItem('bqa_theme', theme);
-      sendToRust('set_theme', { theme });
+      try {
+        document.documentElement.setAttribute('data-theme', theme);
+        document.querySelectorAll('.theme-card').forEach(card => {
+          if (card.getAttribute('data-theme-val') === theme) {
+            card.style.borderColor = 'var(--accent)';
+            card.style.backgroundColor = 'var(--bg-selected)';
+            card.style.fontWeight = 'bold';
+          } else {
+            card.style.borderColor = 'var(--border)';
+            card.style.backgroundColor = 'var(--bg-base)';
+            card.style.fontWeight = 'normal';
+          }
+        });
+        safeSetStorage('bqa_theme', theme);
+        sendToRust('set_theme', { theme });
+      } catch (err) {
+        console.error("Error setting theme:", err);
+      }
     }
 
     function selectThemeFromDrawer(theme) {
@@ -1038,27 +1191,37 @@
       showToast('✓ Đã áp dụng giao diện: ' + theme);
     }
 
+    // ==================== DRAWER CONTROLS ====================
     function openSettingsDrawer() {
       const backdrop = document.getElementById('settingsBackdrop');
       const drawer = document.getElementById('settingsDrawer');
-      backdrop.classList.remove('opacity-0', 'pointer-events-none');
-      backdrop.classList.add('opacity-100');
-      drawer.classList.remove('translate-x-full');
-      drawer.classList.add('translate-x-0');
+      if (backdrop) {
+        backdrop.classList.remove('opacity-0', 'pointer-events-none');
+        backdrop.classList.add('opacity-100');
+      }
+      if (drawer) {
+        drawer.classList.remove('translate-x-full');
+        drawer.classList.add('translate-x-0');
+      }
     }
 
     function closeSettingsDrawer() {
       const backdrop = document.getElementById('settingsBackdrop');
       const drawer = document.getElementById('settingsDrawer');
-      backdrop.classList.remove('opacity-100');
-      backdrop.classList.add('opacity-0', 'pointer-events-none');
-      drawer.classList.remove('translate-x-0');
-      drawer.classList.add('translate-x-full');
+      if (backdrop) {
+        backdrop.classList.remove('opacity-100');
+        backdrop.classList.add('opacity-0', 'pointer-events-none');
+      }
+      if (drawer) {
+        drawer.classList.remove('translate-x-0');
+        drawer.classList.add('translate-x-full');
+      }
     }
 
     function toggleSection(sectionId) {
       const sec = document.getElementById(sectionId);
       const arrow = document.getElementById('arrow-' + sectionId);
+      if (!sec) return;
       if (sec.classList.contains('hidden')) {
         sec.classList.remove('hidden');
         if (arrow) arrow.classList.add('rotate-180');
@@ -1068,48 +1231,45 @@
       }
     }
 
-    // Hot Reload .env via Rust IPC
+    // ==================== ENVIRONMENT HOT RELOAD ====================
     function applyEnvHotReload() {
       const btn = document.getElementById('btnHotReloadLabel');
-      const origText = btn.innerText;
-      btn.innerText = 'Đang nạp lại .env...';
+      if (btn) btn.innerText = 'Đang nạp lại .env...';
 
       const configPayload = {
-        HOST_WORKSPACE_DIR: document.getElementById('cfgWorkspaceDir').value,
-        HOST_DEFAULT_DIR: document.getElementById('cfgDefaultDir').value,
-        HOST_CHAT_ROOT: document.getElementById('cfgChatRoot').value,
-        HOST_COMMAND_POLICY: document.getElementById('cfgPolicy').value,
-        DEFAULT_TIMEOUT_SECONDS: document.getElementById('cfgDefaultTimeout').value,
-        MAX_TIMEOUT_SECONDS: document.getElementById('cfgMaxTimeout').value,
-        MAX_OUTPUT_BYTES: document.getElementById('cfgMaxOutput').value,
-        GATEWAY_TOKEN: document.getElementById('cfgToken').value,
-        REQUIRE_AUTH: document.getElementById('cfgRequireAuth').value,
-        ATTRIBUTION_MODE: document.getElementById('cfgAttribution').value
+        HOST_WORKSPACE_DIR: document.getElementById('cfgWorkspaceDir')?.value || '',
+        HOST_DEFAULT_DIR: document.getElementById('cfgDefaultDir')?.value || '',
+        HOST_CHAT_ROOT: document.getElementById('cfgChatRoot')?.value || '',
+        HOST_COMMAND_POLICY: document.getElementById('cfgPolicy')?.value || 'prompt',
+        DEFAULT_TIMEOUT_SECONDS: document.getElementById('cfgDefaultTimeout')?.value || '30',
+        MAX_TIMEOUT_SECONDS: document.getElementById('cfgMaxTimeout')?.value || '300',
+        MAX_OUTPUT_BYTES: document.getElementById('cfgMaxOutput')?.value || '1048576',
+        GATEWAY_TOKEN: document.getElementById('cfgToken')?.value || '',
+        REQUIRE_AUTH: document.getElementById('cfgRequireAuth')?.value || 'false',
+        ATTRIBUTION_MODE: document.getElementById('cfgAttribution')?.value || 'full'
       };
 
-      sendToRust('save_env', configPayload).then(() => {
-        setTimeout(() => {
-          btn.innerText = '✓ Đã đồng bộ .env!';
-          showToast(`⚡ Hot Reload thành công .env (Zero-downtime)`);
-          setTimeout(() => {
-            btn.innerText = origText;
-          }, 1500);
-        }, 200);
-      });
+      sendToRust('save_env', configPayload);
     }
 
-    // Page Switching with Smooth Slide-in Animation
+    window.__onEnvSaved = function(success, message) {
+      const btn = document.getElementById('btnHotReloadLabel');
+      if (btn) {
+        btn.innerText = success ? '✓ Đã đồng bộ .env!' : 'Lỗi đồng bộ!';
+        setTimeout(() => { btn.innerText = 'Lưu & Hot Reload'; }, 2000);
+      }
+      showToast(success ? `⚡ ${message}` : `⚠️ ${message}`);
+    };
+
+    // ==================== PAGE SWITCHING ====================
     function switchPage(page) {
       const pOverview = document.getElementById('pageOverview');
       const pActivity = document.getElementById('pageActivity');
       const pLogs = document.getElementById('pageLogs');
 
-      pOverview.classList.add('hidden');
-      pActivity.classList.add('hidden');
-      pLogs.classList.add('hidden');
-      pOverview.classList.remove('page-view');
-      pActivity.classList.remove('page-view');
-      pLogs.classList.remove('page-view');
+      if (pOverview) { pOverview.classList.add('hidden'); pOverview.classList.remove('page-view'); }
+      if (pActivity) { pActivity.classList.add('hidden'); pActivity.classList.remove('page-view'); }
+      if (pLogs) { pLogs.classList.add('hidden'); pLogs.classList.remove('page-view'); }
 
       document.querySelectorAll('.nav-tab').forEach(tab => {
         tab.style.backgroundColor = 'transparent';
@@ -1119,33 +1279,36 @@
       });
 
       if (page === 'overview') {
-        pOverview.classList.remove('hidden');
-        pOverview.classList.add('page-view');
+        if (pOverview) { pOverview.classList.remove('hidden'); pOverview.classList.add('page-view'); }
         const tab = document.getElementById('tabOverview');
-        tab.style.backgroundColor = 'var(--bg-card)';
-        tab.style.borderColor = 'var(--border)';
-        tab.style.color = 'var(--text-main)';
-        tab.classList.add('font-medium', 'shadow-xs');
+        if (tab) {
+          tab.style.backgroundColor = 'var(--bg-card)';
+          tab.style.borderColor = 'var(--border)';
+          tab.style.color = 'var(--text-main)';
+          tab.classList.add('font-medium', 'shadow-xs');
+        }
       } else if (page === 'activity') {
-        pActivity.classList.remove('hidden');
-        pActivity.classList.add('page-view');
+        if (pActivity) { pActivity.classList.remove('hidden'); pActivity.classList.add('page-view'); }
         const tab = document.getElementById('tabActivity');
-        tab.style.backgroundColor = 'var(--bg-card)';
-        tab.style.borderColor = 'var(--border)';
-        tab.style.color = 'var(--text-main)';
-        tab.classList.add('font-medium', 'shadow-xs');
+        if (tab) {
+          tab.style.backgroundColor = 'var(--bg-card)';
+          tab.style.borderColor = 'var(--border)';
+          tab.style.color = 'var(--text-main)';
+          tab.classList.add('font-medium', 'shadow-xs');
+        }
       } else if (page === 'logs') {
-        pLogs.classList.remove('hidden');
-        pLogs.classList.add('page-view');
+        if (pLogs) { pLogs.classList.remove('hidden'); pLogs.classList.add('page-view'); }
         const tab = document.getElementById('tabLogs');
-        tab.style.backgroundColor = 'var(--bg-card)';
-        tab.style.borderColor = 'var(--border)';
-        tab.style.color = 'var(--text-main)';
-        tab.classList.add('font-medium', 'shadow-xs');
+        if (tab) {
+          tab.style.backgroundColor = 'var(--bg-card)';
+          tab.style.borderColor = 'var(--border)';
+          tab.style.color = 'var(--text-main)';
+          tab.classList.add('font-medium', 'shadow-xs');
+        }
       }
     }
 
-    // Resizing & Panes with Smooth Slide Transitions
+    // ==================== PANES & RESIZING ====================
     const sidebar = document.getElementById('paneSidebar');
     const paneStream = document.getElementById('paneStream');
     const inspector = document.getElementById('paneInspector');
@@ -1160,15 +1323,16 @@
     let isSidebarCollapsed = false;
     let isInspectorCollapsed = false;
     let lastSidebarWidth = 224;
-    let lastStreamWidth = 256;
+    let lastStreamWidth = 288;
     let lastLogInspectorWidth = 420;
 
     function toggleSidebar() {
       isSidebarCollapsed = !isSidebarCollapsed;
+      if (!sidebar) return;
       if (isSidebarCollapsed) {
         lastSidebarWidth = sidebar.offsetWidth > 50 ? sidebar.offsetWidth : 224;
         sidebar.classList.add('pane-collapsed');
-        resizerLeft.classList.add('hidden');
+        if (resizerLeft) resizerLeft.classList.add('hidden');
         if (btnExpandSidebar) {
           btnExpandSidebar.classList.remove('hidden');
           btnExpandSidebar.classList.add('inline-flex');
@@ -1176,7 +1340,7 @@
       } else {
         sidebar.classList.remove('pane-collapsed');
         sidebar.style.width = lastSidebarWidth + 'px';
-        resizerLeft.classList.remove('hidden');
+        if (resizerLeft) resizerLeft.classList.remove('hidden');
         if (btnExpandSidebar) {
           btnExpandSidebar.classList.remove('inline-flex');
           btnExpandSidebar.classList.add('hidden');
@@ -1186,71 +1350,80 @@
 
     function toggleInspector() {
       isInspectorCollapsed = !isInspectorCollapsed;
-      const isActivity = !document.getElementById('pageActivity').classList.contains('hidden');
-      
+      const isActivity = document.getElementById('pageActivity') && !document.getElementById('pageActivity').classList.contains('hidden');
+
       if (isActivity) {
+        if (!inspector || !paneStream) return;
         if (isInspectorCollapsed) {
           inspector.classList.add('pane-collapsed');
-          resizerRight.classList.add('hidden');
+          if (resizerRight) resizerRight.classList.add('hidden');
           paneStream.style.flex = "1";
           paneStream.style.maxWidth = "none";
         } else {
           inspector.classList.remove('pane-collapsed');
-          resizerRight.classList.remove('hidden');
+          if (resizerRight) resizerRight.classList.remove('hidden');
           paneStream.style.flex = "none";
           paneStream.style.width = lastStreamWidth + 'px';
-          paneStream.style.maxWidth = "460px";
+          paneStream.style.maxWidth = "500px";
         }
       } else {
+        if (!paneLogInspector) return;
         if (isInspectorCollapsed) {
           paneLogInspector.classList.add('pane-collapsed');
-          resizerLog.classList.add('hidden');
+          if (resizerLog) resizerLog.classList.add('hidden');
         } else {
           paneLogInspector.classList.remove('pane-collapsed');
-          resizerLog.classList.remove('hidden');
+          if (resizerLog) resizerLog.classList.remove('hidden');
           paneLogInspector.style.width = lastLogInspectorWidth + 'px';
         }
       }
     }
 
     let isDraggingLeft = false;
-    resizerLeft.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-      isDraggingLeft = true;
-      resizerLeft.classList.add('dragging');
-      document.body.style.cursor = 'col-resize';
-    });
-
     let isDraggingRight = false;
-    resizerRight.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-      isDraggingRight = true;
-      resizerRight.classList.add('dragging');
-      document.body.style.cursor = 'col-resize';
-    });
-
     let isDraggingLog = false;
-    resizerLog.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-      isDraggingLog = true;
-      resizerLog.classList.add('dragging');
-      document.body.style.cursor = 'col-resize';
-    });
+
+    if (resizerLeft) {
+      resizerLeft.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        isDraggingLeft = true;
+        resizerLeft.classList.add('dragging');
+        document.body.style.cursor = 'col-resize';
+      });
+    }
+
+    if (resizerRight) {
+      resizerRight.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        isDraggingRight = true;
+        resizerRight.classList.add('dragging');
+        document.body.style.cursor = 'col-resize';
+      });
+    }
+
+    if (resizerLog) {
+      resizerLog.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        isDraggingLog = true;
+        resizerLog.classList.add('dragging');
+        document.body.style.cursor = 'col-resize';
+      });
+    }
 
     window.addEventListener('mousemove', (e) => {
-      if (isDraggingLeft) {
+      if (isDraggingLeft && sidebar) {
         const newWidth = Math.min(Math.max(e.clientX, 140), 360);
         sidebar.style.width = newWidth + 'px';
         lastSidebarWidth = newWidth;
       }
-      if (isDraggingRight) {
+      if (isDraggingRight && paneStream) {
         const streamLeft = paneStream.getBoundingClientRect().left;
-        const newWidth = Math.min(Math.max(e.clientX - streamLeft, 160), 460);
+        const newWidth = Math.min(Math.max(e.clientX - streamLeft, 180), 500);
         paneStream.style.width = newWidth + 'px';
         lastStreamWidth = newWidth;
       }
-      if (isDraggingLog) {
-        const newWidth = Math.min(Math.max(window.innerWidth - e.clientX, 200), window.innerWidth - 300);
+      if (isDraggingLog && paneLogInspector) {
+        const newWidth = Math.min(Math.max(window.innerWidth - e.clientX, 220), window.innerWidth - 300);
         paneLogInspector.style.width = newWidth + 'px';
         lastLogInspectorWidth = newWidth;
       }
@@ -1260,379 +1433,797 @@
       isDraggingLeft = false;
       isDraggingRight = false;
       isDraggingLog = false;
-      resizerLeft.classList.remove('dragging');
-      resizerRight.classList.remove('dragging');
-      resizerLog.classList.remove('dragging');
+      if (resizerLeft) resizerLeft.classList.remove('dragging');
+      if (resizerRight) resizerRight.classList.remove('dragging');
+      if (resizerLog) resizerLog.classList.remove('dragging');
       document.body.style.cursor = '';
     });
 
-    // Mock Sample Data Loading
-    const sampleSessions = [
-      { id: "cw-research_mcp_tunnel", label: "research_mcp_tunnel", ops: 5, active: true },
-      { id: "cw-analyze_botquanganh", label: "analyze_botquang...", ops: 14, active: false },
-      { id: "cw-ui_overhaul_qml", label: "ui_overhaul_qml", ops: 8, active: false },
-      { id: "cw-auto_continuation_tests", label: "auto_continuation", ops: 32, active: false }
-    ];
+    // ==================== 4-TAB INSPECTOR SWITCHER ====================
+    function switchInspectorTab(tabKey) {
+      const tabs = [
+        { key: 'output', tabId: 'tabInspOutput', viewId: 'inspViewOutput' },
+        { key: 'meta', tabId: 'tabInspMeta', viewId: 'inspViewMeta' },
+        { key: 'stderr', tabId: 'tabInspStderr', viewId: 'inspViewStderr' },
+        { key: 'raw', tabId: 'tabInspRaw', viewId: 'inspViewRaw' }
+      ];
 
-    const sampleCommands = [
-      {
-        tool: "host_run_command",
-        cmd: "uv run pytest tests/test_qml_backend.py",
-        exit_code: 0,
-        duration: "1.42s",
-        timestamp: "2026-09-01 20:26:15",
-        time_short: "01/09 20:26",
-        is_latest: true,
-        output: "============================= test session starts ==============================\nrootdir: /home/light/GitHub/botquanganh_mcp\ncollected 27 items\n\ntests/test_qml_backend.py ...........................                    [100%]\n\n============================== 27 passed in 1.42s =============================="
-      },
-      {
-        tool: "host_workspace_bind",
-        cmd: "bind label=analyze_botquanganh",
-        exit_code: 0,
-        duration: "12ms",
-        timestamp: "2026-09-01 20:25:35",
-        time_short: "01/09 20:25",
-        is_latest: false,
-        output: "{\n  \"ok\": true,\n  \"chat_id\": \"cw-analyze_botquanganh\",\n  \"workspace_path\": \"/home/light/GitHub/botquanganh_mcp\"\n}"
-      },
-      {
-        tool: "host_read_file",
-        cmd: "cat app/qml_ui/qml/Theme.qml",
-        exit_code: 0,
-        duration: "6ms",
-        timestamp: "2026-09-01 20:25:08",
-        time_short: "01/09 20:25",
-        is_latest: false,
-        output: "import QtQuick\n\nQtObject {\n    property string variant: \"classic\"\n    readonly property int rowHeight: 48\n}"
-      },
-      {
-        tool: "host_run_command",
-        cmd: "git branch -a -vv",
-        exit_code: 0,
-        duration: "18ms",
-        timestamp: "2026-09-01 20:25:01",
-        time_short: "01/09 20:25",
-        is_latest: false,
-        output: "04bad0e [feat/rust-desktop-ui] feat(rust): native desktop studio app\nmain    a460791 docs(readme): rewrite manual"
+      tabs.forEach(t => {
+        const tabEl = document.getElementById(t.tabId);
+        const viewEl = document.getElementById(t.viewId);
+        if (!tabEl || !viewEl) return;
+
+        if (t.key === tabKey) {
+          tabEl.style.backgroundColor = 'var(--accent)';
+          tabEl.style.color = 'var(--bg-base)';
+          viewEl.classList.remove('hidden');
+        } else {
+          tabEl.style.backgroundColor = 'transparent';
+          tabEl.style.color = 'var(--text-sub)';
+          viewEl.classList.add('hidden');
+        }
+      });
+    }
+
+    // ==================== TIMEZONE & LOCALIZATION ====================
+    function formatLocalTime(isoStr, format = 'short') {
+      if (!isoStr) return '';
+      try {
+        let normStr = String(isoStr).trim();
+        if (!normStr) return '';
+        if (!normStr.includes('T') && normStr.includes(' ') && normStr.length >= 19) {
+          normStr = normStr.replace(' ', 'T');
+        }
+        if (normStr.includes('T') && !normStr.endsWith('Z') && !normStr.includes('+') && !normStr.slice(10).includes('-')) {
+          normStr += 'Z';
+        }
+        const d = new Date(normStr);
+        if (isNaN(d.getTime())) return isoStr;
+
+        const pad = (n) => String(n).padStart(2, '0');
+        const month = pad(d.getMonth() + 1);
+        const day = pad(d.getDate());
+        const hours = pad(d.getHours());
+        const minutes = pad(d.getMinutes());
+        const seconds = pad(d.getSeconds());
+
+        if (format === 'short') {
+          return `${month}-${day} ${hours}:${minutes}`;
+        } else if (format === 'time_only') {
+          return `${hours}:${minutes}:${seconds}`;
+        } else if (format === 'full') {
+          const year = d.getFullYear();
+          const offsetMin = -d.getTimezoneOffset();
+          const offsetSign = offsetMin >= 0 ? '+' : '-';
+          const offsetH = pad(Math.floor(Math.abs(offsetMin) / 60));
+          return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} (GMT${offsetSign}${offsetH})`;
+        }
+        return `${month}-${day} ${hours}:${minutes}`;
+      } catch (e) {
+        return isoStr;
       }
-    ];
+    }
 
-    const sampleLogs = [
-      {
-        id: "evt-38241:04",
-        severity: "SYSTEM",
-        cat: "network",
-        action: "bridge_handshake",
-        time: "01/09 20:26",
-        msg: "MCP SSE client connected (127.0.0.1)",
-        session: "system",
-        json: '{\n  "event": "bridge_handshake",\n  "protocol": "MCP_SSE_1.0",\n  "client": "ChatGPT_Web_Connector",\n  "remote_ip": "127.0.0.1",\n  "tunnel_edge": "cf-tunnel-bqa-8427"\n}'
-      },
-      {
-        id: "evt-38241:03",
-        severity: "AUTH",
-        cat: "security",
-        action: "host_workspace_bind",
-        time: "01/09 20:25",
-        msg: "token_verified=true · scope=enforce",
-        session: "cw-analyze_botquanganh",
-        json: '{\n  "action": "host_workspace_bind",\n  "chat_id": "cw-analyze_botquanganh",\n  "token_hash": "sha256:8f4c2e1b...",\n  "scope": "enforce",\n  "resumed": true,\n  "duration_ms": 12.4\n}'
+    // ==================== STATE MANAGEMENT ====================
+    let currentWorkspaces = [];
+    let activeChatId = null;
+    let currentRenderedChatId = null;
+    let currentCommands = [];
+    let selectedCommand = null;
+
+    let currentLogs = [];
+    let activeLogCategory = 'all';
+
+    let lastWorkspacesHash = '';
+    let lastCommandsHash = {};
+    let lastLogsHash = '';
+    let activeActionRowEl = null;
+    let activeLogRowEl = null;
+
+    // ==================== WORKSPACE & SESSION RENDERING ====================
+    window.__onWorkspacesLoaded = function(workspaces) {
+      if (!Array.isArray(workspaces)) return;
+      
+      const jsonHash = workspaces.map(w => `${w.id || w.chat_id}:${w.ops_count || w.ops || 0}`).join('|');
+      const dataChanged = jsonHash !== lastWorkspacesHash;
+      lastWorkspacesHash = jsonHash;
+
+      currentWorkspaces = workspaces.map(w => ({
+        ...w,
+        chat_id: w.chat_id || w.id,
+        ops_count: w.ops_count !== undefined ? w.ops_count : (w.ops || 0)
+      }));
+
+      // Update Telemetry Metrics
+      const metricSessions = document.getElementById('metricSessions');
+      if (metricSessions) {
+        metricSessions.innerHTML = `${currentWorkspaces.length} <span style="color: var(--text-dim);" class="text-xs font-normal font-sans">sessions</span>`;
       }
-    ];
 
-    function renderSessions(sessions) {
+      const totalOps = currentWorkspaces.reduce((sum, w) => sum + (w.ops_count || 0), 0);
+      const metricCommands = document.getElementById('metricCommands');
+      if (metricCommands) {
+        metricCommands.innerHTML = `${totalOps.toLocaleString()} <span style="color: var(--mint);" class="text-xs font-normal font-sans">(100% OK)</span>`;
+      }
+
+      // If activeChatId not set or not in list, select first
+      if (!activeChatId || !currentWorkspaces.some(w => w.chat_id === activeChatId)) {
+        if (currentWorkspaces.length > 0) {
+          activeChatId = currentWorkspaces[0].chat_id;
+        }
+      }
+
+      const listContainer = document.getElementById('sessionListContainer');
+      const hasItems = listContainer && listContainer.children.length > 0 && !listContainer.innerText.includes('Chưa có');
+
+      if (dataChanged || !hasItems) {
+        renderSessionList();
+      } else {
+        updateActiveSessionHighlight();
+      }
+
+      if (activeChatId) {
+        const streamTitle = document.getElementById('streamTitle');
+        if (streamTitle && streamTitle.innerText !== activeChatId) {
+          streamTitle.innerText = activeChatId;
+        }
+        sendToRust('get_session_details', { chat_id: activeChatId });
+      }
+    };
+
+    function selectSession(chatId) {
+      if (activeChatId === chatId && currentRenderedChatId === chatId) return;
+      activeChatId = chatId;
+      updateActiveSessionHighlight();
+      const streamTitle = document.getElementById('streamTitle');
+      if (streamTitle) streamTitle.innerText = chatId;
+
+      // Show immediate loading placeholder so the UI feels snappy and old commands are cleared
+      const streamContainer = document.getElementById('commandStreamContainer');
+      if (streamContainer && currentRenderedChatId !== chatId) {
+        streamContainer.innerHTML = `
+          <div class="p-6 text-center text-xs" style="color: var(--text-dim);">
+            <div class="inline-block animate-pulse">⟳ Đang tải danh sách lệnh...</div>
+          </div>
+        `;
+      }
+
+      sendToRust('get_session_details', { chat_id: chatId });
+    }
+
+    function updateActiveSessionHighlight() {
+      document.querySelectorAll('.session-item').forEach(el => {
+        const isSelected = el.getAttribute('data-chat-id') === activeChatId;
+        el.classList.toggle('active', isSelected);
+        el.style.backgroundColor = isSelected ? 'var(--bg-selected)' : 'transparent';
+        el.style.borderColor = isSelected ? 'var(--border)' : 'transparent';
+        el.style.color = isSelected ? 'var(--text-main)' : 'var(--text-sub)';
+        if (isSelected) {
+          el.classList.add('border', 'shadow-xs', 'font-medium');
+        } else {
+          el.classList.remove('border', 'shadow-xs', 'font-medium');
+        }
+        const badge = el.querySelector('.session-ops-badge');
+        if (badge) {
+          badge.style.color = isSelected ? 'var(--accent)' : 'var(--text-dim)';
+          if (isSelected) badge.classList.add('font-bold'); else badge.classList.remove('font-bold');
+        }
+      });
+    }
+
+    function renderSessionList() {
       const container = document.getElementById('sessionListContainer');
+      if (!container) return;
       container.innerHTML = '';
-      sessions.forEach(s => {
+
+      if (currentWorkspaces.length === 0) {
+        container.innerHTML = `<div class="p-3 text-center text-[11px]" style="color: var(--text-dim);">Chưa có workspace nào</div>`;
+        return;
+      }
+
+      currentWorkspaces.forEach(w => {
+        const isActive = w.chat_id === activeChatId;
         const item = document.createElement('div');
-        item.className = `session-item ${s.active ? 'active' : ''} p-2 rounded-lg cursor-pointer transition flex items-center justify-between gap-1.5 font-mono text-xs min-w-0 overflow-hidden`;
-        item.style.backgroundColor = s.active ? 'var(--bg-selected)' : 'transparent';
-        item.style.borderColor = s.active ? 'var(--border)' : 'transparent';
-        item.style.color = s.active ? 'var(--text-main)' : 'var(--text-sub)';
-        if (s.active) item.classList.add('border', 'shadow-xs', 'font-medium');
+        item.setAttribute('data-chat-id', w.chat_id);
+        item.className = `session-item ${isActive ? 'active' : ''} p-2 rounded-lg cursor-pointer flex items-center justify-between gap-1.5 font-mono text-xs min-w-0 overflow-hidden`;
+        item.style.backgroundColor = isActive ? 'var(--bg-selected)' : 'transparent';
+        item.style.borderColor = isActive ? 'var(--border)' : 'transparent';
+        item.style.color = isActive ? 'var(--text-main)' : 'var(--text-sub)';
+        if (isActive) item.classList.add('border', 'shadow-xs', 'font-medium');
 
         item.innerHTML = `
-          <span class="truncate min-w-0 flex-1">${s.label}</span>
-          <span style="color: ${s.active ? 'var(--accent)' : 'var(--text-dim)'};" class="text-[10px] shrink-0 whitespace-nowrap ml-1 ${s.active ? 'font-bold' : ''}">${s.ops} ops</span>
+          <span class="truncate min-w-0 flex-1">${w.label || w.chat_id}</span>
+          <span style="color: ${isActive ? 'var(--accent)' : 'var(--text-dim)'};" class="session-ops-badge text-[10px] shrink-0 whitespace-nowrap ml-1 ${isActive ? 'font-bold' : ''}">${w.ops_count || 0} ops</span>
         `;
+
         item.onclick = () => {
-          document.querySelectorAll('.session-item').forEach(e => {
-            e.style.backgroundColor = 'transparent';
-            e.style.borderColor = 'transparent';
-            e.style.color = 'var(--text-sub)';
-            e.classList.remove('active', 'font-medium', 'shadow-xs');
-          });
-          item.style.backgroundColor = 'var(--bg-selected)';
-          item.style.borderColor = 'var(--border)';
-          item.style.color = 'var(--text-main)';
-          item.classList.add('active', 'font-medium', 'shadow-xs');
-          document.getElementById('streamTitle').innerText = s.id;
+          selectSession(w.chat_id);
         };
+
         container.appendChild(item);
       });
-      if (sessions.length > 0 && !document.getElementById('streamTitle').innerText.startsWith('cw-')) {
-        document.getElementById('streamTitle').innerText = sessions[0]?.id || "cw-research_mcp_tunnel";
-      }
     }
 
-    function renderCommands(commands) {
-      const container = document.getElementById('commandStreamContainer');
-      container.innerHTML = '';
-      commands.forEach((c, idx) => {
-        const isSelected = idx === 0;
-        const row = document.createElement('div');
-        row.className = `action-row ${isSelected ? 'selected shadow-xs' : ''} p-2 rounded-lg border cursor-pointer transition flex flex-col gap-0.5 min-w-0 overflow-hidden`;
-        row.style.backgroundColor = isSelected ? 'var(--bg-selected)' : 'var(--bg-header)';
-        row.style.borderColor = isSelected ? 'var(--accent)' : 'var(--border)';
+    // ==================== COMMAND JOURNAL RENDERING ====================
+    // ==================== COMMAND JOURNAL RENDERING ====================
+    let fastPollDebounce = null;
+    window.__triggerFastPoll = function() {
+      if (fastPollDebounce) return;
+      fastPollDebounce = setTimeout(() => {
+        fastPollDebounce = null;
+        if (activeChatId) {
+          sendToRust('get_session_details', { chat_id: activeChatId });
+        }
+        sendToRust('get_workspaces');
+      }, 50);
+    };
 
-        row.innerHTML = `
-          <div class="flex items-center justify-between gap-1 text-[11px] min-w-0 overflow-hidden">
-            <div class="flex items-center gap-1 min-w-0 truncate">
-              <span style="color: var(--accent);" class="font-bold text-[11px] truncate whitespace-nowrap">${c.tool.replace('host_', '')}</span>
-              ${c.is_latest ? '<span style="color: var(--mint); background-color: var(--accent-soft);" class="text-[8.5px] px-1 rounded font-sans shrink-0 whitespace-nowrap">Mới</span>' : ''}
-            </div>
-            <div class="flex items-center gap-1 shrink-0 whitespace-nowrap text-[10px]">
-              <span style="color: var(--text-dim);" class="whitespace-nowrap">${c.time_short}</span>
-              <span style="color: var(--mint);" class="font-semibold whitespace-nowrap">OK</span>
-            </div>
+    window.__onJournalLoaded = function(chatIdOrDetails, maybeCommands) {
+      let chatId = chatIdOrDetails;
+      let commands = maybeCommands;
+      if (typeof chatIdOrDetails === 'object' && chatIdOrDetails !== null) {
+        chatId = chatIdOrDetails.chat_id;
+        commands = chatIdOrDetails.commands;
+      }
+      if (chatId && activeChatId && chatId !== activeChatId) return;
+
+      const newCommands = Array.isArray(commands) ? commands : [];
+      const topCmd = newCommands[0];
+      const hash = `${chatId}:${newCommands.length}:${topCmd ? (topCmd.timestamp || '') + (topCmd.cmd || '') + (topCmd.output || '').length + topCmd.exit_code : ''}`;
+      const streamContainer = document.getElementById('commandStreamContainer');
+      const hasItems = streamContainer && streamContainer.children.length > 0 && !streamContainer.innerText.includes('Chưa có') && !streamContainer.innerText.includes('Đang tải');
+
+      const sessionSwitched = currentRenderedChatId !== chatId;
+      const changed = lastCommandsHash[chatId] !== hash;
+      lastCommandsHash[chatId] = hash;
+
+      currentCommands = newCommands;
+
+      if (sessionSwitched || changed || !hasItems) {
+        currentRenderedChatId = chatId;
+        let commandToSelect = currentCommands[0];
+        if (!sessionSwitched && selectedCommand) {
+          const prevTs = selectedCommand.timestamp;
+          const prevCmd = selectedCommand.cmd;
+          const match = currentCommands.find(c => c.timestamp === prevTs && c.cmd === prevCmd);
+          if (match) commandToSelect = match;
+        }
+        renderCommandStream(commandToSelect, sessionSwitched);
+        if (commandToSelect) {
+          selectCommand(commandToSelect);
+        } else {
+          clearInspector();
+        }
+      }
+    };
+
+    function createCommandRow(c, isSelected) {
+      const row = document.createElement('div');
+      const key = `${c.timestamp}_${c.cmd}`;
+      row.setAttribute('data-cmd-key', key);
+      const isSuccess = c.exit_code === 0;
+      row.className = `action-row ${isSelected ? 'selected shadow-xs' : ''} p-2 rounded-lg border cursor-pointer flex flex-col gap-0.5 min-w-0 overflow-hidden`;
+      row.style.backgroundColor = isSelected ? 'var(--bg-selected)' : 'var(--bg-header)';
+      row.style.borderColor = isSelected ? 'var(--accent)' : 'var(--border)';
+
+      const timeDisplay = formatLocalTime(c.timestamp || c.time_short, 'short');
+
+      row.innerHTML = `
+        <div class="flex items-center justify-between gap-1 text-[11px] min-w-0 overflow-hidden">
+          <div class="flex items-center gap-1 min-w-0 truncate">
+            <span style="color: var(--accent);" class="font-bold text-[11px] truncate whitespace-nowrap tool-name">${(c.tool || 'cmd').replace('host_', '')}</span>
+            <span class="badge-latest ${c.is_latest ? '' : 'hidden'}" style="color: var(--mint); background-color: var(--accent-soft); font-size: 8.5px; padding: 0 4px; border-radius: 4px;">Mới</span>
           </div>
-          <div style="color: var(--text-main);" class="font-medium truncate text-[11px] min-w-0 mt-0.5">${c.cmd}</div>
-        `;
+          <div class="flex items-center gap-1 shrink-0 whitespace-nowrap text-[10px]">
+            <span style="color: var(--text-dim);" class="time-display whitespace-nowrap">${timeDisplay}</span>
+            <span class="status-display font-semibold whitespace-nowrap" style="color: ${isSuccess ? 'var(--mint)' : '#ff6b61'};">${isSuccess ? 'OK' : 'ERR ' + c.exit_code}</span>
+          </div>
+        </div>
+        <div style="color: var(--text-main);" class="font-medium truncate text-[11px] min-w-0 mt-0.5 cmd-text"></div>
+      `;
 
-        row.onclick = () => {
-          document.querySelectorAll('.action-row').forEach(e => {
-            e.style.backgroundColor = 'var(--bg-header)';
-            e.style.borderColor = 'var(--border)';
-            e.classList.remove('selected', 'shadow-xs');
-          });
-          row.style.backgroundColor = 'var(--bg-selected)';
-          row.style.borderColor = 'var(--accent)';
-          row.classList.add('selected', 'shadow-xs');
+      const cmdEl = row.querySelector('.cmd-text');
+      if (cmdEl) cmdEl.innerText = c.cmd || '';
 
-          document.getElementById('inspectTool').innerText = c.tool;
-          document.getElementById('inspectTimestamp').innerText = c.timestamp;
-          document.getElementById('inspectExit').innerText = `${c.exit_code} (Success) · ${c.duration}`;
-          document.getElementById('inspectCommand').innerText = c.cmd;
-          document.getElementById('inspectOutput').innerText = c.output;
+      row.onclick = () => {
+        if (activeActionRowEl && activeActionRowEl !== row) {
+          activeActionRowEl.style.backgroundColor = 'var(--bg-header)';
+          activeActionRowEl.style.borderColor = 'var(--border)';
+          activeActionRowEl.classList.remove('selected', 'shadow-xs');
+        }
+        row.style.backgroundColor = 'var(--bg-selected)';
+        row.style.borderColor = 'var(--accent)';
+        row.classList.add('selected', 'shadow-xs');
+        activeActionRowEl = row;
+        selectCommand(c);
+      };
 
-          if (isInspectorCollapsed) {
-            toggleInspector();
-          }
-        };
-        container.appendChild(row);
+      return row;
+    }
+
+    function renderCommandStream(targetSelected, sessionSwitched) {
+      const container = document.getElementById('commandStreamContainer');
+      if (!container) return;
+
+      if (currentCommands.length === 0) {
+        container.innerHTML = `<div class="p-4 text-center text-[11px]" style="color: var(--text-dim);">Chưa có nhật ký lệnh trong phiên này</div>`;
+        activeActionRowEl = null;
+        return;
+      }
+
+      // If session switched or container has loading placeholder: perform clean initial render
+      const hasPlaceholder = container.innerText.includes('Đang tải') || container.innerText.includes('Chưa có');
+      if (sessionSwitched || hasPlaceholder || container.children.length === 0) {
+        container.innerHTML = '';
+        activeActionRowEl = null;
+        const fragment = document.createDocumentFragment();
+        currentCommands.forEach((c, idx) => {
+          const isSelected = targetSelected ? (c.timestamp === targetSelected.timestamp && c.cmd === targetSelected.cmd) : idx === 0;
+          const row = createCommandRow(c, isSelected);
+          if (isSelected) activeActionRowEl = row;
+          fragment.appendChild(row);
+        });
+        container.appendChild(fragment);
+        return;
+      }
+
+      // INCREMENTAL PATCHING:
+      // Map current DOM elements by data-cmd-key
+      const existingRows = container.querySelectorAll('.action-row');
+      const domMap = new Map();
+      existingRows.forEach(row => {
+        const key = row.getAttribute('data-cmd-key');
+        if (key) domMap.set(key, row);
       });
 
-      if (commands.length > 0 && (!document.getElementById('inspectCommand').innerText || document.getElementById('inspectCommand').innerText === 'uv run pytest tests/test_qml_backend.py')) {
-        document.getElementById('inspectTool').innerText = commands[0].tool;
-        document.getElementById('inspectTimestamp').innerText = commands[0].timestamp;
-        document.getElementById('inspectExit').innerText = `${commands[0].exit_code} (Success) · ${commands[0].duration}`;
-        document.getElementById('inspectCommand').innerText = commands[0].cmd;
-        document.getElementById('inspectOutput').innerText = commands[0].output;
+      // Find new commands (that aren't in domMap yet)
+      const newCommandsToInsert = [];
+      currentCommands.forEach((c) => {
+        const key = `${c.timestamp}_${c.cmd}`;
+        if (!domMap.has(key)) {
+          const isSelected = targetSelected ? (c.timestamp === targetSelected.timestamp && c.cmd === targetSelected.cmd) : false;
+          const row = createCommandRow(c, isSelected);
+          row.classList.add('animate-slide-down');
+          newCommandsToInsert.push({ row, c });
+        } else {
+          // In-place update existing row
+          const row = domMap.get(key);
+          const badgeLatest = row.querySelector('.badge-latest');
+          if (badgeLatest) {
+            if (c.is_latest) badgeLatest.classList.remove('hidden');
+            else badgeLatest.classList.add('hidden');
+          }
+          const statusEl = row.querySelector('.status-display');
+          if (statusEl) {
+            const isSuccess = c.exit_code === 0;
+            statusEl.innerText = isSuccess ? 'OK' : 'ERR ' + c.exit_code;
+            statusEl.style.color = isSuccess ? 'var(--mint)' : '#ff6b61';
+          }
+          if (targetSelected && c.timestamp === targetSelected.timestamp && c.cmd === targetSelected.cmd) {
+            if (activeActionRowEl && activeActionRowEl !== row) {
+              activeActionRowEl.style.backgroundColor = 'var(--bg-header)';
+              activeActionRowEl.style.borderColor = 'var(--border)';
+              activeActionRowEl.classList.remove('selected', 'shadow-xs');
+            }
+            activeActionRowEl = row;
+            row.classList.add('selected', 'shadow-xs');
+            row.style.backgroundColor = 'var(--bg-selected)';
+            row.style.borderColor = 'var(--accent)';
+          }
+        }
+      });
+
+      // Prepend only the new commands at the top
+      if (newCommandsToInsert.length > 0) {
+        for (let i = newCommandsToInsert.length - 1; i >= 0; i--) {
+          const item = newCommandsToInsert[i];
+          container.insertBefore(item.row, container.firstChild);
+          if (targetSelected && item.c.timestamp === targetSelected.timestamp && item.c.cmd === targetSelected.cmd) {
+            if (activeActionRowEl && activeActionRowEl !== item.row) {
+              activeActionRowEl.style.backgroundColor = 'var(--bg-header)';
+              activeActionRowEl.style.borderColor = 'var(--border)';
+              activeActionRowEl.classList.remove('selected', 'shadow-xs');
+            }
+            activeActionRowEl = item.row;
+          }
+        }
       }
     }
 
-    function renderLogs(logs) {
+    function selectCommand(c) {
+      selectedCommand = c;
+      if (!c) return;
+
+      const inspectTool = document.getElementById('inspectTool');
+      const inspectTimestamp = document.getElementById('inspectTimestamp');
+      const inspectExit = document.getElementById('inspectExit');
+      const inspectOutput = document.getElementById('inspectOutput');
+      const inspectCommand = document.getElementById('inspectCommand');
+      const inspectCwd = document.getElementById('inspectCwd');
+      const inspectStderr = document.getElementById('inspectStderr');
+      const inspectStderrBadge = document.getElementById('inspectStderrBadge');
+      const inspectRawJson = document.getElementById('inspectRawJson');
+
+      if (inspectTool) inspectTool.innerText = c.tool || 'unknown';
+      if (inspectTimestamp) {
+        inspectTimestamp.innerText = formatLocalTime(c.timestamp, 'full') || c.timestamp || 'N/A';
+      }
+      if (inspectExit) {
+        const isSuccess = c.exit_code === 0;
+        inspectExit.innerText = `${c.exit_code} (${isSuccess ? 'Success' : 'Failed'}) · ${c.duration || '0ms'}`;
+        inspectExit.style.color = isSuccess ? 'var(--mint)' : '#ff6b61';
+      }
+
+      // Tab 1: Output
+      if (inspectOutput) {
+        inspectOutput.innerText = c.output && c.output.trim().length > 0 ? c.output : '(Không có kết quả STDOUT)';
+      }
+
+      // Tab 2: Meta
+      if (inspectCommand) inspectCommand.innerText = c.cmd || '(Trống)';
+      if (inspectCwd) inspectCwd.innerText = c.cwd || '(Không xác định)';
+
+      // Tab 3: STDERR
+      if (inspectStderr) {
+        inspectStderr.innerText = c.stderr && c.stderr.trim().length > 0 ? c.stderr : 'Không có lỗi phát sinh (Exit Code 0).';
+      }
+      if (inspectStderrBadge) {
+        if (c.stderr && c.stderr.trim().length > 0) {
+          inspectStderrBadge.innerText = 'Có lỗi';
+          inspectStderrBadge.style.color = '#ff6b61';
+        } else {
+          inspectStderrBadge.innerText = 'None';
+          inspectStderrBadge.style.color = 'var(--mint)';
+        }
+      }
+
+      // Tab 4: Raw JSON
+      if (inspectRawJson) {
+        inspectRawJson.innerText = c.raw_json ? formatJson(c.raw_json) : JSON.stringify(c, null, 2);
+      }
+
+      if (isInspectorCollapsed) {
+        toggleInspector();
+      }
+    }
+
+    function clearInspector() {
+      const inspectTool = document.getElementById('inspectTool');
+      const inspectTimestamp = document.getElementById('inspectTimestamp');
+      const inspectExit = document.getElementById('inspectExit');
+      const inspectOutput = document.getElementById('inspectOutput');
+      const inspectCommand = document.getElementById('inspectCommand');
+      const inspectCwd = document.getElementById('inspectCwd');
+      const inspectStderr = document.getElementById('inspectStderr');
+      const inspectRawJson = document.getElementById('inspectRawJson');
+
+      if (inspectTool) inspectTool.innerText = 'None';
+      if (inspectTimestamp) inspectTimestamp.innerText = 'N/A';
+      if (inspectExit) inspectExit.innerText = 'N/A';
+      if (inspectOutput) inspectOutput.innerText = '(Không có dữ liệu)';
+      if (inspectCommand) inspectCommand.innerText = '(Trống)';
+      if (inspectCwd) inspectCwd.innerText = '(Trống)';
+      if (inspectStderr) inspectStderr.innerText = '(Trống)';
+      if (inspectRawJson) inspectRawJson.innerText = '{}';
+    }
+
+    function formatJson(raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        return JSON.stringify(parsed, null, 2);
+      } catch (e) {
+        return raw;
+      }
+    }
+
+    // ==================== LOGS & FORENSIC VIEWER ====================
+    window.__onLogsLoaded = function(logs) {
+      if (!Array.isArray(logs)) return;
+      const hash = `${logs.length}:${logs[0] ? (logs[0].id || '') + (logs[0].time || '') + (logs[0].msg || '') : ''}`;
+      const logContainer = document.getElementById('logStreamContainer');
+      const hasItems = logContainer && logContainer.children.length > 0 && !logContainer.innerText.includes('Không có');
+      if (hash === lastLogsHash && hasItems) return;
+      lastLogsHash = hash;
+
+      currentLogs = logs;
+      activeLogRowEl = null;
+      renderFilteredLogs();
+    };
+
+    function setLogCategoryFilter(category) {
+      activeLogCategory = category;
+      document.querySelectorAll('.log-filter-chip').forEach(chip => {
+        if (chip.getAttribute('data-chip') === category) {
+          chip.style.backgroundColor = 'var(--accent)';
+          chip.style.color = 'var(--bg-base)';
+          chip.style.border = 'none';
+        } else {
+          chip.style.backgroundColor = 'var(--bg-card)';
+          chip.style.color = 'var(--text-sub)';
+          chip.style.border = '1px solid var(--border)';
+        }
+      });
+      activeLogRowEl = null;
+      renderFilteredLogs();
+    }
+
+    function renderFilteredLogs() {
       const container = document.getElementById('logStreamContainer');
+      if (!container) return;
       container.innerHTML = '';
-      logs.forEach((l, idx) => {
+      activeLogRowEl = null;
+
+      const filtered = currentLogs.filter(l => {
+        if (activeLogCategory === 'all') return true;
+        if (activeLogCategory === 'error') return (l.severity === 'ERROR' || l.severity === 'WARN' || l.cat === 'error');
+        if (activeLogCategory === 'process') return (l.cat === 'process' || (l.action && l.action.includes('command')));
+        if (activeLogCategory === 'file') return (l.cat === 'file' || (l.action && l.action.includes('file')));
+        if (activeLogCategory === 'session') return (l.cat === 'session' || (l.session && l.session !== 'system') || (l.action && (l.action.includes('mcp') || l.action.includes('session'))));
+        if (activeLogCategory === 'network') return (l.cat === 'network' || (l.action && (l.action.includes('HTTP') || l.action.includes('healthz') || l.action.includes('/'))));
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        container.innerHTML = `<div class="p-4 text-center text-[11px]" style="color: var(--text-dim);">Không có nhật ký nào thuộc danh mục này</div>`;
+        return;
+      }
+
+      filtered.forEach((l, idx) => {
         const isSelected = idx === 0;
         const row = document.createElement('div');
-        row.className = `log-row ${isSelected ? 'selected shadow-xs' : ''} p-2.5 rounded-lg border flex items-center justify-between gap-2 cursor-pointer transition min-w-0 overflow-hidden`;
+        row.className = `log-row ${isSelected ? 'selected shadow-xs' : ''} p-2.5 rounded-lg border flex items-center justify-between gap-2 cursor-pointer min-w-0 overflow-hidden`;
         row.style.backgroundColor = isSelected ? 'var(--bg-selected)' : 'var(--bg-header)';
         row.style.borderColor = isSelected ? 'var(--accent)' : 'var(--border)';
+
+        if (isSelected) activeLogRowEl = row;
+
+        const isErr = l.severity === 'ERROR';
+        const isWarn = l.severity === 'WARN';
+        const sevColor = isErr ? '#ff6b61' : (isWarn ? 'var(--amber, #fbbf24)' : 'var(--mint)');
+        const logTime = formatLocalTime(l.timestamp || l.time, 'time_only') || l.time || '';
 
         row.innerHTML = `
           <div class="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
-            <span style="color: var(--mint);" class="font-bold text-[10px] shrink-0 whitespace-nowrap">[${l.severity}]</span>
-            <span style="color: var(--text-dim);" class="text-[10px] shrink-0 whitespace-nowrap">${l.time}</span>
-            <span style="color: var(--mint);" class="font-semibold text-[11px] shrink-0 whitespace-nowrap">${l.action}</span>
-            <span style="color: var(--text-main);" class="truncate min-w-0 flex-1 text-[11px]">${l.msg}</span>
+            <span style="color: ${sevColor};" class="font-bold text-[10px] shrink-0 whitespace-nowrap">[${l.severity || 'INFO'}]</span>
+            <span style="color: var(--text-dim);" class="text-[10px] shrink-0 whitespace-nowrap">${logTime}</span>
+            <span style="color: var(--accent);" class="font-semibold text-[11px] shrink-0 whitespace-nowrap">${l.action || 'event'}</span>
+            <span style="color: var(--text-main);" class="truncate min-w-0 flex-1 text-[11px]">${l.msg || ''}</span>
           </div>
-          <span style="color: var(--text-dim);" class="text-[10px] shrink-0 whitespace-nowrap ml-1">${l.session}</span>
+          <span style="color: var(--text-dim);" class="text-[10px] shrink-0 whitespace-nowrap ml-1">${l.session || 'system'}</span>
         `;
 
         row.onclick = () => {
-          document.querySelectorAll('.log-row').forEach(e => {
-            e.style.backgroundColor = 'var(--bg-header)';
-            e.style.borderColor = 'var(--border)';
-            e.classList.remove('selected', 'shadow-xs');
-          });
+          if (activeLogRowEl && activeLogRowEl !== row) {
+            activeLogRowEl.style.backgroundColor = 'var(--bg-header)';
+            activeLogRowEl.style.borderColor = 'var(--border)';
+            activeLogRowEl.classList.remove('selected', 'shadow-xs');
+          }
           row.style.backgroundColor = 'var(--bg-selected)';
           row.style.borderColor = 'var(--accent)';
           row.classList.add('selected', 'shadow-xs');
-
-          document.getElementById('logInspectId').innerText = l.id;
-          document.getElementById('logInspectCategory').innerText = `${l.severity} · ${l.cat}`;
-          document.getElementById('logInspectAction').innerText = l.action;
-          document.getElementById('logInspectSession').innerText = l.session;
-          document.getElementById('logInspectJson').innerText = l.json;
-
-          if (isInspectorCollapsed) {
-            toggleInspector();
-          }
+          activeLogRowEl = row;
+          selectLog(l);
         };
+
         container.appendChild(row);
       });
 
-      if (logs.length > 0 && !document.getElementById('logInspectId').innerText) {
-        document.getElementById('logInspectId').innerText = logs[0].id;
-        document.getElementById('logInspectCategory').innerText = `${logs[0].severity} · ${logs[0].cat}`;
-        document.getElementById('logInspectAction').innerText = logs[0].action;
-        document.getElementById('logInspectSession').innerText = logs[0].session;
-        document.getElementById('logInspectJson').innerText = logs[0].json;
+      if (filtered.length > 0) {
+        selectLog(filtered[0]);
       }
     }
 
-    // ==================== REAL-TIME AUTO-POLLING & LIVE UPDATES ====================
-    let autoPollTimer = null;
+    function selectLog(l) {
+      if (!l) return;
+      const logInspectId = document.getElementById('logInspectId');
+      const logInspectCategory = document.getElementById('logInspectCategory');
+      const logInspectAction = document.getElementById('logInspectAction');
+      const logInspectSession = document.getElementById('logInspectSession');
+      const logInspectJson = document.getElementById('logInspectJson');
 
-    async function pollLiveActivityAndLogs(isManual = false) {
-      try {
-        // Fetch live logs from local REST bridge endpoint (:18427)
-        const res = await fetch('http://127.0.0.1:18427/api/v1/logs/tail?n=50', { cache: 'no-store' });
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.events && Array.isArray(data.events) && data.events.length > 0) {
-            const mappedLogs = data.events.map((evt, i) => ({
-              id: evt.id || `evt-${i+1}`,
-              severity: evt.level || (evt.action?.includes('auth') ? 'AUTH' : 'SYSTEM'),
-              cat: evt.category || 'runtime',
-              action: evt.action || 'system_event',
-              time: evt.timestamp ? evt.timestamp.substring(5, 16).replace('T', ' ') : '01/09 20:26',
-              msg: evt.summary || evt.message || JSON.stringify(evt.data || {}),
-              session: evt.session_id || 'system',
-              json: JSON.stringify(evt, null, 2)
-            }));
-            renderLogs(mappedLogs);
-          }
+      const fullTime = formatLocalTime(l.timestamp || l.time, 'full');
+      if (logInspectId) logInspectId.innerText = l.id || 'evt';
+      if (logInspectCategory) logInspectCategory.innerText = `${l.severity || 'INFO'} · ${l.cat || 'runtime'} · ${fullTime}`;
+      if (logInspectAction) logInspectAction.innerText = l.action || 'event';
+      if (logInspectSession) logInspectSession.innerText = l.session || 'system';
+      if (logInspectJson) logInspectJson.innerText = l.json ? formatJson(l.json) : JSON.stringify(l, null, 2);
+
+      if (isInspectorCollapsed) {
+        toggleInspector();
+      }
+    }
+
+    // ==================== RUNTIME STATUS & LIFECYCLE ====================
+    window.__onRuntimeStatusLoaded = function(status) {
+      if (!status) return;
+
+      const topbarStatusDot = document.getElementById('topbarStatusDot');
+      const topbarStatusText = document.getElementById('topbarStatusText');
+      const bridgeStateText = document.getElementById('bridgeStateText');
+      const bridgeActionsRunning = document.getElementById('bridgeActionsRunning');
+      const bridgeActionsStopped = document.getElementById('bridgeActionsStopped');
+      const bridgeUrlDisplay = document.getElementById('bridgeUrlDisplay');
+      const tunnelStatusBadge = document.getElementById('tunnelStatusBadge');
+
+      const isRunning = (status.fastmcp_running === true) || (status.server && status.server.running === true);
+      const isTunnelRunning = (status.tunnel_running === true) || (status.tunnel && status.tunnel.running === true);
+      const port = status.fastmcp_port || (status.server && status.server.port) || 18427;
+
+      if (topbarStatusDot) {
+        topbarStatusDot.style.backgroundColor = isRunning ? 'var(--mint)' : 'var(--text-dim)';
+      }
+      if (topbarStatusText) {
+        if (isRunning && isTunnelRunning) {
+          topbarStatusText.innerText = `0.0.0.0:${port} · Edge Active`;
+        } else if (isRunning) {
+          topbarStatusText.innerText = `0.0.0.0:${port} · Local`;
+        } else {
+          topbarStatusText.innerText = 'Offline (Stopped)';
         }
-      } catch (err) {
-        // REST bridge offline or uninitialized
       }
 
-      if (isManual) {
-        showToast('✓ Đã đồng bộ nhật ký và phiên');
+      if (bridgeStateText) {
+        bridgeStateText.innerHTML = `<span id="bridgeDot" style="background-color: ${isRunning ? 'var(--mint)' : 'var(--text-dim)'};" class="w-2 h-2 rounded-full"></span><span>${isRunning ? 'Đang chạy' : 'Đã dừng'}</span>`;
+        bridgeStateText.style.color = isRunning ? 'var(--mint)' : 'var(--text-dim)';
+      }
+
+      if (bridgeActionsRunning && bridgeActionsStopped) {
+        if (isRunning) {
+          bridgeActionsRunning.classList.remove('hidden');
+          bridgeActionsRunning.classList.add('flex');
+          bridgeActionsStopped.classList.remove('flex');
+          bridgeActionsStopped.classList.add('hidden');
+        } else {
+          bridgeActionsRunning.classList.remove('flex');
+          bridgeActionsRunning.classList.add('hidden');
+          bridgeActionsStopped.classList.remove('hidden');
+          bridgeActionsStopped.classList.add('flex');
+        }
+      }
+
+      if (tunnelStatusBadge) {
+        if (isTunnelRunning) {
+          tunnelStatusBadge.innerText = 'Đã kết nối Edge';
+          tunnelStatusBadge.style.color = 'var(--mint)';
+          tunnelStatusBadge.style.backgroundColor = 'var(--accent-soft)';
+        } else {
+          tunnelStatusBadge.innerText = 'Chưa kết nối Tunnel';
+          tunnelStatusBadge.style.color = 'var(--text-dim)';
+          tunnelStatusBadge.style.backgroundColor = 'var(--bg-base)';
+        }
+      }
+
+      if (bridgeUrlDisplay) {
+        const fallback = `http://127.0.0.1:${port}/mcp`;
+        bridgeUrlDisplay.innerText = status.tunnel_url || status.url || fallback;
+      }
+
+      // Populate Settings Drawer Fields
+      if (status.workspace_root) setVal('cfgWorkspaceDir', status.workspace_root);
+      if (status.default_dir) setVal('cfgDefaultDir', status.default_dir);
+      if (status.chat_root) setVal('cfgChatRoot', status.chat_root);
+      if (status.policy) setVal('cfgPolicy', status.policy);
+      if (status.default_timeout) setVal('cfgDefaultTimeout', status.default_timeout);
+      if (status.max_timeout) setVal('cfgMaxTimeout', status.max_timeout);
+      if (status.max_output_bytes) setVal('cfgMaxOutput', status.max_output_bytes);
+      if (status.gateway_token) setVal('cfgToken', status.gateway_token);
+      if (status.require_auth !== undefined) setVal('cfgRequireAuth', status.require_auth ? 'true' : 'false');
+      if (status.attribution_mode) setVal('cfgAttribution', status.attribution_mode);
+    };
+
+    function setVal(id, val) {
+      const el = document.getElementById(id);
+      if (el && !el.matches(':focus')) {
+        el.value = val;
       }
     }
 
-    function startAutoPolling() {
-      if (autoPollTimer) clearInterval(autoPollTimer);
-      pollLiveActivityAndLogs();
-      // Auto-poll every 2.5 seconds
-      autoPollTimer = setInterval(() => {
-        pollLiveActivityAndLogs(false);
-      }, 2500);
+    // ==================== LIFECYCLE ACTIONS WITH MODAL ====================
+    let pendingLifecycleAction = null;
+
+    function promptStartServer() {
+      pendingLifecycleAction = 'start';
+      openLifecycleModal('Khởi chạy FastMCP Server', 'Bạn có muốn khởi chạy FastMCP server daemon trên cổng 18427?');
     }
 
-    function refreshSessionsFromDisk() {
-      sendToRust('get_sessions').then(() => {
-        showToast('✓ Đã đồng bộ sessions từ đĩa');
-      });
+    function promptStopServer() {
+      pendingLifecycleAction = 'stop';
+      openLifecycleModal('Dừng FastMCP Server', 'Bạn có chắc chắn muốn dừng runtime máy chủ? Kết nối SSE/MCP sẽ bị ngắt.');
     }
 
-    function refreshLogsFromDisk() {
-      pollLiveActivityAndLogs(true);
+    function promptRestartServer() {
+      pendingLifecycleAction = 'restart';
+      openLifecycleModal('Khởi động lại FastMCP Server', 'Khởi động lại server daemon để nạp lại cấu hình và giải phóng tài nguyên.');
     }
 
+    function handleRestartServer() {
+      promptRestartServer();
+    }
+
+    function startBridgeServer() {
+      promptStartServer();
+    }
+
+    function stopBridgeServer() {
+      promptStopServer();
+    }
+
+    function openLifecycleModal(title, desc) {
+      const modal = document.getElementById('lifecycleModal');
+      const titleEl = document.getElementById('modalTitle');
+      const descEl = document.getElementById('modalDesc');
+      const confirmBtn = document.getElementById('modalConfirmBtn');
+
+      if (titleEl) titleEl.innerText = title;
+      if (descEl) descEl.innerText = desc;
+      if (confirmBtn) {
+        confirmBtn.onclick = executeConfirmedLifecycleAction;
+      }
+      if (modal) modal.classList.remove('hidden');
+    }
+
+    function closeLifecycleModal() {
+      pendingLifecycleAction = null;
+      const modal = document.getElementById('lifecycleModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function executeConfirmedLifecycleAction() {
+      if (!pendingLifecycleAction) return;
+      const act = pendingLifecycleAction;
+      closeLifecycleModal();
+
+      const topbarStatusDot = document.getElementById('topbarStatusDot');
+      const topbarStatusText = document.getElementById('topbarStatusText');
+      const restartIcon = document.getElementById('restartIcon');
+
+      if (topbarStatusDot) topbarStatusDot.style.backgroundColor = 'var(--amber, #fbbf24)';
+      if (topbarStatusText) topbarStatusText.innerText = act === 'stop' ? 'Stopping...' : (act === 'restart' ? 'Restarting...' : 'Starting...');
+      if (restartIcon && act === 'restart') restartIcon.classList.add('animate-spin');
+
+      sendToRust('lifecycle_action', { action: act });
+    }
+
+    window.__onLifecycleActionFinished = function(action, success, message) {
+      const restartIcon = document.getElementById('restartIcon');
+      if (restartIcon) restartIcon.classList.remove('animate-spin');
+
+      showToast(success ? `✓ ${message}` : `⚠️ Thất bại: ${message}`);
+      sendToRust('get_runtime_status');
+    };
+
+    // ==================== CLIPBOARD & TOAST ====================
     function copyDetails() {
-      const cmd = document.getElementById('inspectCommand').innerText;
-      const out = document.getElementById('inspectOutput').innerText;
-      navigator.clipboard.writeText('Command: ' + cmd + '\nOutput:\n' + out).then(() => {
+      const cmd = document.getElementById('inspectCommand')?.innerText || '';
+      const out = document.getElementById('inspectOutput')?.innerText || '';
+      navigator.clipboard.writeText(`Command: ${cmd}\nOutput:\n${out}`).then(() => {
         const btn = document.getElementById('copyBtnLabel');
-        btn.innerText = 'Đã sao chép!';
-        setTimeout(() => btn.innerText = 'Sao chép Output', 1500);
+        if (btn) {
+          btn.innerText = 'Đã sao chép!';
+          setTimeout(() => { btn.innerText = 'Sao chép'; }, 1500);
+        }
       });
     }
 
     function copyLogJson() {
-      const json = document.getElementById('logInspectJson').innerText;
+      const json = document.getElementById('logInspectJson')?.innerText || '{}';
       navigator.clipboard.writeText(json).then(() => {
         const btn = document.getElementById('copyLogLabel');
-        btn.innerText = 'Đã sao chép!';
-        setTimeout(() => btn.innerText = 'Sao chép JSON', 1500);
+        if (btn) {
+          btn.innerText = 'Đã sao chép!';
+          setTimeout(() => { btn.innerText = 'Sao chép JSON'; }, 1500);
+        }
       });
     }
 
     function copyBridgeUrl() {
-      const url = document.getElementById('bridgeUrlDisplay').innerText;
+      const url = document.getElementById('bridgeUrlDisplay')?.innerText || '';
       navigator.clipboard.writeText(url).then(() => {
         const btn = document.getElementById('copyUrlLabel');
-        btn.innerText = 'Đã sao chép!';
-        setTimeout(() => btn.innerText = 'Sao chép Tunnel URL', 1500);
-      });
-    }
-
-    let isBridgeRunning = true;
-    function startBridgeServer() {
-      isBridgeRunning = true;
-      const stateText = document.getElementById('bridgeStateText');
-      const runningActions = document.getElementById('bridgeActionsRunning');
-      const stoppedActions = document.getElementById('bridgeActionsStopped');
-      const topbarStatusDot = document.getElementById('topbarStatusDot');
-      const topbarStatusText = document.getElementById('topbarStatusText');
-
-      stateText.innerHTML = '<span id="bridgeDot" style="background-color: var(--mint);" class="w-2 h-2 rounded-full"></span><span>Đang chạy</span>';
-      stateText.style.color = 'var(--mint)';
-      runningActions.classList.remove('hidden');
-      runningActions.classList.add('flex');
-      stoppedActions.classList.remove('flex');
-      stoppedActions.classList.add('hidden');
-
-      if (topbarStatusDot) topbarStatusDot.style.backgroundColor = 'var(--mint)';
-      if (topbarStatusText) topbarStatusText.innerText = '0.0.0.0:18427';
-
-      sendToRust('bridge_start').then(() => {
-        showToast('✓ Bridge Server đã khởi chạy thành công (Port: 18427)');
-      });
-    }
-
-    function stopBridgeServer() {
-      isBridgeRunning = false;
-      const stateText = document.getElementById('bridgeStateText');
-      const runningActions = document.getElementById('bridgeActionsRunning');
-      const stoppedActions = document.getElementById('bridgeActionsStopped');
-      const topbarStatusDot = document.getElementById('topbarStatusDot');
-      const topbarStatusText = document.getElementById('topbarStatusText');
-
-      stateText.innerHTML = '<span id="bridgeDot" style="background-color: var(--text-dim);" class="w-2 h-2 rounded-full"></span><span>Đã dừng</span>';
-      stateText.style.color = 'var(--text-dim)';
-      runningActions.classList.remove('flex');
-      runningActions.classList.add('hidden');
-      stoppedActions.classList.remove('hidden');
-      stoppedActions.classList.add('flex');
-
-      if (topbarStatusDot) topbarStatusDot.style.backgroundColor = 'var(--text-dim)';
-      if (topbarStatusText) topbarStatusText.innerText = 'Offline (Stopped)';
-
-      sendToRust('bridge_stop').then(() => {
-        showToast('■ Bridge Server đã dừng hoạt động');
-      });
-    }
-
-    function handleRestartServer() {
-      const restartIcon = document.getElementById('restartIcon');
-      const restartLabel = document.getElementById('restartLabel');
-      const statusDot = document.getElementById('topbarStatusDot');
-      const statusText = document.getElementById('topbarStatusText');
-      const btn = document.getElementById('btnRestart');
-
-      restartIcon.classList.add('animate-spin');
-      restartLabel.innerText = 'Đang khởi động...';
-      statusDot.style.backgroundColor = 'var(--amber, #fbbf24)';
-      statusText.innerText = 'Reconnecting...';
-      btn.disabled = true;
-
-      switchPage('overview');
-
-      sendToRust('bridge_restart').then(() => {
-        setTimeout(() => {
-          restartIcon.classList.remove('animate-spin');
-          restartLabel.innerText = 'Khởi động lại';
-          statusDot.style.backgroundColor = 'var(--mint)';
-          statusText.innerText = '0.0.0.0:18427';
-          btn.disabled = false;
-          showToast('✓ Đã khởi động lại Bridge Server thành công (:18427)');
-        }, 700);
+        if (btn) {
+          btn.innerText = 'Đã sao chép!';
+          setTimeout(() => { btn.innerText = 'Sao chép Tunnel URL'; }, 1500);
+        }
       });
     }
 
@@ -1657,18 +2248,29 @@
       }, 2400);
     }
 
-    // ===== BOOT SEQUENCE ANIMATION (VJP-PRO CONTRACT) =====
+    // ==================== BOOT SEQUENCE ANIMATION (VJP-PRO CONTRACT) ====================
     const BOOT_PHASES = [
-      { title: "INITIALIZING INTERFACE", sub: "Khởi tạo hệ thống giao diện và visual token...", percent: 25, duration: 380 },
-      { title: "LOADING WORKSPACES", sub: "Quét nạp danh sách chat workspace và phiên làm việc...", percent: 55, duration: 420 },
-      { title: "CONNECTING ACTIVITY STREAM", sub: "Kết nối luồng giám sát Activity Stream thời gian thực...", percent: 85, duration: 420 },
-      { title: "SYSTEM READY", sub: "Đã sẵn sàng. Mở giao diện BQA Native Studio...", percent: 100, duration: 320 },
+      { title: "INITIALIZING INTERFACE", sub: "Khởi tạo hệ thống giao diện và visual token...", percent: 25, duration: 300 },
+      { title: "LOADING WORKSPACES", sub: "Quét nạp danh sách chat workspace và phiên làm việc...", percent: 55, duration: 320 },
+      { title: "CONNECTING ACTIVITY STREAM", sub: "Kết nối luồng giám sát Activity Stream thời gian thực...", percent: 85, duration: 320 },
+      { title: "SYSTEM READY", sub: "Đã sẵn sàng. Mở giao diện BQA Native Studio...", percent: 100, duration: 220 },
     ];
 
     let bootActive = true;
     function runBootSequence() {
       const screen = document.getElementById('bootScreen');
       if (!screen) return;
+
+      console.log("BOOT SEQUENCE STARTING, WATCHDOG 1.8s ARMED");
+
+      // GUARANTEED WATCHDOG: Ensure boot screen NEVER blocks UI longer than 1.8s
+      setTimeout(() => {
+        if (bootActive) {
+          console.log("WATCHDOG TRIGGERED: FORCE DISMISSING BOOT SCREEN");
+          dismissBootScreen();
+        }
+      }, 1800);
+
       let phaseIdx = 0;
       function nextPhase() {
         if (!bootActive) return;
@@ -1685,6 +2287,7 @@
         if (subEl) subEl.textContent = p.sub;
         if (pctEl) pctEl.textContent = p.percent + '%';
         if (barEl) barEl.style.width = p.percent + '%';
+        console.log("BOOT PHASE:", p.title, p.percent + "%");
         phaseIdx++;
         setTimeout(nextPhase, p.duration);
       }
@@ -1692,13 +2295,16 @@
     }
 
     function dismissBootScreen() {
+      if (!bootActive && document.getElementById('bootScreen')?.style.display === 'none') return;
       bootActive = false;
+      console.log("DISMISSING BOOT SCREEN NOW");
       const screen = document.getElementById('bootScreen');
       if (!screen) return;
       screen.style.opacity = '0';
       setTimeout(() => {
         screen.style.display = 'none';
-      }, 500);
+        console.log("BOOT SCREEN COMPLETELY HIDDEN");
+      }, 350);
     }
 
     window.addEventListener('keydown', (e) => {
@@ -1707,13 +2313,52 @@
       }
     });
 
-    // Init App State
-    renderSessions(sampleSessions);
-    renderCommands(sampleCommands);
-    renderLogs(sampleLogs);
-    setTheme(localStorage.getItem('bqa_theme') || 'vjp-terminal');
-    startAutoPolling();
-    runBootSequence();
+    // ==================== AUTO-POLLING & REAL-TIME DISPATCH ====================
+    let autoPollTimer = null;
+    let liveSessionPollTimer = null;
+
+    function pollBackendState() {
+      sendToRust('get_runtime_status');
+      sendToRust('get_workspaces');
+      sendToRust('get_logs');
+    }
+
+    function startAutoPolling() {
+      if (autoPollTimer) clearInterval(autoPollTimer);
+      if (liveSessionPollTimer) clearInterval(liveSessionPollTimer);
+      pollBackendState();
+      autoPollTimer = setInterval(pollBackendState, 3000);
+      liveSessionPollTimer = setInterval(() => {
+        if (activeChatId) {
+          sendToRust('get_session_details', { chat_id: activeChatId });
+        }
+      }, 1000);
+    }
+
+    function refreshSessionsFromDisk() {
+      sendToRust('get_workspaces');
+      showToast('✓ Đang đồng bộ sessions từ đĩa...');
+    }
+
+    function refreshLogsFromDisk() {
+      sendToRust('get_logs');
+      showToast('✓ Đang làm mới audit logs...');
+    }
+
+    // ==================== INITIALIZATION ====================
+    try {
+      console.log("STEP 4: INIT START");
+      const savedTheme = safeGetStorage('bqa_theme', 'vjp-terminal');
+      setTheme(savedTheme || 'vjp-terminal');
+      console.log("STEP 5: THEME INITIALIZED ->", savedTheme || 'vjp-terminal');
+      runBootSequence();
+      console.log("STEP 6: BOOT SEQUENCE STARTED");
+      startAutoPolling();
+      console.log("STEP 7: AUTO POLLING STARTED");
+    } catch (err) {
+      console.error("FATAL ERROR IN INIT:", err);
+      dismissBootScreen();
+    }
   </script>
 </body>
 </html>

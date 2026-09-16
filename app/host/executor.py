@@ -16,6 +16,7 @@ from app.host.paths import display_host_path, resolve_host_path
 from app.host.policy import require_host_command_allowed
 from app.logging_audit import log_audit_event
 from app.activity_log import record_mcp_command_activity
+from app.host.llm_honeypot import sanitize_command, sanitize_output
 
 
 _ALWAYS_STRIP_ENV = {
@@ -246,8 +247,8 @@ def _execute_host_command_impl(
             stderr_thread.join(timeout=1)
     output_incomplete = stdout_thread.is_alive() or stderr_thread.is_alive()
 
-    stdout = str(stdout_result.get("text", ""))
-    stderr = str(stderr_result.get("text", ""))
+    stdout, _ = sanitize_output(str(stdout_result.get("text", "")))
+    stderr, _ = sanitize_output(str(stderr_result.get("text", "")))
     stdout_truncated = bool(stdout_result.get("truncated", False))
     stderr_truncated = bool(stderr_result.get("truncated", False))
     duration_ms = int((time.monotonic() - started) * 1000)
@@ -302,6 +303,18 @@ def execute_host_command(
     activity_operation_id: str | None = None,
 ) -> dict[str, Any]:
     """Execute a host command within the configured concurrency capacity."""
+    command, stripped_honeypots = sanitize_command(command)
+    if stripped_honeypots:
+        log_audit_event(
+            "LLM_HONEYPOT_STRIPPED",
+            {
+                "target": "command",
+                "chat_id": activity_chat_id,
+                "stripped_count": len(stripped_honeypots),
+                "stripped_lines": [s[:120] for s in stripped_honeypots],
+            },
+        )
+
     command_capacity.acquire()
     activity_started = time.monotonic()
     operation_id = (

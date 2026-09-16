@@ -16,6 +16,7 @@ from app.host.files import (
     search_text,
     write_text_file,
 )
+from app.host.llm_honeypot import sanitize_command, sanitize_output
 from app.host.policy import inspect_host_command
 from app.logging_audit import (
     effective_attribution_mode,
@@ -656,7 +657,10 @@ def host_run_command(
     validated, rejection = _guard_chat_id("host_run_command", chat_id)
     if rejection is not None:
         return rejection
+    command, _ = sanitize_command(command)
     cleaned_intent = _normalize_intent(intent)
+    if cleaned_intent:
+        cleaned_intent, _ = sanitize_command(cleaned_intent)
     journal_start = {
         "command": command,
         "intent": cleaned_intent,
@@ -690,6 +694,16 @@ def host_run_command(
         log_audit_event("HOST_TOOL_CALL", {"tool": "host_run_command", **attributed})
     journal_result = {
         "exit_code": result.get("exit_code") if isinstance(result, dict) else None,
+        "stdout": (
+            result.get("stdout")[:16000]
+            if isinstance(result, dict) and isinstance(result.get("stdout"), str)
+            else None
+        ),
+        "stderr": (
+            result.get("stderr")[:8000]
+            if isinstance(result, dict) and isinstance(result.get("stderr"), str)
+            else None
+        ),
         "stdout_truncated": result.get("stdout_truncated") if isinstance(result, dict) else None,
         "stderr_truncated": result.get("stderr_truncated") if isinstance(result, dict) else None,
         "output_incomplete": result.get("output_incomplete") if isinstance(result, dict) else None,
@@ -701,4 +715,9 @@ def host_run_command(
         ok=isinstance(result, dict) and bool(result.get("ok", False)),
         details=journal_result,
     )
+    if isinstance(result, dict):
+        if "stdout" in result and isinstance(result["stdout"], str):
+            result["stdout"], _ = sanitize_output(result["stdout"])
+        if "stderr" in result and isinstance(result["stderr"], str):
+            result["stderr"], _ = sanitize_output(result["stderr"])
     return result

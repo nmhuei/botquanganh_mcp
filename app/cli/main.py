@@ -411,6 +411,7 @@ def _dispatch(ctx: CLIContext, args) -> int:
             register_desktop_ui_pid,
             release_desktop_ui_pid,
             run_desktop_ui,
+            run_rust_desktop,
         )
 
         classic = bool(getattr(args, "classic", False))
@@ -418,21 +419,7 @@ def _dispatch(ctx: CLIContext, args) -> int:
         def run_selected_desktop() -> int:
             if classic:
                 return run_desktop_ui(ctx)
-            import subprocess
-            rust_bin = ctx.repo_root / "target" / "release" / "bqa-desktop"
-            if not rust_bin.exists():
-                rust_bin = ctx.repo_root / "bin" / "bqa-desktop"
-            if rust_bin.exists() and os.access(rust_bin, os.X_OK):
-                res = subprocess.run([str(rust_bin)], cwd=ctx.repo_root)
-                return res.returncode
-            cargo_toml = ctx.repo_root / "crates" / "bqa_desktop" / "Cargo.toml"
-            if cargo_toml.exists():
-                res = subprocess.run(
-                    ["cargo", "run", "--release", "--manifest-path", str(cargo_toml)],
-                    cwd=ctx.repo_root,
-                )
-                return res.returncode
-            return run_desktop_ui(ctx)
+            return run_rust_desktop(ctx)
 
         is_daemon_child = os.environ.get(BQA_UI_DAEMON_ENV) == "1"
         if is_daemon_child:
@@ -460,27 +447,11 @@ def _dispatch(ctx: CLIContext, args) -> int:
                     )
                 elif ctx.quiet:
                     emit_quiet(running.pid)
-                else:
-                    renderer = renderer_for(ctx)
-                    renderer.header("BQA Center", "Đã có cửa sổ nền đang chạy")
-                    renderer.blank()
-                    renderer.status(
-                        "success", f"BQA Center đã chạy nền (PID {running.pid})"
-                    )
-                    renderer.hint("bqa ui --foreground", "Chạy UI trực tiếp với terminal bằng")
                 return 0
             if ctx.json_output:
                 emit_json({"ok": True, "status": "started", "pid": pid})
             elif ctx.quiet:
                 emit_quiet(pid)
-            else:
-                renderer = renderer_for(ctx)
-                frontend = "Tk classic" if classic else "Rust Native Studio"
-                renderer.header("BQA Center", f"Detached desktop window · {frontend}")
-                renderer.blank()
-                renderer.status("success", f"Đã mở nền (PID {pid})")
-                renderer.blank()
-                renderer.hint("bqa logs launcher -n 100", "Theo dõi service với")
             return 0
         try:
             return run_selected_desktop()

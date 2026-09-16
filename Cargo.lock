@@ -93,6 +93,7 @@ name = "bqa-desktop"
 version = "1.0.0"
 dependencies = [
  "chrono",
+ "libc",
  "notify",
  "reqwest",
  "serde",
