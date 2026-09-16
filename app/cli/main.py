@@ -382,6 +382,10 @@ def _dispatch(ctx: CLIContext, args) -> int:
         from app.cli.commands.logs import handle_logs
 
         return handle_logs(ctx, args)
+    if command in {"session", "sessions"}:
+        from app.cli.commands.session import handle_session
+
+        return handle_session(ctx, args)
     if command == "chats":
         from app.cli.chats_view import handle_chats
 

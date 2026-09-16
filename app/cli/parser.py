@@ -520,6 +520,38 @@ Output modes:
         "--grep", dest="grep_text", help="Only lines containing TEXT"
     )
 
+    session = commands.add_parser(
+        "session",
+        help="List, bind, and inspect agent sessions",
+        epilog="""Examples:
+  bqa session list
+  bqa session bind <session-id>
+  bqa session bind latest
+  bqa session current""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    session_sub = session.add_subparsers(dest="session_command")
+    sess_list = session_sub.add_parser("list", help="List previous sessions")
+    sess_list.add_argument(
+        "--limit", type=int, default=15, help="Maximum sessions to display (default: 15)"
+    )
+    sess_list.add_argument(
+        "--all", action="store_true", help="Include archived sessions"
+    )
+    sess_list.add_argument(
+        "--query", default="", help="Filter sessions by ID or label"
+    )
+
+    sess_bind = session_sub.add_parser("bind", help="Bind to an existing session")
+    sess_bind.add_argument(
+        "session_id",
+        nargs="?",
+        default="latest",
+        help="Session ID to bind (default: latest)",
+    )
+
+    session_sub.add_parser("current", help="Display the currently bound active session")
+
     chats = commands.add_parser(
         "chats",
         help="Inspect local chat workspaces",

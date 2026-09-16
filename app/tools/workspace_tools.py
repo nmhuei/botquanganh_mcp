@@ -165,6 +165,11 @@ async def host_workspace_bind(
             {"created": bool(created), "resumed": not bool(created)},
             ok=True,
         )
+        try:
+            from app.chat_identity import bind_chat
+            bind_chat(assigned_id)
+        except Exception:
+            pass
         return tool_success(
             message,
             **extra_fields,
@@ -277,6 +282,308 @@ async def host_workspace_list(
         )
     except Exception as exc:
         return to_tool_error(exc)
+
+
+def _rehydrate_session_context(ws_dir: Path) -> dict[str, Any]:
+    """Extract recent command history, notes, and workspace files for session resumption."""
+    import json
+    recent_commands: list[dict[str, Any]] = []
+    journal_file = ws_dir / "journal.jsonl"
+    if journal_file.is_file():
+        try:
+            lines = journal_file.read_text(encoding="utf-8", errors="replace").splitlines()
+            for line in reversed(lines[-60:]):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    if data.get("type") == "op_result" or "ok" in data:
+                        details = data.get("details", {}) or {}
+                        payload = data.get("payload", {}) or {}
+                        cmd = details.get("command") or payload.get("command") or details.get("cmd") or ""
+                        tool = data.get("kind") or data.get("event_action") or "cmd"
+                        exit_code = details.get("exit_code", 0 if data.get("ok") else 1)
+                        stdout = str(details.get("stdout") or "")[:250]
+                        recent_commands.append({
+                            "tool": tool,
+                            "command": str(cmd)[:150] if cmd else "",
+                            "exit_code": exit_code,
+                            "ok": bool(data.get("ok", True)),
+                            "stdout_preview": stdout,
+                            "timestamp": data.get("ts") or data.get("timestamp") or "",
+                        })
+                        if len(recent_commands) >= 5:
+                            break
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    notes = ""
+    notes_file = ws_dir / "notes" / "log.txt"
+    if notes_file.is_file():
+        try:
+            note_lines = [ln.strip() for ln in notes_file.read_text(encoding="utf-8", errors="replace").splitlines() if ln.strip()]
+            notes = "\n".join(note_lines[-10:])
+        except Exception:
+            pass
+    elif (ws_dir / "STATE.md").is_file():
+        try:
+            notes = (ws_dir / "STATE.md").read_text(encoding="utf-8", errors="replace")[:600]
+        except Exception:
+            pass
+
+    files: list[str] = []
+    try:
+        for entry in sorted(ws_dir.iterdir()):
+            if not entry.name.startswith(".") and entry.name not in {"journal.jsonl", "meta.json", "STATE.md", "notes"}:
+                files.append(entry.name)
+            if len(files) >= 15:
+                break
+    except Exception:
+        pass
+
+    return {
+        "recent_commands": recent_commands,
+        "recent_notes": notes,
+        "workspace_files": files,
+    }
+
+
+@mcp.tool(
+    name="host_session_list",
+    description=(
+        "MANDATORY PRE-FLIGHT DISCOVERY: List previous workspace sessions with their session_id, "
+        "label, last active time, and recent activity. Call this tool first to check previous sessions "
+        "before deciding whether to resume an existing session or start a new one."
+    ),
+)
+async def host_session_list(
+    limit: int = 10,
+    include_archived: bool = True,
+    query: str | None = None,
+) -> dict[str, Any]:
+    try:
+        if not _workspaces_enabled():
+            return tool_unavailable(
+                "host_session_list", reason="Chat workspaces are disabled."
+            )
+        root = _chat_root()
+        if not root.is_dir():
+            return tool_success(
+                "No previous sessions found.",
+                total_count=0,
+                sessions=[],
+                suggestion="Call host_session_bind(new=True, label='<name>') to create your first session.",
+            )
+
+        candidates: list[tuple[float, Path, bool]] = []
+        import json
+        from datetime import datetime, timezone
+
+        for entry in root.iterdir():
+            if entry.is_dir() and not entry.name.startswith("."):
+                mtime = entry.stat().st_mtime
+                candidates.append((mtime, entry, False))
+        archive_root = root / ".archive"
+        if include_archived and archive_root.is_dir():
+            for entry in archive_root.iterdir():
+                if entry.is_dir() and not entry.name.startswith("."):
+                    mtime = entry.stat().st_mtime
+                    candidates.append((mtime, entry, True))
+
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        now_ts = datetime.now(timezone.utc).timestamp()
+
+        last_active_id = None
+        pointer_file = root / ".last_session"
+        if pointer_file.is_file():
+            try:
+                p_data = json.loads(pointer_file.read_text(encoding="utf-8"))
+                last_active_id = p_data.get("chat_id")
+            except Exception:
+                pass
+
+        sessions: list[dict[str, Any]] = []
+        for idx, (mtime, entry, archived) in enumerate(candidates):
+            chat_id = entry.name
+            if query and query.lower() not in chat_id.lower():
+                continue
+
+            meta_file = entry / "meta.json"
+            created_at = None
+            label = None
+            if meta_file.is_file():
+                try:
+                    meta_data = json.loads(meta_file.read_text(encoding="utf-8"))
+                    created_at = meta_data.get("created_at")
+                    label = meta_data.get("label")
+                except Exception:
+                    pass
+
+            diff_sec = max(0, int(now_ts - mtime))
+            if diff_sec < 60:
+                human_time = "just now"
+            elif diff_sec < 3600:
+                human_time = f"{diff_sec // 60}m ago"
+            elif diff_sec < 86400:
+                human_time = f"{diff_sec // 3600}h ago"
+            else:
+                human_time = f"{diff_sec // 86400}d ago"
+
+            ops_count = 0
+            last_cmd = ""
+            journal_file = entry / "journal.jsonl"
+            if journal_file.is_file():
+                try:
+                    j_lines = journal_file.read_text(encoding="utf-8", errors="replace").splitlines()
+                    ops_count = len(j_lines)
+                    for j_line in reversed(j_lines[-20:]):
+                        if not j_line.strip():
+                            continue
+                        rec = json.loads(j_line)
+                        det = rec.get("details", {}) or {}
+                        cmd_val = det.get("command") or det.get("cmd")
+                        if cmd_val:
+                            last_cmd = str(cmd_val)[:100]
+                            break
+                except Exception:
+                    pass
+
+            notes_file = entry / "notes" / "log.txt"
+            recent_note = None
+            if notes_file.is_file():
+                try:
+                    lines = [ln.strip() for ln in notes_file.read_text(encoding="utf-8", errors="replace").splitlines() if ln.strip()]
+                    if lines:
+                        recent_note = lines[-1]
+                except Exception:
+                    pass
+
+            is_latest = (chat_id == last_active_id) or (last_active_id is None and idx == 0)
+
+            item = {
+                "session_id": chat_id,
+                "label": label or chat_id.replace("cw-", ""),
+                "state": "archived" if archived else "active",
+                "last_active_human": human_time,
+                "created_at": created_at,
+                "ops_count": ops_count,
+                "last_command": last_cmd or None,
+                "recent_note": recent_note,
+                "is_latest": is_latest,
+            }
+            sessions.append(item)
+
+        total_matched = len(sessions)
+        limited_sessions = sessions[:limit]
+
+        return tool_success(
+            f"Found {total_matched} previous session(s).",
+            total_count=total_matched,
+            sessions=limited_sessions,
+            suggestion=(
+                "To resume an existing session: call host_session_bind(session_id='<session_id>'). "
+                "To start a new session: call host_session_bind(new=True, label='<name>')."
+            ),
+        )
+    except Exception as exc:
+        return to_tool_error(exc)
+
+
+@mcp.tool(
+    name="host_session_bind",
+    description=(
+        "MANDATORY PRE-FLIGHT STEP: Connect to an existing workspace session or start a brand new session. "
+        "You MUST call this tool before executing any commands or editing files. "
+        "- To connect to an existing session: pass session_id='<session_id>' (or session_id='latest' for the latest active session). "
+        "- To start a fresh session: pass new=True and an optional label='<project_name>'. "
+        "When reconnecting to an existing session, previous command history, notes, and workspace files are automatically restored."
+    ),
+)
+async def host_session_bind(
+    session_id: str | None = None,
+    new: bool = False,
+    label: str | None = None,
+    resume_token: str | None = None,
+) -> dict[str, Any]:
+    try:
+        if not _workspaces_enabled():
+            return tool_unavailable(
+                "host_session_bind", reason="Chat workspaces are disabled."
+            )
+        try:
+            workspace_module = _load_workspace_module()
+        except ImportError:
+            return tool_unavailable(
+                "host_session_bind",
+                reason="Chat workspace infrastructure is not installed.",
+            )
+        manager = workspace_module.WorkspaceManager(_chat_root())
+        target_id = None if new else (session_id or "latest")
+
+        if target_id is not None and target_id not in {"latest", "@latest"} and not target_id.startswith("latest:"):
+            validate_chat_id(target_id)
+
+        bound = manager.create_or_bind(
+            target_id,
+            label=label,
+            resume_token=resume_token,
+            require_token=bool(target_id and target_id not in {"latest", "@latest"}),
+        )
+        workspace_dir = _workspace_path_from(bound)
+        if workspace_dir is None:
+            raise ValueError("create_or_bind returned no workspace path")
+        resolved = str(workspace_dir.expanduser().resolve())
+        created = getattr(bound, "created", None) if not isinstance(bound, dict) else bound.get("created")
+        assigned_id = (
+            getattr(bound, "chat_id", "")
+            or (bound.get("chat_id") if isinstance(bound, dict) else "")
+            or (target_id if target_id and target_id not in {"latest", "@latest"} else "")
+            or ""
+        )
+
+        try:
+            from app.chat_identity import bind_chat
+            bind_chat(assigned_id)
+        except Exception:
+            pass
+
+        context_data = _rehydrate_session_context(Path(resolved)) if not created else {
+            "recent_commands": [],
+            "recent_notes": "",
+            "workspace_files": [],
+        }
+
+        from app.tools.host import _record_workspace_journal
+        _record_workspace_journal(
+            "host_session_bind",
+            assigned_id,
+            {"created": bool(created), "resumed": not bool(created), "new": new},
+            ok=True,
+        )
+
+        session_type = "New" if created else "Existing"
+        msg = (
+            f"Successfully established session '{assigned_id}' ({session_type} workspace at {resolved}). "
+            "You may now execute host commands and access files in this workspace."
+        )
+
+        return tool_success(
+            msg,
+            session_id=assigned_id,
+            chat_id=assigned_id,
+            is_new=bool(created),
+            workspace_dir=resolved,
+            recent_commands=context_data["recent_commands"],
+            recent_notes=context_data["recent_notes"],
+            workspace_files=context_data["workspace_files"],
+            instructions=f"Session '{assigned_id}' is active. Include chat_id='{assigned_id}' in subsequent tool calls.",
+        )
+    except Exception as exc:
+        return to_tool_error(exc)
+
 
 
 

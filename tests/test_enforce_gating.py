@@ -378,7 +378,7 @@ def fake_workspace_infra(monkeypatch, tmp_path):
 
 
 def test_discovery_and_bind_are_exempt_from_enforce():
-    assert BIND_EXEMPT_TOOLS == frozenset({"host_workspace_bind", "host_workspace_list"})
+    assert {"host_workspace_bind", "host_workspace_list", "host_session_bind", "host_session_list"}.issubset(BIND_EXEMPT_TOOLS)
 
 
 

@@ -394,8 +394,15 @@ mcp = FastMCP(
     "BotQuangAnh Host MCP",
     version=VERSION,
     instructions=(
-        "Host-only MCP server. Use host_knowledge before unfamiliar host work, "
-        "then use the host filesystem and command tools. "
+        "Host-only MCP server. "
+        "MANDATORY PRE-FLIGHT REQUIREMENT: Before executing any commands or accessing files, "
+        "you MUST check whether to resume a previous session or start a new session. "
+        "Step 1: Call 'host_session_list()' to check existing sessions. "
+        "Step 2: If continuing past work, call 'host_session_bind(session_id=...)' "
+        "(or 'host_session_bind(session_id=\"latest\")'). If starting fresh, call "
+        "'host_session_bind(new=True, label=\"optional_name\")'. "
+        "Step 3: Only after binding or creating a session may you use host_run_command and file tools. "
+        "Use host_knowledge before unfamiliar host work, then use the host filesystem and command tools. "
         f"By default, all operations (files, directories, command executions) "
         f"MUST be relative to or run within the default directory: '{HOST_DEFAULT_DIR}'. "
         f"Operations are allowed and restricted to the workspace boundary: '{HOST_WORKSPACE_DIR}'. "
