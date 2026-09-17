@@ -279,12 +279,60 @@ def handle_session_current(ctx: CLIContext, _args: Any) -> int:
     return 0
 
 
+def handle_session_new(ctx: CLIContext, args: Any) -> int:
+    root = _workspaces_root()
+    if root is None:
+        raise CLIError("Chat workspaces root directory is not configured.")
+    root.mkdir(parents=True, exist_ok=True)
+
+    label = getattr(args, "label", None)
+    from app.chat_workspace import WorkspaceManager
+
+    manager = WorkspaceManager(root)
+    bound = manager.create_or_bind(None, label=label)
+    chat_id = bound.chat_id
+    target_dir = bound.path
+
+    prompt = f"Tiếp tục làm việc trong workspace {chat_id}"
+    payload = {
+        "ok": True,
+        "chat_id": chat_id,
+        "session_id": chat_id,
+        "is_new": True,
+        "status": "active",
+        "path": str(target_dir),
+        "resume_prompt": prompt,
+    }
+    if ctx.json_output:
+        emit_json(payload)
+        return 0
+    if ctx.quiet:
+        emit_quiet(chat_id)
+        return 0
+
+    renderer = renderer_for(ctx)
+    renderer.header("New Session Created & Bound", chat_id)
+    renderer.facts([
+        ("Session ID", chat_id),
+        ("Status", "● ACTIVE (New)"),
+        ("Workspace", str(target_dir)),
+    ], no_wrap=("Session ID", "Workspace"))
+    renderer.blank()
+    renderer.summary("Resume prompt for LLM / ChatGPT:")
+    print(f"  {prompt}\n")
+    renderer.hint(f"bqa cmd run --cwd '{target_dir}' <command>", "Run command in this session")
+    return 0
+
+
 def handle_session(ctx: CLIContext, args: Any) -> int:
     action = getattr(args, "session_command", "list") or "list"
+    if action in {"new", "create"}:
+        return handle_session_new(ctx, args)
     if action in {"list", "ls"}:
         return handle_session_list(ctx, args)
     if action in {"bind", "resume"}:
         return handle_session_bind(ctx, args)
     if action in {"current", "whoami"}:
         return handle_session_current(ctx, args)
-    raise CLIError(f"Unknown session subcommand: '{action}'. Use 'list', 'bind', or 'current'.")
+    raise CLIError(f"Unknown session subcommand: '{action}'. Use 'new', 'list', 'bind', or 'current'.")
+

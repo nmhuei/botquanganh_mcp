@@ -62,3 +62,33 @@ def test_cli_session_quiet_mode(tmp_path: Path, monkeypatch, capsys):
     assert rc == 0
     out = capsys.readouterr().out.strip()
     assert "cw-20260916-quiet-abcdef12" in out
+
+
+def test_cli_session_new(tmp_path: Path, monkeypatch, capsys):
+    monkeypatch.setattr(app.config, "HOST_CHAT_WORKSPACES", True)
+    monkeypatch.setattr(app.config, "HOST_CHAT_ROOT", tmp_path)
+    monkeypatch.setattr(app.config, "HOST_WORKSPACE_DIR", tmp_path)
+    monkeypatch.setattr("app.cli.chats_view._workspaces_root", lambda: tmp_path)
+    monkeypatch.setattr("app.cli.commands.session._workspaces_root", lambda: tmp_path)
+
+    # Test bqa session new --label alpha --json
+    rc = main(["session", "new", "--label", "alpha", "--json"])
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["ok"] is True
+    assert data["is_new"] is True
+    assert "alpha" in data["session_id"]
+    new_id = data["session_id"]
+
+    # Verify session directory and metadata exist
+    ws_dir = tmp_path / new_id
+    assert ws_dir.is_dir()
+    assert (ws_dir / "meta.json").is_file()
+    assert (ws_dir / "notes").is_dir()
+
+    # Verify .last_session updated and current session matches
+    rc_curr = main(["session", "current", "--json"])
+    assert rc_curr == 0
+    curr_data = json.loads(capsys.readouterr().out)
+    assert curr_data["session_id"] == new_id
+

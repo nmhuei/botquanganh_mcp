@@ -525,12 +525,17 @@ Output modes:
         help="List, bind, and inspect agent sessions",
         epilog="""Examples:
   bqa session list
+  bqa session new --label my-project
   bqa session bind <session-id>
   bqa session bind latest
   bqa session current""",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     session_sub = session.add_subparsers(dest="session_command")
+    sess_new = session_sub.add_parser("new", aliases=["create"], help="Create and bind a new session")
+    sess_new.add_argument(
+        "--label", "-l", default=None, help="Optional human-readable label for the new session"
+    )
     sess_list = session_sub.add_parser("list", help="List previous sessions")
     sess_list.add_argument(
         "--limit", type=int, default=15, help="Maximum sessions to display (default: 15)"
