@@ -736,7 +736,7 @@
 
         <div class="flex items-center gap-1 shrink-0 whitespace-nowrap">
           <span style="color: var(--text-dim);" class="text-[10px] font-sans">Mới nhất ↓</span>
-          <button onclick="toggleInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white hover:bg-slate-700/30 transition shrink-0" title="Ẩn/Hiện Khung Chi Tiết Inspector">
+          <button id="btnToggleInspector" onclick="toggleInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white hover:bg-slate-700/30 transition shrink-0" title="Ẩn/Hiện Khung Chi Tiết Inspector">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" stroke-width="2"></rect><path d="M15 4v16" stroke-width="2"></path></svg>
           </button>
         </div>
@@ -757,9 +757,6 @@
         <div class="flex items-center gap-2 shrink-0">
           <button onclick="copyDetails()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-2.5 py-1 border rounded-md text-[11px] transition whitespace-nowrap shrink-0">
             <span id="copyBtnLabel">Sao chép</span>
-          </button>
-          <button onclick="toggleInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white hover:bg-slate-700/30 transition shrink-0" title="Thu gọn Khung Chi tiết">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
           </button>
         </div>
       </div>
@@ -870,7 +867,7 @@
           <button onclick="refreshLogsFromDisk()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-2 py-0.5 border rounded-md text-[11px] font-sans transition whitespace-nowrap shrink-0">
             Làm mới
           </button>
-          <button onclick="toggleInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white transition shrink-0" title="Ẩn/Hiện Chi tiết Log">
+          <button id="btnToggleLogInspector" onclick="toggleInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white transition shrink-0" title="Ẩn/Hiện Chi tiết Log">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" stroke-width="2"></rect><path d="M15 4v16" stroke-width="2"></path></svg>
           </button>
         </div>
@@ -902,9 +899,6 @@
         <div class="flex items-center gap-1.5">
           <button onclick="copyLogJson()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-2.5 py-1 border rounded-md text-[11px] font-sans transition">
             <span id="copyLogLabel">Sao chép JSON</span>
-          </button>
-          <button onclick="toggleInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white transition" title="Thu gọn chi tiết">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
           </button>
         </div>
       </div>
@@ -1479,6 +1473,8 @@
     function toggleInspector() {
       isInspectorCollapsed = !isInspectorCollapsed;
       const isActivity = document.getElementById('pageActivity') && !document.getElementById('pageActivity').classList.contains('hidden');
+      const btnInsp = document.getElementById('btnToggleInspector');
+      const btnLogInsp = document.getElementById('btnToggleLogInspector');
 
       if (isActivity) {
         if (!inspector || !paneStream) return;
@@ -1487,22 +1483,38 @@
           if (resizerRight) resizerRight.classList.add('hidden');
           paneStream.style.flex = "1";
           paneStream.style.maxWidth = "none";
+          if (btnInsp) {
+            btnInsp.style.color = 'var(--accent)';
+            btnInsp.title = 'Mở Khung Chi Tiết Inspector';
+          }
         } else {
           inspector.classList.remove('pane-collapsed');
           if (resizerRight) resizerRight.classList.remove('hidden');
           paneStream.style.flex = "none";
           paneStream.style.width = lastStreamWidth + 'px';
           paneStream.style.maxWidth = "none";
+          if (btnInsp) {
+            btnInsp.style.color = 'var(--text-sub)';
+            btnInsp.title = 'Thu gọn Khung Chi Tiết Inspector';
+          }
         }
       } else {
         if (!paneLogInspector) return;
         if (isInspectorCollapsed) {
           paneLogInspector.classList.add('pane-collapsed');
           if (resizerLog) resizerLog.classList.add('hidden');
+          if (btnLogInsp) {
+            btnLogInsp.style.color = 'var(--accent)';
+            btnLogInsp.title = 'Mở Chi tiết Log';
+          }
         } else {
           paneLogInspector.classList.remove('pane-collapsed');
           if (resizerLog) resizerLog.classList.remove('hidden');
           paneLogInspector.style.width = lastLogInspectorWidth + 'px';
+          if (btnLogInsp) {
+            btnLogInsp.style.color = 'var(--text-sub)';
+            btnLogInsp.title = 'Thu gọn Chi tiết Log';
+          }
         }
       }
     }
@@ -2248,10 +2260,6 @@
       if (inspectRawJson) {
         inspectRawJson.innerText = c.raw_json ? formatJson(c.raw_json) : JSON.stringify(c, null, 2);
       }
-
-      if (isInspectorCollapsed) {
-        toggleInspector();
-      }
     }
 
     function clearInspector() {
@@ -2426,10 +2434,6 @@
       if (logInspectAction) logInspectAction.innerText = l.action || 'event';
       if (logInspectSession) logInspectSession.innerText = l.session || 'system';
       if (logInspectJson) logInspectJson.innerText = l.json ? formatJson(l.json) : JSON.stringify(l, null, 2);
-
-      if (isInspectorCollapsed) {
-        toggleInspector();
-      }
     }
 
     // ==================== RUNTIME STATUS & LIFECYCLE ====================
