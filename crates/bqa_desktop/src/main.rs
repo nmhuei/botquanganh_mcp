@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread;
 
@@ -79,6 +80,8 @@ struct AppPaths {
     gateway_log: PathBuf,
     server_log: PathBuf,
 }
+
+static SAVE_ENV_SEQ: AtomicU64 = AtomicU64::new(0);
 
 impl AppPaths {
     fn new() -> Self {
@@ -207,7 +210,8 @@ impl AppPaths {
             let _ = fs::create_dir_all(parent);
         }
 
-        let tmp_path = self.dotenv_path.with_extension(format!("tmp.{}", std::process::id()));
+        let seq = SAVE_ENV_SEQ.fetch_add(1, Ordering::Relaxed);
+        let tmp_path = self.dotenv_path.with_extension(format!("tmp.{}.{}", std::process::id(), seq));
         let content = lines.join("\n") + "\n";
         fs::write(&tmp_path, content)?;
         fs::rename(&tmp_path, &self.dotenv_path)?;
@@ -1500,6 +1504,37 @@ mod tests {
         assert!(!fail_ok);
         let (fail_empty, _) = delete_workspace_folder(&temp_dir, "");
         assert!(!fail_empty);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_concurrent_write_dotenv() {
+        let temp_dir = std::env::temp_dir().join(format!("bqa_test_dotenv_{}", std::process::id()));
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let mut paths = AppPaths::new();
+        paths.dotenv_path = temp_dir.join(".env");
+
+        let mut handles = Vec::new();
+        for i in 0..10 {
+            let p = paths.clone();
+            handles.push(thread::spawn(move || {
+                let mut updates = HashMap::new();
+                updates.insert("TEST_KEY".to_string(), format!("value_{}", i));
+                updates.insert(format!("THREAD_{}", i), "1".to_string());
+                p.write_dotenv(&updates)
+            }));
+        }
+
+        for h in handles {
+            let res = h.join().unwrap();
+            assert!(res.is_ok(), "Concurrent write_dotenv failed: {:?}", res);
+        }
+
+        assert!(paths.dotenv_path.exists());
+        let content = fs::read_to_string(&paths.dotenv_path).unwrap();
+        assert!(content.contains("TEST_KEY="));
 
         let _ = fs::remove_dir_all(&temp_dir);
     }

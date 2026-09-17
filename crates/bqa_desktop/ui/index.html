@@ -1877,6 +1877,8 @@
     // ==================== STATE MANAGEMENT ====================
     let currentWorkspaces = [];
     let activeChatId = null;
+    let lastPersistedBackendActiveId = null;
+    let userExplicitlySelectedSession = false;
     let currentRenderedChatId = null;
     let currentCommands = [];
     let selectedCommand = null;
@@ -1928,7 +1930,8 @@
         ...w,
         chat_id: w.chat_id || w.id,
         ops_count: w.ops_count !== undefined ? w.ops_count : (w.ops || 0),
-        created_ts: w.created_ts || 0
+        created_ts: w.created_ts || 0,
+        active: Boolean(w.active)
       }));
 
       // Check for user's custom drag-and-drop order
@@ -1995,9 +1998,21 @@
         metricCommands.innerHTML = `${totalOps.toLocaleString()} <span style="color: var(--mint);" class="text-xs font-normal font-sans">(100% OK)</span>`;
       }
 
-      // If activeChatId not set or not in list, select first
+      // Keep track of backend's persisted active session ID (.last_session)
+      const backendActiveWorkspace = currentWorkspaces.find(w => w.active);
+      const backendActiveId = backendActiveWorkspace ? backendActiveWorkspace.chat_id : null;
+
+      // If backend active session changed externally (e.g. via bqa session bind), follow it unless user explicitly selected another
+      if (backendActiveId && lastPersistedBackendActiveId && backendActiveId !== lastPersistedBackendActiveId && !userExplicitlySelectedSession) {
+        activeChatId = backendActiveId;
+      }
+      lastPersistedBackendActiveId = backendActiveId;
+
+      // If activeChatId not set or not in list, prioritize the persisted active session from backend (.last_session)
       if (!activeChatId || !currentWorkspaces.some(w => w.chat_id === activeChatId)) {
-        if (currentWorkspaces.length > 0) {
+        if (backendActiveId) {
+          activeChatId = backendActiveId;
+        } else if (currentWorkspaces.length > 0) {
           activeChatId = currentWorkspaces[0].chat_id;
         }
       }
@@ -2025,6 +2040,7 @@
     };
 
     function selectSession(chatId) {
+      userExplicitlySelectedSession = true;
       if (activeChatId === chatId && currentRenderedChatId === chatId) return;
       activeChatId = chatId;
       userPinnedCommandKey = null;
@@ -2113,6 +2129,7 @@
       }
       if (success && activeChatId === chatId) {
         activeChatId = null;
+        userExplicitlySelectedSession = false;
         currentRenderedChatId = null;
         const streamTitle = document.getElementById('streamTitle');
         if (streamTitle) streamTitle.innerText = '--';
@@ -2182,6 +2199,14 @@
         opsBadge.style.color = isActive ? 'var(--accent)' : 'var(--text-dim)';
         opsBadge.className = `session-ops-badge text-[10px] whitespace-nowrap ${isActive ? 'font-bold' : ''}`;
         opsBadge.textContent = `${w.ops_count || 0} ops`;
+
+        if (w.active) {
+          const boundBadge = document.createElement('span');
+          boundBadge.className = 'px-1 py-0.5 rounded text-[9px] font-sans font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0 select-none';
+          boundBadge.title = 'Active Bound Session (quản lý bởi .last_session)';
+          boundBadge.textContent = 'ACTIVE';
+          rightDiv.appendChild(boundBadge);
+        }
 
         const delBtn = document.createElement('button');
         delBtn.setAttribute('draggable', 'false');
