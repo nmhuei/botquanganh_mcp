@@ -424,6 +424,16 @@
       box-shadow: 0 0 8px var(--accent-soft) !important;
     }
 
+    /* Standard Interactive Icon Button */
+    .btn-icon {
+      color: var(--text-sub) !important;
+      transition: all 0.15s ease !important;
+    }
+    .btn-icon:hover {
+      background-color: var(--accent-soft) !important;
+      color: var(--accent) !important;
+    }
+
     /* Session Item Hover & Click Feedback */
     .session-item {
       transition: transform 0.08s cubic-bezier(0.2, 0, 0, 1), background-color 0.1s ease, border-color 0.1s ease, box-shadow 0.1s ease !important;
@@ -586,35 +596,35 @@
 <body class="antialiased h-screen flex flex-col overflow-hidden select-none font-sans relative">
 
   <!-- ==================== BOOT SCREEN OVERLAY ==================== -->
-  <div id="bootScreen" class="fixed inset-0 z-[9999] flex flex-col items-center justify-center transition-opacity duration-500 bg-[#090d0c] text-[#f2f5f2] select-none font-mono">
-    <!-- Matrix/Terminal Glow Backdrop -->
-    <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(163,255,18,0.08)_0%,transparent_70%)] pointer-events-none"></div>
+  <div id="bootScreen" style="background-color: var(--bg-base); color: var(--text-main);" class="fixed inset-0 z-[9999] flex flex-col items-center justify-center transition-opacity duration-500 select-none font-mono">
+    <!-- Theme Glow Backdrop -->
+    <div style="background: radial-gradient(circle at center, var(--accent-soft) 0%, transparent 70%);" class="absolute inset-0 pointer-events-none"></div>
     <div class="relative z-10 flex flex-col items-center max-w-md w-full px-6 space-y-6">
       <!-- Emblem & Title -->
       <div class="flex items-center gap-3">
-        <div class="w-11 h-11 rounded-xl bg-[#121918] border border-[#2a3632] flex items-center justify-center shadow-[0_0_20px_rgba(163,255,18,0.25)]">
-          <svg class="w-6 h-6 text-[#a3ff12]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <div style="background-color: var(--bg-header); border-color: var(--border);" class="w-11 h-11 rounded-xl border flex items-center justify-center shadow-lg">
+          <svg style="color: var(--accent);" class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
           </svg>
         </div>
         <div class="flex flex-col">
-          <span class="text-sm font-bold tracking-widest text-[#f2f5f2]">UCS // SECRET AGENT</span>
-          <span class="text-[10px] tracking-wider text-[#a9b5af]">BOTQUANGANH RUST STUDIO</span>
+          <span style="color: var(--text-main);" class="text-sm font-bold tracking-widest">UCS // SECRET AGENT</span>
+          <span style="color: var(--text-sub);" class="text-[10px] tracking-wider">BOTQUANGANH RUST STUDIO</span>
         </div>
       </div>
 
       <!-- Phase Progress Box -->
-      <div class="w-full bg-[#121918] border border-[#2a3632] rounded-xl p-4 shadow-2xl space-y-3">
+      <div style="background-color: var(--bg-header); border-color: var(--border);" class="w-full border rounded-xl p-4 shadow-2xl space-y-3">
         <div class="flex items-center justify-between text-xs">
-          <span id="bootPhaseText" class="text-[#a3ff12] font-semibold tracking-wider">INITIALIZING INTERFACE</span>
-          <span id="bootPercent" class="text-[#a9b5af] font-mono">0%</span>
+          <span id="bootPhaseText" style="color: var(--accent);" class="font-semibold tracking-wider">INITIALIZING INTERFACE</span>
+          <span id="bootPercent" style="color: var(--text-sub);" class="font-mono">0%</span>
         </div>
-        <div class="w-full bg-[#090d0c] h-2 rounded-full overflow-hidden border border-[#202b28]">
-          <div id="bootProgressBar" class="h-full bg-gradient-to-r from-[#42d5ad] via-[#a3ff12] to-[#00f0ff] transition-all duration-300 shadow-[0_0_10px_#a3ff12]" style="width: 0%;"></div>
+        <div style="background-color: var(--bg-base); border-color: var(--border);" class="w-full h-2 rounded-full overflow-hidden border">
+          <div id="bootProgressBar" class="h-full transition-all duration-300 shadow-[0_0_10px_var(--accent-soft)]" style="background: linear-gradient(90deg, var(--mint), var(--accent), var(--sky)); width: 0%;"></div>
         </div>
-        <div class="flex items-center justify-between text-[10px] text-[#81908a]">
+        <div class="flex items-center justify-between text-[10px]" style="color: var(--text-dim);">
           <span id="bootStepSubtext" class="truncate">Calibrating workspace subsystems...</span>
-          <button type="button" class="cursor-pointer hover:text-[#f2f5f2] transition px-1.5 py-0.5 rounded bg-[#17211f] border border-[#202b28]" onclick="dismissBootScreen()">[ESC] Bỏ qua</button>
+          <button type="button" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-sub);" class="cursor-pointer hover:opacity-100 transition px-1.5 py-0.5 rounded border" onclick="dismissBootScreen()">[ESC] Bỏ qua</button>
         </div>
       </div>
     </div>
@@ -778,10 +788,10 @@
         </div>
         <!-- Action buttons on Sidebar Header: Reset Sort & Reload -->
         <div class="flex items-center space-x-1 shrink-0">
-          <button id="btnResetWorkspaceOrder" onclick="resetWorkspaceOrder()" style="color: var(--text-sub);" class="hover:text-white transition p-1 rounded hover:bg-slate-700/30 shrink-0 hidden" title="Khôi phục sắp xếp theo thời gian tạo (Mới nhất)">
+          <button id="btnResetWorkspaceOrder" onclick="resetWorkspaceOrder()" class="btn-icon transition p-1 rounded shrink-0 hidden" title="Khôi phục sắp xếp theo thời gian tạo (Mới nhất)">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"></path></svg>
           </button>
-          <button onclick="refreshSessionsFromDisk()" style="color: var(--text-sub);" class="hover:text-white transition p-1 rounded hover:bg-slate-700/30 shrink-0" title="Đọc lại từ workspace">
+          <button onclick="refreshSessionsFromDisk()" class="btn-icon transition p-1 rounded shrink-0" title="Đọc lại từ workspace">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
           </button>
         </div>
@@ -799,7 +809,7 @@
     <section id="paneStream" style="background-color: var(--bg-base); border-color: var(--border);" class="w-72 min-w-[220px] max-w-[950px] flex flex-col shrink-0 overflow-hidden border-r">
       <div style="border-color: var(--border); color: var(--text-sub);" class="px-3 py-2 border-b text-xs shrink-0 flex items-center justify-between gap-2 min-w-0 overflow-hidden">
         <div class="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
-          <button id="btnToggleSidebar" onclick="toggleSidebar()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white hover:bg-slate-700/30 transition shrink-0" title="Ẩn/Hiện danh sách Sessions (Sidebar)">
+          <button id="btnToggleSidebar" onclick="toggleSidebar()" class="btn-icon p-1 rounded transition shrink-0" title="Ẩn/Hiện danh sách Sessions (Sidebar)">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" stroke-width="2"></rect><path d="M9 4v16" stroke-width="2"></path></svg>
           </button>
           <span id="streamTitle" style="color: var(--text-main);" class="font-mono font-semibold truncate text-[11.5px] min-w-0" title="Active Session ID">Đang tải...</span>
@@ -813,7 +823,7 @@
 
         <div class="flex items-center gap-1 shrink-0 whitespace-nowrap">
           <span style="color: var(--text-dim);" class="text-[10px] font-sans">Mới nhất ↓</span>
-          <button id="btnToggleInspector" onclick="toggleInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white hover:bg-slate-700/30 transition shrink-0" title="Ẩn/Hiện Khung Chi Tiết Inspector">
+          <button id="btnToggleInspector" onclick="toggleInspector()" class="btn-icon p-1 rounded transition shrink-0" title="Ẩn/Hiện Khung Chi Tiết Inspector">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" stroke-width="2"></rect><path d="M15 4v16" stroke-width="2"></path></svg>
           </button>
         </div>
@@ -836,7 +846,7 @@
             <button id="btnCopyDetails" onclick="copyDetails()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="w-[78px] h-[28px] px-2.5 py-1 border rounded-md text-[11px] font-sans transition whitespace-nowrap flex items-center justify-center shrink-0 select-none" title="Copy command details">
               <span id="copyBtnLabel" class="whitespace-nowrap text-center">Copy</span>
             </button>
-            <button id="btnCloseInspector" onclick="closeInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white hover:bg-slate-700/30 transition shrink-0" title="Ẩn khung chi tiết (Close Inspector)">
+            <button id="btnCloseInspector" onclick="closeInspector()" class="btn-icon p-1 rounded transition shrink-0" title="Ẩn khung chi tiết (Close Inspector)">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
             </button>
           </div>
@@ -983,7 +993,7 @@
             <button id="btnCopyLogJson" onclick="copyLogJson()" class="btn-action w-[96px] h-[28px] px-2.5 py-1 rounded-md text-[11px] font-sans transition whitespace-nowrap flex items-center justify-center shrink-0 select-none" title="Copy JSON Forensics">
               <span id="copyLogLabel" class="whitespace-nowrap text-center">Copy JSON</span>
             </button>
-            <button id="btnCloseLogInspector" onclick="closeInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white hover:bg-slate-700/30 transition shrink-0" title="Ẩn chi tiết log (Close Inspector)">
+            <button id="btnCloseLogInspector" onclick="closeInspector()" class="btn-icon p-1 rounded transition shrink-0" title="Ẩn chi tiết log (Close Inspector)">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
             </button>
           </div>
@@ -1042,7 +1052,7 @@
             <span class="text-xs">📂</span>
             <span style="color: var(--text-main);" class="font-semibold text-xs">Thư mục & Workspaces</span>
           </div>
-          <svg id="arrow-secPaths" class="w-3.5 h-3.5 text-slate-400 transform transition-transform duration-200 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+          <svg id="arrow-secPaths" style="color: var(--text-dim);" class="w-3.5 h-3.5 transform transition-transform duration-200 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
         </button>
 
         <div id="secPaths" class="p-3 pt-0 border-t space-y-2 font-mono text-[11px]" style="border-color: var(--border);">
@@ -1070,7 +1080,7 @@
             <span class="text-xs">⚡</span>
             <span style="color: var(--text-main);" class="font-semibold text-xs">Chính sách lệnh & Giới hạn</span>
           </div>
-          <svg id="arrow-secExecution" class="w-3.5 h-3.5 text-slate-400 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+          <svg id="arrow-secExecution" style="color: var(--text-dim);" class="w-3.5 h-3.5 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
         </button>
 
         <div id="secExecution" class="p-3 pt-0 border-t space-y-2 font-mono text-[11px] hidden" style="border-color: var(--border);">
@@ -1108,7 +1118,7 @@
             <span class="text-xs">🛡️</span>
             <span style="color: var(--text-main);" class="font-semibold text-xs">Bảo mật & Xác thực (Auth)</span>
           </div>
-          <svg id="arrow-secSecurity" class="w-3.5 h-3.5 text-slate-400 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+          <svg id="arrow-secSecurity" style="color: var(--text-dim);" class="w-3.5 h-3.5 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
         </button>
 
         <div id="secSecurity" class="p-3 pt-0 border-t space-y-2 font-mono text-[11px] hidden" style="border-color: var(--border);">
@@ -1145,7 +1155,7 @@
             <span class="text-xs">🎨</span>
             <span style="color: var(--text-main);" class="font-semibold text-xs">Giao diện & Chủ đề (16 Themes)</span>
           </div>
-          <svg id="arrow-secTheme" class="w-3.5 h-3.5 text-slate-400 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+          <svg id="arrow-secTheme" style="color: var(--text-dim);" class="w-3.5 h-3.5 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
         </button>
 
         <div id="secTheme" class="p-3 pt-0 border-t space-y-2.5 hidden" style="border-color: var(--border);">
@@ -1210,7 +1220,7 @@
             <span class="text-xs">🌐</span>
             <span style="color: var(--text-main);" class="font-semibold text-xs">Mạng & Cổng Socket</span>
           </div>
-          <svg id="arrow-secNetwork" class="w-3.5 h-3.5 text-slate-400 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+          <svg id="arrow-secNetwork" style="color: var(--text-dim);" class="w-3.5 h-3.5 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
         </button>
 
         <div id="secNetwork" class="p-3 pt-0 border-t space-y-2 font-mono text-[11px] hidden" style="border-color: var(--border);">
@@ -1895,6 +1905,7 @@
     let currentCommands = [];
     let selectedCommand = null;
     let userPinnedCommandKey = null;
+    let isHoveringCommandStream = false;
 
     let currentLogs = [];
     let activeLogCategory = 'all';
@@ -2027,6 +2038,9 @@
         } else if (currentWorkspaces.length > 0) {
           activeChatId = currentWorkspaces[0].chat_id;
         }
+        if (activeChatId) {
+          userExplicitlySelectedSession = true;
+        }
       }
 
       const listContainer = document.getElementById('sessionListContainer');
@@ -2047,7 +2061,9 @@
         const inspSessCmd = document.getElementById('inspectSessionIdCmd');
         if (inspSess && (inspSess.innerText === '--' || !inspSess.innerText)) inspSess.innerText = activeChatId;
         if (inspSessCmd && (inspSessCmd.innerText === '--' || !inspSessCmd.innerText)) inspSessCmd.innerText = activeChatId;
-        sendToRust('get_session_details', { chat_id: activeChatId });
+        if (currentRenderedChatId !== activeChatId) {
+          sendToRust('get_session_details', { chat_id: activeChatId });
+        }
       }
     };
 
@@ -2222,7 +2238,8 @@
 
         const delBtn = document.createElement('button');
         delBtn.setAttribute('draggable', 'false');
-        delBtn.className = 'p-1 rounded opacity-60 hover:opacity-100 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition shrink-0';
+        delBtn.className = 'p-1 rounded opacity-60 hover:opacity-100 hover:bg-rose-500/20 hover:text-rose-400 transition shrink-0';
+        delBtn.style.color = 'var(--text-dim)';
         delBtn.title = `Xóa vĩnh viễn workspace: ${w.chat_id}`;
         delBtn.innerHTML = '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>';
         delBtn.addEventListener('click', (ev) => {
@@ -2365,8 +2382,8 @@
       // Determine which command should remain selected / inspected
       let commandToSelect = null;
       if (sessionSwitched) {
-        userPinnedCommandKey = null;
         commandToSelect = currentCommands[0] || null;
+        userPinnedCommandKey = getCmdKey(commandToSelect) || null;
       } else {
         const targetKey = userPinnedCommandKey || getCmdKey(selectedCommand);
         if (targetKey) {
@@ -2374,6 +2391,7 @@
         }
         if (!commandToSelect) {
           commandToSelect = selectedCommand || currentCommands[0] || null;
+          if (commandToSelect) userPinnedCommandKey = getCmdKey(commandToSelect) || null;
         }
       }
 
@@ -2580,8 +2598,9 @@
           }
         }
 
-        // Anchor scroll position if user was scrolled down: prevent content from jumping down!
-        if (prevScrollTop > 10) {
+        // Anchor scroll position: prevent content from jumping down while user is reading, hovering, or has selected an item!
+        const isInteracting = isHoveringCommandStream || prevScrollTop > 0 || Boolean(userPinnedCommandKey);
+        if (isInteracting) {
           const heightDiff = container.scrollHeight - prevScrollHeight;
           if (heightDiff > 0) {
             container.scrollTop = prevScrollTop + heightDiff;
@@ -3331,12 +3350,12 @@
       if (autoPollTimer) clearInterval(autoPollTimer);
       if (liveSessionPollTimer) clearInterval(liveSessionPollTimer);
       pollBackendState();
-      autoPollTimer = setInterval(pollBackendState, 3000);
+      autoPollTimer = setInterval(pollBackendState, 4000);
       liveSessionPollTimer = setInterval(() => {
         if (activeChatId) {
           sendToRust('get_session_details', { chat_id: activeChatId });
         }
-      }, 2500);
+      }, 4000);
     }
 
     function refreshSessionsFromDisk() {
@@ -3357,6 +3376,13 @@
       console.log("STEP 5: THEME INITIALIZED ->", savedTheme || 'vjp-terminal');
       runBootSequence();
       console.log("STEP 6: BOOT SEQUENCE STARTED");
+
+      const streamContainerEl = document.getElementById('commandStreamContainer');
+      if (streamContainerEl) {
+        streamContainerEl.addEventListener('mouseenter', () => { isHoveringCommandStream = true; });
+        streamContainerEl.addEventListener('mouseleave', () => { isHoveringCommandStream = false; });
+      }
+
       startAutoPolling();
       console.log("STEP 7: AUTO POLLING STARTED");
     } catch (err) {
