@@ -1216,7 +1216,7 @@
   </aside>
 
   <!-- Modal Xác nhận Lifecycle Action (Start / Stop / Restart) -->
-  <div id="lifecycleModal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center hidden p-4">
+  <div id="lifecycleModal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center hidden p-4" onclick="if (event.target === this) closeLifecycleModal()">
     <div style="background-color: var(--bg-header); border-color: var(--border);" class="max-w-md w-full border rounded-2xl p-5 shadow-2xl space-y-4">
       <div class="flex items-center gap-3">
         <div class="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center shrink-0">
@@ -1230,6 +1230,28 @@
       <div class="flex items-center justify-end gap-2 pt-2 border-t" style="border-color: var(--border);">
         <button type="button" onclick="closeLifecycleModal()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-3 py-1.5 border rounded-lg text-xs font-sans transition">Hủy bỏ</button>
         <button id="modalConfirmBtn" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-sans font-semibold transition" style="background-color: var(--accent); color: var(--bg-base);">Xác nhận</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Xác nhận Xóa Vĩnh Viễn Workspace -->
+  <div id="deleteWorkspaceModal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center hidden p-4" onclick="if (event.target === this) closeDeleteWorkspaceModal()">
+    <div style="background-color: var(--bg-header); border-color: var(--border);" class="max-w-md w-full border rounded-2xl p-5 shadow-2xl space-y-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center shrink-0">
+          <span class="text-rose-400 text-lg">🗑️</span>
+        </div>
+        <div>
+          <h3 style="color: var(--text-main);" class="font-bold text-sm">Xóa vĩnh viễn Workspace?</h3>
+          <p style="color: var(--text-dim);" class="text-xs mt-0.5">Thao tác này sẽ xóa sạch thư mục trên ổ đĩa và không thể khôi phục!</p>
+        </div>
+      </div>
+      <div class="p-3 rounded-lg text-xs font-mono break-all" style="background-color: var(--bg-surface); border: 1px solid var(--border); color: var(--rose, #f43f5e);" id="deleteWorkspaceTargetText">
+        <!-- workspace chat_id -->
+      </div>
+      <div class="flex items-center justify-end gap-2 pt-2 border-t" style="border-color: var(--border);">
+        <button type="button" onclick="closeDeleteWorkspaceModal()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-3.5 py-1.5 border rounded-lg text-xs font-sans transition hover:opacity-80">Hủy bỏ (No)</button>
+        <button id="deleteWorkspaceConfirmBtn" type="button" onclick="confirmDeleteWorkspace()" class="px-4 py-1.5 rounded-lg text-xs font-sans font-semibold transition bg-rose-600 hover:bg-rose-500 text-white shadow-xs">Xóa vĩnh viễn (Yes)</button>
       </div>
     </div>
   </div>
@@ -1836,6 +1858,58 @@
       });
     }
 
+    let pendingDeleteChatId = null;
+
+    function openDeleteWorkspaceModal(chatId, label) {
+      pendingDeleteChatId = chatId;
+      const modal = document.getElementById('deleteWorkspaceModal');
+      const targetEl = document.getElementById('deleteWorkspaceTargetText');
+      if (targetEl) {
+        targetEl.textContent = `${chatId}${label && label !== chatId ? ' (' + label + ')' : ''}`;
+      }
+      if (modal) modal.classList.remove('hidden');
+    }
+
+    function closeDeleteWorkspaceModal() {
+      pendingDeleteChatId = null;
+      const modal = document.getElementById('deleteWorkspaceModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function confirmDeleteWorkspace() {
+      if (!pendingDeleteChatId) return;
+      const chatIdToDelete = pendingDeleteChatId;
+      closeDeleteWorkspaceModal();
+      showToast(`⏳ Đang xóa thư mục workspace ${chatIdToDelete}...`);
+      sendToRust('delete_workspace', { chat_id: chatIdToDelete });
+    }
+
+    window.__onWorkspaceDeleted = function(success, chatId, message) {
+      showToast(success ? `✓ ${message}` : `⚠️ ${message}`);
+      if (success && activeChatId === chatId) {
+        activeChatId = null;
+        currentRenderedChatId = null;
+        const streamTitle = document.getElementById('streamTitle');
+        if (streamTitle) streamTitle.innerText = '--';
+        const inspSess = document.getElementById('inspectSessionId');
+        const inspSessCmd = document.getElementById('inspectSessionIdCmd');
+        if (inspSess) inspSess.innerText = '--';
+        if (inspSessCmd) inspSessCmd.innerText = '--';
+        const streamContainer = document.getElementById('commandStreamContainer');
+        if (streamContainer) {
+          streamContainer.innerHTML = `
+            <div class="p-6 text-center text-xs" style="color: var(--text-dim);">
+              <div class="inline-block">Chọn một workspace từ danh sách bên trái để xem nhật ký</div>
+            </div>
+          `;
+        }
+        const targetEl = document.getElementById('inspectCommandTarget');
+        if (targetEl) targetEl.innerText = 'Chọn một lệnh để xem chi tiết';
+        const metaContainer = document.getElementById('commandInspectMeta');
+        if (metaContainer) metaContainer.innerHTML = '<div class="text-[11px] p-2 rounded" style="background-color: var(--bg-surface); color: var(--text-dim);">Không có lệnh nào được chọn</div>';
+      }
+    };
+
     function renderSessionList() {
       const container = document.getElementById('sessionListContainer');
       if (!container) return;
@@ -1878,8 +1952,18 @@
           copySessionBind(w.chat_id, copyBtn);
         });
 
+        const delBtn = document.createElement('button');
+        delBtn.className = 'p-1 rounded opacity-60 hover:opacity-100 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition shrink-0';
+        delBtn.title = `Xóa vĩnh viễn workspace: ${w.chat_id}`;
+        delBtn.innerHTML = '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>';
+        delBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          openDeleteWorkspaceModal(w.chat_id, w.label);
+        });
+
         rightDiv.appendChild(opsBadge);
         rightDiv.appendChild(copyBtn);
+        rightDiv.appendChild(delBtn);
 
         item.appendChild(labelSpan);
         item.appendChild(rightDiv);
@@ -2684,8 +2768,12 @@
     }
 
     window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && bootActive) {
-        dismissBootScreen();
+      if (e.key === 'Escape') {
+        if (bootActive) {
+          dismissBootScreen();
+        }
+        closeLifecycleModal();
+        closeDeleteWorkspaceModal();
       }
     });
 

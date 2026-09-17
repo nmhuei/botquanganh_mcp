@@ -351,6 +351,54 @@ fn scan_workspaces(root: &Path) -> Vec<SessionItem> {
     sessions
 }
 
+fn delete_workspace_folder(workspace_root: &Path, chat_id: &str) -> (bool, String) {
+    let clean_id = chat_id.trim();
+    if clean_id.is_empty() {
+        return (false, "Tên workspace không được để trống".to_string());
+    }
+    if clean_id.contains('/') || clean_id.contains('\\') || clean_id.contains("..") || clean_id.starts_with('.') {
+        return (false, "Tên workspace không hợp lệ".to_string());
+    }
+
+    let ws_dir = workspace_root.join(clean_id);
+    let archive_dir = workspace_root.join(".archive").join(clean_id);
+    let mut deleted_any = false;
+    let mut err_msg = String::new();
+
+    if ws_dir.is_dir() {
+        match fs::remove_dir_all(&ws_dir) {
+            Ok(_) => { deleted_any = true; }
+            Err(e) => { err_msg = format!("Lỗi khi xóa thư mục {}: {}", ws_dir.display(), e); }
+        }
+    }
+    if archive_dir.is_dir() {
+        match fs::remove_dir_all(&archive_dir) {
+            Ok(_) => { deleted_any = true; }
+            Err(e) => {
+                if err_msg.is_empty() {
+                    err_msg = format!("Lỗi khi xóa archive {}: {}", archive_dir.display(), e);
+                }
+            }
+        }
+    }
+
+    if deleted_any {
+        let pointer_path = workspace_root.join(".last_session");
+        if let Ok(content) = fs::read_to_string(&pointer_path) {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                if val.get("chat_id").and_then(|v| v.as_str()) == Some(clean_id) {
+                    let _ = fs::remove_file(&pointer_path);
+                }
+            }
+        }
+        (true, "Đã xóa vĩnh viễn không gian làm việc thành công".to_string())
+    } else if err_msg.is_empty() {
+        (true, "Không tìm thấy thư mục workspace trên ổ đĩa".to_string())
+    } else {
+        (false, err_msg)
+    }
+}
+
 fn sanitize_honeypot_text(text: &str) -> String {
     let lower = text.to_lowercase();
     if !lower.contains("x-llm")
@@ -1214,6 +1262,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             }
                         }
+                        "delete_workspace" => {
+                            let chat_id = parsed.payload
+                                .as_ref()
+                                .and_then(|v| v.get("chat_id"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
+                            let (ok, msg) = delete_workspace_folder(&p.workspace_root, chat_id);
+                            let js_res = format!(
+                                "if (window.__onWorkspaceDeleted) window.__onWorkspaceDeleted({}, '{}', '{}');",
+                                ok,
+                                chat_id.replace('\'', "\\'"),
+                                msg.replace('\'', "\\'")
+                            );
+                            let _ = pr.send_event(UserEvent::EvalScript(js_res));
+
+                            let sessions = scan_workspaces(&p.workspace_root);
+                            if let Ok(json) = serde_json::to_string(&sessions) {
+                                let js = format!("if (window.__onWorkspacesLoaded) window.__onWorkspacesLoaded({});", json);
+                                let _ = pr.send_event(UserEvent::EvalScript(js));
+                            }
+                        }
                         _ => {}
                     }
                 });
@@ -1267,5 +1336,39 @@ mod tests {
         let item = target.unwrap();
         assert!(item.cmd.contains("for u in supervisor"), "cmd should be actual bash loop, got: {}", item.cmd);
         assert!(item.intent.as_ref().map(|s| s.contains("Test the enumerated usernames")).unwrap_or(false), "intent should contain note, got: {:?}", item.intent);
+    }
+
+    #[test]
+    fn test_delete_workspace_folder() {
+        let temp_dir = std::env::temp_dir().join(format!("bqa_test_ws_del_{}", std::process::id()));
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let ws_name = "cw-20260917-test-delete-subsystem";
+        let target_ws = temp_dir.join(ws_name);
+        fs::create_dir_all(&target_ws).unwrap();
+        fs::write(target_ws.join("journal.jsonl"), "{\"op\":\"op-1\"}\n").unwrap();
+
+        // Also test .last_session cleanup
+        let pointer_path = temp_dir.join(".last_session");
+        fs::write(&pointer_path, format!("{{\"chat_id\":\"{}\"}}", ws_name)).unwrap();
+
+        let scanned = scan_workspaces(&temp_dir);
+        assert!(scanned.iter().any(|s| s.chat_id == ws_name));
+
+        let (ok, msg) = delete_workspace_folder(&temp_dir, ws_name);
+        assert!(ok, "Delete should succeed: {}", msg);
+        assert!(!target_ws.exists(), "Directory should be physically deleted");
+        assert!(!pointer_path.exists(), ".last_session should be removed");
+
+        let rescanned = scan_workspaces(&temp_dir);
+        assert!(!rescanned.iter().any(|s| s.chat_id == ws_name));
+
+        // Test invalid/empty/traversal
+        let (fail_ok, _) = delete_workspace_folder(&temp_dir, "../sneaky");
+        assert!(!fail_ok);
+        let (fail_empty, _) = delete_workspace_folder(&temp_dir, "");
+        assert!(!fail_empty);
+
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 }
