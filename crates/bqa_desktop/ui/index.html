@@ -304,18 +304,16 @@
       from { opacity: 0; transform: translateY(6px); }
       to { opacity: 1; transform: translateY(0); }
     }
-    @keyframes slideDownCommand {
+    @keyframes fadeInCommand {
       from {
         opacity: 0;
-        transform: translateY(-8px);
       }
       to {
         opacity: 1;
-        transform: translateY(0);
       }
     }
     .animate-slide-down {
-      animation: slideDownCommand 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      animation: fadeInCommand 0.18s ease-out forwards;
     }
 
     #paneSidebar {
@@ -813,14 +811,14 @@
 
     <!-- CỘT 3: KHUNG CHI TIẾT (HERO ELEMENT) -->
     <aside id="paneInspector" style="background-color: var(--bg-header);" class="flex-1 flex flex-col overflow-hidden">
-      <div class="flex-1 flex flex-col min-w-[320px] h-full overflow-hidden">
+      <div class="flex-1 flex flex-col w-full min-w-0 h-full overflow-hidden">
         <div style="border-color: var(--border); color: var(--text-sub);" class="px-4 py-2 border-b flex items-center justify-between gap-2 text-xs shrink-0 min-w-0 overflow-hidden">
           <span style="color: var(--text-main);" class="font-semibold whitespace-nowrap truncate min-w-0">Chi tiết Thực thi (Inspector)</span>
           <div class="flex items-center gap-1.5 shrink-0">
             <button id="btnCopyDetails" onclick="copyDetails()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="w-[78px] h-[28px] px-2.5 py-1 border rounded-md text-[11px] font-sans transition whitespace-nowrap flex items-center justify-center shrink-0 select-none" title="Copy command details">
               <span id="copyBtnLabel" class="whitespace-nowrap text-center">Copy</span>
             </button>
-            <button id="btnCloseInspector" onclick="toggleInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white hover:bg-slate-700/30 transition shrink-0" title="Ẩn khung chi tiết (Close Inspector)">
+            <button id="btnCloseInspector" onclick="closeInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white hover:bg-slate-700/30 transition shrink-0" title="Ẩn khung chi tiết (Close Inspector)">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
             </button>
           </div>
@@ -960,14 +958,14 @@
 
     <!-- CỘT 2: FORENSICS JSON -->
     <aside id="paneLogInspector" style="background-color: var(--bg-header);" class="w-[420px] max-w-[950px] flex flex-col overflow-hidden shrink-0">
-      <div class="flex-1 flex flex-col min-w-[280px] h-full overflow-hidden">
+      <div class="flex-1 flex flex-col w-full min-w-0 h-full overflow-hidden">
         <div style="border-color: var(--border); color: var(--text-sub);" class="px-4 py-2.5 border-b flex items-center justify-between text-xs shrink-0">
           <span style="color: var(--text-main);" class="font-semibold">Log Event Forensics</span>
           <div class="flex items-center gap-1.5">
             <button id="btnCopyLogJson" onclick="copyLogJson()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="w-[96px] h-[28px] px-2.5 py-1 border rounded-md text-[11px] font-sans transition whitespace-nowrap flex items-center justify-center shrink-0 select-none" title="Copy JSON Forensics">
               <span id="copyLogLabel" class="whitespace-nowrap text-center">Copy JSON</span>
             </button>
-            <button id="btnCloseLogInspector" onclick="toggleInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white hover:bg-slate-700/30 transition shrink-0" title="Ẩn chi tiết log (Close Inspector)">
+            <button id="btnCloseLogInspector" onclick="closeInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white hover:bg-slate-700/30 transition shrink-0" title="Ẩn chi tiết log (Close Inspector)">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
             </button>
           </div>
@@ -1478,6 +1476,12 @@
           tab.style.color = 'var(--text-main)';
           tab.classList.add('font-medium', 'shadow-xs');
         }
+        const btnInsp = document.getElementById('btnToggleInspector');
+        if (btnInsp && inspector) {
+          const isCol = inspector.classList.contains('pane-collapsed');
+          btnInsp.style.color = isCol ? 'var(--accent)' : 'var(--text-sub)';
+          btnInsp.title = isCol ? 'Mở Khung Chi Tiết (Open Inspector)' : 'Thu gọn Khung Chi Tiết (Collapse Inspector)';
+        }
       } else if (page === 'logs') {
         if (pLogs) { pLogs.classList.remove('hidden'); pLogs.classList.add('page-view'); }
         const tab = document.getElementById('tabLogs');
@@ -1486,6 +1490,12 @@
           tab.style.borderColor = 'var(--border)';
           tab.style.color = 'var(--text-main)';
           tab.classList.add('font-medium', 'shadow-xs');
+        }
+        const btnLogInsp = document.getElementById('btnToggleLogInspector');
+        if (btnLogInsp && paneLogInspector) {
+          const isLogCol = paneLogInspector.classList.contains('pane-collapsed');
+          btnLogInsp.style.color = isLogCol ? 'var(--accent)' : 'var(--text-sub)';
+          btnLogInsp.title = isLogCol ? 'Mở Chi tiết Log (Open Inspector)' : 'Thu gọn Chi tiết Log (Collapse Inspector)';
         }
       }
     }
@@ -1568,8 +1578,7 @@
       }
     }
 
-    function toggleInspector() {
-      isInspectorCollapsed = !isInspectorCollapsed;
+    function openInspector() {
       const isActivity = document.getElementById('pageActivity') && !document.getElementById('pageActivity').classList.contains('hidden');
       const btnInsp = document.getElementById('btnToggleInspector');
       const btnLogInsp = document.getElementById('btnToggleLogInspector');
@@ -1580,120 +1589,95 @@
           clearTimeout(inspectorAnimTimer);
           inspectorAnimTimer = null;
         }
-
-        if (isInspectorCollapsed) {
-          // Smooth synchronized collapse of Activity Inspector
-          const streamRect = paneStream.getBoundingClientRect();
-          const inspRect = inspector.getBoundingClientRect();
-          const currentStreamW = streamRect.width;
-          const currentInspW = inspRect.width;
-          const totalW = currentStreamW + currentInspW + (resizerRight ? resizerRight.offsetWidth : 0);
-
-          // 1. Lock pixel widths so both panes start at exact current coordinates
-          paneStream.style.flex = 'none';
-          paneStream.style.width = currentStreamW + 'px';
-          inspector.style.flex = 'none';
-          inspector.style.width = currentInspW + 'px';
-          inspector.style.minWidth = '0px';
-
-          // Force reflow
-          void inspector.offsetWidth;
-
-          // 2. Trigger synchronized smooth width transition
-          if (resizerRight) resizerRight.classList.add('resizer-collapsed');
-          inspector.classList.add('pane-collapsed');
-          inspector.style.width = '0px';
-          paneStream.style.width = totalW + 'px';
-
-          if (btnInsp) {
-            btnInsp.style.color = 'var(--accent)';
-            btnInsp.title = 'Mở Khung Chi Tiết Inspector';
-          }
-
-          inspectorAnimTimer = setTimeout(() => {
-            if (isInspectorCollapsed) {
-              paneStream.style.flex = '1';
-              paneStream.style.width = 'auto';
-              if (resizerRight) resizerRight.classList.add('hidden');
-            }
-            inspectorAnimTimer = null;
-          }, 290);
-        } else {
-          // Smooth synchronized expansion of Activity Inspector
-          if (resizerRight) {
-            resizerRight.classList.remove('hidden');
-            void resizerRight.offsetWidth;
-            resizerRight.classList.remove('resizer-collapsed');
-          }
-
-          const totalW = paneStream.offsetWidth;
-          const targetStreamW = Math.min(lastStreamWidth || DEFAULT_STREAM_WIDTH, Math.max(220, totalW - 320));
-          const targetInspW = Math.max(300, totalW - targetStreamW - (resizerRight ? resizerRight.offsetWidth : 0));
-
-          // Set starting frame
-          paneStream.style.flex = 'none';
-          paneStream.style.width = totalW + 'px';
-          inspector.style.flex = 'none';
-          inspector.style.width = '0px';
-          inspector.style.minWidth = '0px';
-          inspector.classList.remove('pane-collapsed');
-
-          // Force reflow
-          void inspector.offsetWidth;
-
-          // Animate to target widths in lockstep
-          paneStream.style.width = targetStreamW + 'px';
-          inspector.style.width = targetInspW + 'px';
-
-          if (btnInsp) {
-            btnInsp.style.color = 'var(--text-sub)';
-            btnInsp.title = 'Thu gọn Khung Chi Tiết Inspector';
-          }
-
-          inspectorAnimTimer = setTimeout(() => {
-            if (!isInspectorCollapsed) {
-              paneStream.style.flex = 'none';
-              paneStream.style.width = targetStreamW + 'px';
-              inspector.style.flex = '1';
-              inspector.style.width = 'auto';
-              inspector.style.minWidth = '280px';
-            }
-            inspectorAnimTimer = null;
-          }, 290);
+        isInspectorCollapsed = false;
+        inspector.classList.remove('pane-collapsed');
+        if (resizerRight) {
+          resizerRight.classList.remove('hidden', 'resizer-collapsed');
         }
+        const currentStreamW = lastStreamWidth || DEFAULT_STREAM_WIDTH;
+        paneStream.style.flex = 'none';
+        paneStream.style.width = currentStreamW + 'px';
+        paneStream.style.maxWidth = 'none';
 
+        inspector.style.flex = '1';
+        inspector.style.width = 'auto';
+        inspector.style.minWidth = '280px';
+        inspector.style.maxWidth = 'none';
+
+        if (btnInsp) {
+          btnInsp.style.color = 'var(--text-sub)';
+          btnInsp.title = 'Thu gọn Khung Chi Tiết (Collapse Inspector)';
+        }
       } else {
-        // Smooth toggle for Logs Inspector
         if (!paneLogInspector) return;
-        if (isInspectorCollapsed) {
-          paneLogInspector.style.minWidth = '0px';
-          paneLogInspector.classList.add('pane-collapsed');
-          if (resizerLog) resizerLog.classList.add('resizer-collapsed');
-          if (btnLogInsp) {
-            btnLogInsp.style.color = 'var(--accent)';
-            btnLogInsp.title = 'Mở Chi tiết Log';
-          }
-          setTimeout(() => {
-            if (isInspectorCollapsed && resizerLog) resizerLog.classList.add('hidden');
-          }, 290);
-        } else {
-          if (resizerLog) {
-            resizerLog.classList.remove('hidden');
-            void resizerLog.offsetWidth;
-            resizerLog.classList.remove('resizer-collapsed');
-          }
-          paneLogInspector.classList.remove('pane-collapsed');
-          paneLogInspector.style.width = (lastLogInspectorWidth || DEFAULT_LOG_INSPECTOR_WIDTH) + 'px';
-          if (btnLogInsp) {
-            btnLogInsp.style.color = 'var(--text-sub)';
-            btnLogInsp.title = 'Thu gọn Chi tiết Log';
-          }
-          setTimeout(() => {
-            if (!isInspectorCollapsed) {
-              paneLogInspector.style.minWidth = '280px';
-            }
-          }, 290);
+        isInspectorCollapsed = false;
+        paneLogInspector.classList.remove('pane-collapsed');
+        if (resizerLog) {
+          resizerLog.classList.remove('hidden', 'resizer-collapsed');
         }
+        const currentLogW = lastLogInspectorWidth || DEFAULT_LOG_INSPECTOR_WIDTH;
+        paneLogInspector.style.width = currentLogW + 'px';
+        paneLogInspector.style.minWidth = '280px';
+
+        if (btnLogInsp) {
+          btnLogInsp.style.color = 'var(--text-sub)';
+          btnLogInsp.title = 'Thu gọn Chi tiết Log (Collapse Inspector)';
+        }
+      }
+    }
+
+    function closeInspector() {
+      const isActivity = document.getElementById('pageActivity') && !document.getElementById('pageActivity').classList.contains('hidden');
+      const btnInsp = document.getElementById('btnToggleInspector');
+      const btnLogInsp = document.getElementById('btnToggleLogInspector');
+
+      if (isActivity) {
+        if (!inspector || !paneStream) return;
+        if (inspectorAnimTimer) {
+          clearTimeout(inspectorAnimTimer);
+          inspectorAnimTimer = null;
+        }
+        isInspectorCollapsed = true;
+        if (paneStream.offsetWidth > 100 && !paneStream.style.width.includes('auto')) {
+          lastStreamWidth = paneStream.offsetWidth;
+        }
+        inspector.classList.add('pane-collapsed');
+        if (resizerRight) {
+          resizerRight.classList.add('hidden', 'resizer-collapsed');
+        }
+        paneStream.style.flex = '1';
+        paneStream.style.width = 'auto';
+        paneStream.style.maxWidth = 'none';
+
+        if (btnInsp) {
+          btnInsp.style.color = 'var(--accent)';
+          btnInsp.title = 'Mở Khung Chi Tiết (Open Inspector)';
+        }
+      } else {
+        if (!paneLogInspector) return;
+        isInspectorCollapsed = true;
+        if (paneLogInspector.offsetWidth > 100) {
+          lastLogInspectorWidth = paneLogInspector.offsetWidth;
+        }
+        paneLogInspector.classList.add('pane-collapsed');
+        if (resizerLog) {
+          resizerLog.classList.add('hidden', 'resizer-collapsed');
+        }
+        if (btnLogInsp) {
+          btnLogInsp.style.color = 'var(--accent)';
+          btnLogInsp.title = 'Mở Chi tiết Log (Open Inspector)';
+        }
+      }
+    }
+
+    function toggleInspector() {
+      const isActivity = document.getElementById('pageActivity') && !document.getElementById('pageActivity').classList.contains('hidden');
+      const targetEl = isActivity ? inspector : paneLogInspector;
+      const isCollapsed = targetEl ? targetEl.classList.contains('pane-collapsed') : isInspectorCollapsed;
+      if (isCollapsed) {
+        openInspector();
+      } else {
+        closeInspector();
       }
     }
 
@@ -1935,9 +1919,12 @@
     let currentRenderedChatId = null;
     let currentCommands = [];
     let selectedCommand = null;
+    let userPinnedCommandKey = null;
 
     let currentLogs = [];
     let activeLogCategory = 'all';
+    let selectedLog = null;
+    let userPinnedLogKey = null;
 
     let lastWorkspacesHash = '';
     let lastCommandsHash = {};
@@ -2079,6 +2066,7 @@
     function selectSession(chatId) {
       if (activeChatId === chatId && currentRenderedChatId === chatId) return;
       activeChatId = chatId;
+      userPinnedCommandKey = null;
       updateActiveSessionHighlight();
       const streamTitle = document.getElementById('streamTitle');
       if (streamTitle) streamTitle.innerText = chatId;
@@ -2337,6 +2325,18 @@
       }, 50);
     };
 
+    function computeCommandsHash(chatId, commands) {
+      if (!commands || commands.length === 0) return `${chatId}:0`;
+      let h = `${chatId}:${commands.length}`;
+      const limit = Math.min(commands.length, 15);
+      for (let i = 0; i < limit; i++) {
+        const c = commands[i];
+        const cmdKey = c.id || `${c.timestamp}_${c.cmd}`;
+        h += `|${cmdKey}:${c.exit_code}:${(c.output || '').length}:${c.status || ''}`;
+      }
+      return h;
+    }
+
     window.__onJournalLoaded = function(chatIdOrDetails, maybeCommands) {
       let chatId = chatIdOrDetails;
       let commands = maybeCommands;
@@ -2347,33 +2347,43 @@
       if (chatId && activeChatId && chatId !== activeChatId) return;
 
       const newCommands = Array.isArray(commands) ? commands : [];
-      const topCmd = newCommands[0];
-      const hash = `${chatId}:${newCommands.length}:${topCmd ? (topCmd.timestamp || '') + (topCmd.cmd || '') + (topCmd.output || '').length + topCmd.exit_code : ''}`;
+      const hash = computeCommandsHash(chatId, newCommands);
       const streamContainer = document.getElementById('commandStreamContainer');
-      const hasItems = streamContainer && streamContainer.children.length > 0 && !streamContainer.innerText.includes('Chưa có') && !streamContainer.innerText.includes('Đang tải');
-
       const sessionSwitched = currentRenderedChatId !== chatId;
       const changed = lastCommandsHash[chatId] !== hash;
+      const isInitialLoading = !streamContainer || streamContainer.querySelector('.animate-pulse') !== null;
+
+      if (!sessionSwitched && !changed && !isInitialLoading) {
+        // Absolutely zero change, return immediately without touching DOM
+        return;
+      }
+
       lastCommandsHash[chatId] = hash;
-
       currentCommands = newCommands;
+      currentRenderedChatId = chatId;
 
-      if (sessionSwitched || changed || !hasItems) {
-        currentRenderedChatId = chatId;
-        let commandToSelect = currentCommands[0];
-        if (!sessionSwitched && selectedCommand) {
-          const prevId = selectedCommand.id;
-          const prevTs = selectedCommand.timestamp;
-          const prevCmd = selectedCommand.cmd;
-          const match = currentCommands.find(c => (prevId && c.id === prevId) || (c.timestamp === prevTs && c.cmd === prevCmd));
-          if (match) commandToSelect = match;
+      const getCmdKey = (c) => (c && (c.id || `${c.timestamp}_${c.cmd}`)) || '';
+
+      // Determine which command should remain selected / inspected
+      let commandToSelect = null;
+      if (sessionSwitched) {
+        userPinnedCommandKey = null;
+        commandToSelect = currentCommands[0] || null;
+      } else {
+        const targetKey = userPinnedCommandKey || getCmdKey(selectedCommand);
+        if (targetKey) {
+          commandToSelect = currentCommands.find(c => getCmdKey(c) === targetKey) || null;
         }
-        renderCommandStream(commandToSelect, sessionSwitched);
-        if (commandToSelect) {
-          selectCommand(commandToSelect);
-        } else {
-          clearInspector();
+        if (!commandToSelect) {
+          commandToSelect = selectedCommand || currentCommands[0] || null;
         }
+      }
+
+      renderCommandStream(commandToSelect, sessionSwitched);
+      if (commandToSelect) {
+        updateInspectorNonDestructive(commandToSelect);
+      } else {
+        clearInspector();
       }
     };
 
@@ -2412,7 +2422,9 @@
       const intentEl = row.querySelector('.intent-text');
       if (intentEl && hasIntent) intentEl.innerText = c.intent;
 
+      row._commandData = c;
       row.onclick = () => {
+        userPinnedCommandKey = key;
         if (activeActionRowEl && activeActionRowEl !== row) {
           activeActionRowEl.style.backgroundColor = 'var(--bg-header)';
           activeActionRowEl.style.borderColor = 'var(--border)';
@@ -2422,7 +2434,7 @@
         row.style.borderColor = 'var(--accent)';
         row.classList.add('selected', 'shadow-xs');
         activeActionRowEl = row;
-        selectCommand(c, true);
+        selectCommand(row._commandData || c, true);
       };
 
       return row;
@@ -2439,15 +2451,16 @@
       }
 
       const getCmdKey = (c) => (c && (c.id || `${c.timestamp}_${c.cmd}`)) || '';
+      const targetKey = getCmdKey(targetSelected);
 
       // If session switched or container has loading placeholder: perform clean initial render
-      const hasPlaceholder = container.innerText.includes('Đang tải') || container.innerText.includes('Chưa có');
-      if (sessionSwitched || hasPlaceholder || container.children.length === 0) {
+      const hasPlaceholder = container.querySelector('.animate-pulse') !== null;
+      if (sessionSwitched || hasPlaceholder || container.children.length === 0 || container.innerText.includes('Chưa có')) {
         container.innerHTML = '';
         activeActionRowEl = null;
         const fragment = document.createDocumentFragment();
         currentCommands.forEach((c, idx) => {
-          const isSelected = targetSelected ? (getCmdKey(c) === getCmdKey(targetSelected)) : idx === 0;
+          const isSelected = targetKey ? (getCmdKey(c) === targetKey) : idx === 0;
           const row = createCommandRow(c, isSelected);
           if (isSelected) activeActionRowEl = row;
           fragment.appendChild(row);
@@ -2457,6 +2470,9 @@
       }
 
       // INCREMENTAL PATCHING:
+      const prevScrollTop = container.scrollTop;
+      const prevScrollHeight = container.scrollHeight;
+
       const incomingKeys = new Set(currentCommands.map(getCmdKey));
 
       // Map current DOM elements by data-cmd-key and PRUNE stale elements
@@ -2477,13 +2493,28 @@
       currentCommands.forEach((c) => {
         const key = getCmdKey(c);
         if (!domMap.has(key)) {
-          const isSelected = targetSelected ? (getCmdKey(c) === getCmdKey(targetSelected)) : false;
+          const isSelected = targetKey ? (key === targetKey) : false;
           const row = createCommandRow(c, isSelected);
           row.classList.add('animate-slide-down');
           newCommandsToInsert.push({ row, c });
         } else {
-          // In-place update existing row
+          // In-place update existing row with fresh command data
           const row = domMap.get(key);
+          row._commandData = c;
+          row.onclick = () => {
+            userPinnedCommandKey = key;
+            if (activeActionRowEl && activeActionRowEl !== row) {
+              activeActionRowEl.style.backgroundColor = 'var(--bg-header)';
+              activeActionRowEl.style.borderColor = 'var(--border)';
+              activeActionRowEl.classList.remove('selected', 'shadow-xs');
+            }
+            row.style.backgroundColor = 'var(--bg-selected)';
+            row.style.borderColor = 'var(--accent)';
+            row.classList.add('selected', 'shadow-xs');
+            activeActionRowEl = row;
+            selectCommand(row._commandData || c, true);
+          };
+
           const badgeLatest = row.querySelector('.badge-latest');
           if (badgeLatest) {
             if (c.is_latest) badgeLatest.classList.remove('hidden');
@@ -2492,35 +2523,46 @@
           const statusEl = row.querySelector('.status-display');
           if (statusEl) {
             const isSuccess = c.exit_code === 0;
-            statusEl.innerText = isSuccess ? 'OK' : 'ERR ' + c.exit_code;
-            statusEl.style.color = isSuccess ? 'var(--mint)' : '#ff6b61';
+            const newStatus = isSuccess ? 'OK' : 'ERR ' + c.exit_code;
+            if (statusEl.innerText !== newStatus) {
+              statusEl.innerText = newStatus;
+              statusEl.style.color = isSuccess ? 'var(--mint)' : '#ff6b61';
+            }
           }
           const cmdEl = row.querySelector('.cmd-text');
           if (cmdEl && cmdEl.innerText !== (c.cmd || '')) {
             cmdEl.innerText = c.cmd || '';
           }
-          const hasIntent = c.intent && c.intent.trim().length > 0 && c.intent !== c.cmd;
+          const hasIntent = c.intent && typeof c.intent === 'string' && c.intent.trim().length > 0 && c.intent !== c.cmd;
           const intentContainer = row.querySelector('.intent-container');
           const intentEl = row.querySelector('.intent-text');
           if (intentContainer && intentEl) {
             if (hasIntent) {
-              intentEl.innerText = c.intent;
+              if (intentEl.innerText !== c.intent) intentEl.innerText = c.intent;
               intentContainer.classList.remove('hidden');
             } else {
               intentContainer.classList.add('hidden');
             }
           }
 
-          if (targetSelected && getCmdKey(c) === getCmdKey(targetSelected)) {
+          const isThisSelected = targetKey ? (key === targetKey) : false;
+          if (isThisSelected) {
             if (activeActionRowEl && activeActionRowEl !== row) {
               activeActionRowEl.style.backgroundColor = 'var(--bg-header)';
               activeActionRowEl.style.borderColor = 'var(--border)';
               activeActionRowEl.classList.remove('selected', 'shadow-xs');
             }
             activeActionRowEl = row;
-            row.classList.add('selected', 'shadow-xs');
-            row.style.backgroundColor = 'var(--bg-selected)';
-            row.style.borderColor = 'var(--accent)';
+            if (!row.classList.contains('selected')) {
+              row.classList.add('selected', 'shadow-xs');
+              row.style.backgroundColor = 'var(--bg-selected)';
+              row.style.borderColor = 'var(--accent)';
+            }
+            updateInspectorNonDestructive(c);
+          } else if (activeActionRowEl === row && targetKey && key !== targetKey) {
+            row.classList.remove('selected', 'shadow-xs');
+            row.style.backgroundColor = 'var(--bg-header)';
+            row.style.borderColor = 'var(--border)';
           }
         }
       });
@@ -2530,7 +2572,7 @@
         for (let i = newCommandsToInsert.length - 1; i >= 0; i--) {
           const item = newCommandsToInsert[i];
           container.insertBefore(item.row, container.firstChild);
-          if (targetSelected && getCmdKey(item.c) === getCmdKey(targetSelected)) {
+          if (targetKey && getCmdKey(item.c) === targetKey) {
             if (activeActionRowEl && activeActionRowEl !== item.row) {
               activeActionRowEl.style.backgroundColor = 'var(--bg-header)';
               activeActionRowEl.style.borderColor = 'var(--border)';
@@ -2539,78 +2581,133 @@
             activeActionRowEl = item.row;
           }
         }
+
+        // Anchor scroll position if user was scrolled down: prevent content from jumping down!
+        if (prevScrollTop > 10) {
+          const heightDiff = container.scrollHeight - prevScrollHeight;
+          if (heightDiff > 0) {
+            container.scrollTop = prevScrollTop + heightDiff;
+          }
+        }
+      }
+    }
+
+    function updateInspectorNonDestructive(c) {
+      if (!c) {
+        clearInspector();
+        return;
+      }
+      selectedCommand = c;
+
+      try {
+        const inspectTool = document.getElementById('inspectTool');
+        const inspectTimestamp = document.getElementById('inspectTimestamp');
+        const inspectExit = document.getElementById('inspectExit');
+        const inspectOutput = document.getElementById('inspectOutput');
+        const inspectCommand = document.getElementById('inspectCommand');
+        const inspectCwd = document.getElementById('inspectCwd');
+        const inspectStderr = document.getElementById('inspectStderr');
+        const inspectStderrBadge = document.getElementById('inspectStderrBadge');
+        const inspectRawJson = document.getElementById('inspectRawJson');
+
+        const toolVal = String(c.tool || 'unknown');
+        if (inspectTool && inspectTool.innerText !== toolVal) inspectTool.innerText = toolVal;
+
+        const timeVal = formatLocalTime(c.timestamp, 'full') || String(c.timestamp || 'N/A');
+        if (inspectTimestamp && inspectTimestamp.innerText !== timeVal) inspectTimestamp.innerText = timeVal;
+
+        const exitCode = (typeof c.exit_code === 'number') ? c.exit_code : 0;
+        const isSuccess = exitCode === 0;
+        const durationStr = c.duration || '0ms';
+        const exitVal = `${exitCode} (${isSuccess ? 'Success' : 'Failed'}) · ${durationStr}`;
+        if (inspectExit && inspectExit.innerText !== exitVal) {
+          inspectExit.innerText = exitVal;
+          inspectExit.style.color = isSuccess ? 'var(--mint)' : '#ff6b61';
+        }
+
+        // Tab 1: Output - Preserve user scroll position!
+        if (inspectOutput) {
+          const rawOut = (c.output != null) ? String(c.output) : '';
+          const newOutput = rawOut.trim().length > 0 ? rawOut : '(Không có kết quả STDOUT)';
+          if (inspectOutput.innerText !== newOutput) {
+            const prevScroll = inspectOutput.scrollTop;
+            inspectOutput.innerText = newOutput;
+            inspectOutput.scrollTop = prevScroll;
+          }
+        }
+
+        // Tab 2: Meta
+        const inspectSessionId = document.getElementById('inspectSessionId');
+        const inspectSessionIdCmd = document.getElementById('inspectSessionIdCmd');
+        const curSessId = activeChatId || c.chat_id || '--';
+        if (inspectSessionId && inspectSessionId.innerText !== curSessId) inspectSessionId.innerText = curSessId;
+        if (inspectSessionIdCmd && inspectSessionIdCmd.innerText !== curSessId) inspectSessionIdCmd.innerText = curSessId;
+        const cmdStr = (c.cmd != null) ? String(c.cmd) : '(Trống)';
+        if (inspectCommand && inspectCommand.innerText !== cmdStr) inspectCommand.innerText = cmdStr;
+
+        const inspectIntentCard = document.getElementById('inspectIntentCard');
+        const inspectIntent = document.getElementById('inspectIntent');
+        if (inspectIntentCard && inspectIntent) {
+          const intentStr = (c.intent != null) ? String(c.intent) : '';
+          if (intentStr.trim().length > 0 && intentStr !== c.cmd) {
+            if (inspectIntent.innerText !== intentStr) inspectIntent.innerText = intentStr;
+            inspectIntentCard.classList.remove('hidden');
+          } else {
+            inspectIntentCard.classList.add('hidden');
+          }
+        }
+        const cwdStr = (c.cwd != null) ? String(c.cwd) : '(Không xác định)';
+        if (inspectCwd && inspectCwd.innerText !== cwdStr) inspectCwd.innerText = cwdStr;
+
+        // Tab 3: STDERR - Preserve user scroll position!
+        const rawErr = (c.stderr != null) ? String(c.stderr) : '';
+        if (inspectStderr) {
+          const newStderr = rawErr.trim().length > 0 ? rawErr : 'Không có lỗi phát sinh (Exit Code 0).';
+          if (inspectStderr.innerText !== newStderr) {
+            const prevScroll = inspectStderr.scrollTop;
+            inspectStderr.innerText = newStderr;
+            inspectStderr.scrollTop = prevScroll;
+          }
+        }
+        if (inspectStderrBadge) {
+          if (rawErr.trim().length > 0) {
+            if (inspectStderrBadge.innerText !== 'Có lỗi') {
+              inspectStderrBadge.innerText = 'Có lỗi';
+              inspectStderrBadge.style.color = '#ff6b61';
+            }
+          } else {
+            if (inspectStderrBadge.innerText !== 'None') {
+              inspectStderrBadge.innerText = 'None';
+              inspectStderrBadge.style.color = 'var(--mint)';
+            }
+          }
+        }
+
+        // Tab 4: Raw JSON - Preserve user scroll position!
+        if (inspectRawJson) {
+          const newJson = c.raw_json ? formatJson(c.raw_json) : JSON.stringify(c, null, 2);
+          if (inspectRawJson.innerText !== newJson) {
+            const prevScroll = inspectRawJson.scrollTop;
+            inspectRawJson.innerText = newJson;
+            inspectRawJson.scrollTop = prevScroll;
+          }
+        }
+      } catch (e) {
+        console.error('Failed to update inspector UI:', e);
       }
     }
 
     function selectCommand(c, userTriggered = false) {
-      selectedCommand = c;
-      if (!c) return;
-
-      const inspectTool = document.getElementById('inspectTool');
-      const inspectTimestamp = document.getElementById('inspectTimestamp');
-      const inspectExit = document.getElementById('inspectExit');
-      const inspectOutput = document.getElementById('inspectOutput');
-      const inspectCommand = document.getElementById('inspectCommand');
-      const inspectCwd = document.getElementById('inspectCwd');
-      const inspectStderr = document.getElementById('inspectStderr');
-      const inspectStderrBadge = document.getElementById('inspectStderrBadge');
-      const inspectRawJson = document.getElementById('inspectRawJson');
-
-      if (inspectTool) inspectTool.innerText = c.tool || 'unknown';
-      if (inspectTimestamp) {
-        inspectTimestamp.innerText = formatLocalTime(c.timestamp, 'full') || c.timestamp || 'N/A';
+      try {
+        updateInspectorNonDestructive(c);
+      } catch (err) {
+        console.error('Error updating inspector:', err);
       }
-      if (inspectExit) {
-        const isSuccess = c.exit_code === 0;
-        inspectExit.innerText = `${c.exit_code} (${isSuccess ? 'Success' : 'Failed'}) · ${c.duration || '0ms'}`;
-        inspectExit.style.color = isSuccess ? 'var(--mint)' : '#ff6b61';
-      }
-
-      // Tab 1: Output
-      if (inspectOutput) {
-        inspectOutput.innerText = c.output && c.output.trim().length > 0 ? c.output : '(Không có kết quả STDOUT)';
-      }
-
-      // Tab 2: Meta
-      const inspectSessionId = document.getElementById('inspectSessionId');
-      const inspectSessionIdCmd = document.getElementById('inspectSessionIdCmd');
-      const curSessId = activeChatId || c.chat_id || '--';
-      if (inspectSessionId) inspectSessionId.innerText = curSessId;
-      if (inspectSessionIdCmd) inspectSessionIdCmd.innerText = curSessId;
-      if (inspectCommand) inspectCommand.innerText = c.cmd || '(Trống)';
-      const inspectIntentCard = document.getElementById('inspectIntentCard');
-      const inspectIntent = document.getElementById('inspectIntent');
-      if (inspectIntentCard && inspectIntent) {
-        if (c.intent && c.intent.trim().length > 0 && c.intent !== c.cmd) {
-          inspectIntent.innerText = c.intent;
-          inspectIntentCard.classList.remove('hidden');
-        } else {
-          inspectIntentCard.classList.add('hidden');
+      if (userTriggered) {
+        const isCollapsed = inspector ? inspector.classList.contains('pane-collapsed') : isInspectorCollapsed;
+        if (isCollapsed) {
+          openInspector();
         }
-      }
-      if (inspectCwd) inspectCwd.innerText = c.cwd || '(Không xác định)';
-
-      // Tab 3: STDERR
-      if (inspectStderr) {
-        inspectStderr.innerText = c.stderr && c.stderr.trim().length > 0 ? c.stderr : 'Không có lỗi phát sinh (Exit Code 0).';
-      }
-      if (inspectStderrBadge) {
-        if (c.stderr && c.stderr.trim().length > 0) {
-          inspectStderrBadge.innerText = 'Có lỗi';
-          inspectStderrBadge.style.color = '#ff6b61';
-        } else {
-          inspectStderrBadge.innerText = 'None';
-          inspectStderrBadge.style.color = 'var(--mint)';
-        }
-      }
-
-      // Tab 4: Raw JSON
-      if (inspectRawJson) {
-        inspectRawJson.innerText = c.raw_json ? formatJson(c.raw_json) : JSON.stringify(c, null, 2);
-      }
-
-      if (userTriggered && isInspectorCollapsed) {
-        toggleInspector();
       }
     }
 
@@ -2622,6 +2719,7 @@
       const inspectCommand = document.getElementById('inspectCommand');
       const inspectCwd = document.getElementById('inspectCwd');
       const inspectStderr = document.getElementById('inspectStderr');
+      const inspectStderrBadge = document.getElementById('inspectStderrBadge');
       const inspectRawJson = document.getElementById('inspectRawJson');
       const inspectSessionId = document.getElementById('inspectSessionId');
       const inspectSessionIdCmd = document.getElementById('inspectSessionIdCmd');
@@ -2637,6 +2735,10 @@
       if (inspectIntentCard) inspectIntentCard.classList.add('hidden');
       if (inspectCwd) inspectCwd.innerText = '(Trống)';
       if (inspectStderr) inspectStderr.innerText = '(Trống)';
+      if (inspectStderrBadge) {
+        inspectStderrBadge.innerText = 'None';
+        inspectStderrBadge.style.color = 'var(--mint)';
+      }
       if (inspectRawJson) inspectRawJson.innerText = '{}';
     }
 
@@ -2652,14 +2754,19 @@
     // ==================== LOGS & FORENSIC VIEWER ====================
     window.__onLogsLoaded = function(logs) {
       if (!Array.isArray(logs)) return;
-      const hash = `${logs.length}:${logs[0] ? (logs[0].id || '') + (logs[0].time || '') + (logs[0].msg || '') : ''}`;
+      const getLogKey = (l) => l.id || `${l.timestamp || l.time}_${l.action}_${l.msg}`;
+      let hash = `${logs.length}`;
+      const limit = Math.min(logs.length, 15);
+      for (let i = 0; i < limit; i++) {
+        const l = logs[i];
+        hash += `|${getLogKey(l)}:${l.severity}`;
+      }
       const logContainer = document.getElementById('logStreamContainer');
       const hasItems = logContainer && logContainer.children.length > 0 && !logContainer.innerText.includes('Không có');
       if (hash === lastLogsHash && hasItems) return;
       lastLogsHash = hash;
 
       currentLogs = logs;
-      activeLogRowEl = null;
       renderFilteredLogs();
     };
 
@@ -2683,9 +2790,8 @@
     function renderFilteredLogs() {
       const container = document.getElementById('logStreamContainer');
       if (!container) return;
-      container.innerHTML = '';
-      activeLogRowEl = null;
 
+      const prevScrollTop = container.scrollTop;
       const filtered = currentLogs.filter(l => {
         if (activeLogCategory === 'all') return true;
         if (activeLogCategory === 'error') return (l.severity === 'ERROR' || l.severity === 'WARN' || l.cat === 'error');
@@ -2698,11 +2804,25 @@
 
       if (filtered.length === 0) {
         container.innerHTML = `<div class="p-4 text-center text-[11px]" style="color: var(--text-dim);">Không có nhật ký nào thuộc danh mục này</div>`;
+        activeLogRowEl = null;
         return;
       }
 
-      filtered.forEach((l, idx) => {
-        const isSelected = idx === 0;
+      const getLogKey = (l) => l.id || `${l.timestamp || l.time}_${l.action}_${l.msg}`;
+      const targetLogKey = userPinnedLogKey || (selectedLog ? getLogKey(selectedLog) : null);
+      let logToSelect = null;
+      if (targetLogKey) {
+        logToSelect = filtered.find(l => getLogKey(l) === targetLogKey) || null;
+      }
+      if (!logToSelect && filtered.length > 0) {
+        logToSelect = filtered[0];
+      }
+
+      container.innerHTML = '';
+      activeLogRowEl = null;
+
+      filtered.forEach((l) => {
+        const isSelected = logToSelect && (getLogKey(l) === getLogKey(logToSelect));
         const row = document.createElement('div');
         row.className = `log-row ${isSelected ? 'selected shadow-xs' : ''} p-2.5 rounded-lg border flex items-center justify-between gap-2 cursor-pointer min-w-0 overflow-hidden`;
         row.style.backgroundColor = isSelected ? 'var(--bg-selected)' : 'var(--bg-header)';
@@ -2751,7 +2871,9 @@
         row.appendChild(leftDiv);
         row.appendChild(sessionSpan);
 
+        row._logData = l;
         row.onclick = () => {
+          userPinnedLogKey = getLogKey(l);
           if (activeLogRowEl && activeLogRowEl !== row) {
             activeLogRowEl.style.backgroundColor = 'var(--bg-header)';
             activeLogRowEl.style.borderColor = 'var(--border)';
@@ -2761,34 +2883,52 @@
           row.style.borderColor = 'var(--accent)';
           row.classList.add('selected', 'shadow-xs');
           activeLogRowEl = row;
-          selectLog(l, true);
+          selectLog(row._logData || l, true);
         };
 
         container.appendChild(row);
       });
 
-      if (filtered.length > 0) {
-        selectLog(filtered[0]);
+      if (logToSelect) {
+        selectLog(logToSelect, false);
       }
+
+      container.scrollTop = prevScrollTop;
     }
 
     function selectLog(l, userTriggered = false) {
       if (!l) return;
-      const logInspectId = document.getElementById('logInspectId');
-      const logInspectCategory = document.getElementById('logInspectCategory');
-      const logInspectAction = document.getElementById('logInspectAction');
-      const logInspectSession = document.getElementById('logInspectSession');
-      const logInspectJson = document.getElementById('logInspectJson');
+      selectedLog = l;
+      try {
+        const logInspectId = document.getElementById('logInspectId');
+        const logInspectCategory = document.getElementById('logInspectCategory');
+        const logInspectAction = document.getElementById('logInspectAction');
+        const logInspectSession = document.getElementById('logInspectSession');
+        const logInspectJson = document.getElementById('logInspectJson');
 
-      const fullTime = formatLocalTime(l.timestamp || l.time, 'full');
-      if (logInspectId) logInspectId.innerText = l.id || 'evt';
-      if (logInspectCategory) logInspectCategory.innerText = `${l.severity || 'INFO'} · ${l.cat || 'runtime'} · ${fullTime}`;
-      if (logInspectAction) logInspectAction.innerText = l.action || 'event';
-      if (logInspectSession) logInspectSession.innerText = l.session || 'system';
-      if (logInspectJson) logInspectJson.innerText = l.json ? formatJson(l.json) : JSON.stringify(l, null, 2);
+        const fullTime = formatLocalTime(l.timestamp || l.time, 'full');
+        if (logInspectId && logInspectId.innerText !== (l.id || 'evt')) logInspectId.innerText = l.id || 'evt';
+        const catText = `${l.severity || 'INFO'} · ${l.cat || 'runtime'} · ${fullTime}`;
+        if (logInspectCategory && logInspectCategory.innerText !== catText) logInspectCategory.innerText = catText;
+        if (logInspectAction && logInspectAction.innerText !== (l.action || 'event')) logInspectAction.innerText = l.action || 'event';
+        if (logInspectSession && logInspectSession.innerText !== (l.session || 'system')) logInspectSession.innerText = l.session || 'system';
+        if (logInspectJson) {
+          const newJson = l.json ? formatJson(l.json) : JSON.stringify(l, null, 2);
+          if (logInspectJson.innerText !== newJson) {
+            const prevScroll = logInspectJson.scrollTop;
+            logInspectJson.innerText = newJson;
+            logInspectJson.scrollTop = prevScroll;
+          }
+        }
+      } catch (err) {
+        console.error('Failed to update log inspector UI:', err);
+      }
 
-      if (userTriggered && isInspectorCollapsed) {
-        toggleInspector();
+      if (userTriggered) {
+        const isCollapsed = paneLogInspector ? paneLogInspector.classList.contains('pane-collapsed') : isInspectorCollapsed;
+        if (isCollapsed) {
+          openInspector();
+        }
       }
     }
 
@@ -3188,7 +3328,7 @@
         if (activeChatId) {
           sendToRust('get_session_details', { chat_id: activeChatId });
         }
-      }, 1000);
+      }, 2500);
     }
 
     function refreshSessionsFromDisk() {
