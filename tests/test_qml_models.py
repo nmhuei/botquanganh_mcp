@@ -1,4 +1,12 @@
-from app.qml_ui.models import OperationListModel
+try:
+    from app.qml_ui.models import OperationListModel
+except ImportError as err:
+    import pytest
+
+    pytest.skip(
+        f"PySide6 or GUI dependencies not available: {err}",
+        allow_module_level=True,
+    )
 
 
 def test_keyed_qml_model_updates_stable_rows_without_resetting_identity():

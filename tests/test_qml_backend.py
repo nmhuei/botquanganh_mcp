@@ -5,14 +5,22 @@ import time
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("QT_QUICK_BACKEND", "software")
 
-from PySide6.QtGui import QGuiApplication
+try:
+    from PySide6.QtGui import QGuiApplication
 
-from app.cli.center.persistence import CenterWindowStateStore
-from app.cli.context import CLIContext
-from app.cli.desktop_views.activity import WorkspaceSession
-from app.cli.ui_preferences import UIPreferencesStore
-import app.qml_ui.backend as qml_backend
-from app.qml_ui.backend import CenterQmlBackend
+    from app.cli.center.persistence import CenterWindowStateStore
+    from app.cli.context import CLIContext
+    from app.cli.desktop_views.activity import WorkspaceSession
+    from app.cli.ui_preferences import UIPreferencesStore
+    import app.qml_ui.backend as qml_backend
+    from app.qml_ui.backend import CenterQmlBackend
+except ImportError as err:
+    import pytest
+
+    pytest.skip(
+        f"PySide6 or GUI dependencies not available: {err}",
+        allow_module_level=True,
+    )
 
 
 def _app():

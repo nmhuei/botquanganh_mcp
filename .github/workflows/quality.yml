@@ -30,6 +30,11 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
 
+      - name: Install system dependencies for headless Qt
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon-x11-0 libegl-mesa0
+
       - name: Prepare development configuration
         run: |
           cp .env.example .env
