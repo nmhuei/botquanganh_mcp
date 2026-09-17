@@ -63,15 +63,24 @@ def test_host_session_bind_and_context_rehydration(tmp_path: Path):
     assert "Initial note for project alpha" in res_bind["recent_notes"]
 
 
-def test_host_session_bind_defaults_to_latest(tmp_path: Path):
+def test_host_session_bind_no_args_creates_new_session_and_latest_resumes(tmp_path: Path):
     # Create two sessions
     res1 = asyncio.run(host_session_bind(new=True, label="first"))
     res2 = asyncio.run(host_session_bind(new=True, label="second"))
 
-    # When session_id is omitted or "latest", should bind to the latest (res2)
-    res_latest = asyncio.run(host_session_bind())
+    # When session_id is omitted, should create a brand new session instead of binding to latest
+    res_new = asyncio.run(host_session_bind())
+    assert res_new["ok"] is True
+    assert res_new["is_new"] is True
+    assert res_new["created"] is True
+    assert res_new["session_id"] != res2["session_id"]
+    assert res_new["session_id"] != res1["session_id"]
+
+    # When session_id="latest" (or resume_id="latest"), should bind to the latest (res_new)
+    res_latest = asyncio.run(host_session_bind(session_id="latest"))
     assert res_latest["ok"] is True
-    assert res_latest["session_id"] == res2["session_id"]
+    assert res_latest["is_new"] is False
+    assert res_latest["session_id"] == res_new["session_id"]
 
 
 def test_gating_blocks_commands_before_session_established(tmp_path: Path, monkeypatch):

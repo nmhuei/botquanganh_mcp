@@ -505,14 +505,21 @@ def test_host_workspace_bind_auto_hydrates_and_provides_resume_prompt(tmp_path, 
     # 2. Append a note
     asyncio.run(host_save_note("Step 1 completed: installed deps", chat_id=chat_id))
 
-    # 3. Second bind without arguments (simulating next prompt or new session auto-resume)
-    res2 = asyncio.run(host_workspace_bind())
+    # 3. Second bind with resume_id="latest" (simulating auto-resume latest)
+    res2 = asyncio.run(host_workspace_bind(resume_id="latest"))
     assert res2["ok"] is True
     assert res2["chat_id"] == chat_id
     assert res2["created"] is False
     assert "auto_hydrated_context" in res2
     notes = res2["auto_hydrated_context"]["recent_notes"]
     assert any("Step 1 completed" in n for n in notes)
+
+    # 4. Third bind without arguments -> creates brand new session
+    res3 = asyncio.run(host_workspace_bind())
+    assert res3["ok"] is True
+    assert res3["created"] is True
+    assert res3["is_new"] is True
+    assert res3["chat_id"] != chat_id
 
 
 # ---------------------------------------------------------------------------

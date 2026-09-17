@@ -143,9 +143,10 @@ def _rehydrate_session_context(ws_dir: Path) -> dict[str, Any]:
     description=(
         "MANDATORY PRE-FLIGHT STEP: Initialize or resume a host workspace/session. "
         "Call this tool ONCE at the start of work before executing any commands or editing files. "
-        "- Calling without arguments automatically resumes the most recent active workspace. "
+        "- Calling without arguments automatically creates a brand new workspace/session. "
+        "- To start a brand new workspace with a custom label, pass label='<name>'. "
+        "- To resume the most recent workspace, pass resume_id='latest' (or session_id='latest'). "
         "- To resume a specific workspace, pass resume_id='<chat_id>' (or session_id='<chat_id>'). "
-        "- To start a brand new workspace, pass new=True and an optional label. "
         "When reconnecting to an existing workspace, previous command history, notes, and files are automatically restored. "
         "Once bound, REUSE the returned chat_id for all subsequent host tool calls."
     ),
@@ -172,8 +173,6 @@ async def host_workspace_bind(
             )
         manager = workspace_module.WorkspaceManager(_chat_root())
         target_id = None if new else (resume_id if resume_id is not None else (chat_id if chat_id is not None else session_id))
-        if target_id is None and not new and label is None:
-            target_id = "latest"
 
         if target_id is not None and target_id not in {"latest", "@latest"} and not target_id.startswith("latest:"):
             validate_chat_id(target_id)
