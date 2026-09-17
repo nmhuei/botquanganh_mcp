@@ -92,3 +92,42 @@ def test_cli_session_new(tmp_path: Path, monkeypatch, capsys):
     curr_data = json.loads(capsys.readouterr().out)
     assert curr_data["session_id"] == new_id
 
+
+def test_cli_session_current_with_deleted_workspace(tmp_path: Path, monkeypatch, capsys):
+    monkeypatch.setattr(app.config, "HOST_CHAT_ROOT", tmp_path)
+    monkeypatch.setattr("app.cli.commands.session._workspaces_root", lambda: tmp_path)
+
+    # Point .last_session to a non-existent workspace
+    (tmp_path / ".last_session").write_text(
+        json.dumps({"chat_id": "cw-ghost-session-99999999"}),
+        encoding="utf-8",
+    )
+
+    rc = main(["session", "current", "--json"])
+    assert rc == 1
+    data = json.loads(capsys.readouterr().out)
+    assert data["ok"] is False
+    assert data["active_session"] is None
+
+
+def test_cli_session_list_query_matches_label(tmp_path: Path, monkeypatch, capsys):
+    monkeypatch.setattr(app.config, "HOST_CHAT_ROOT", tmp_path)
+    monkeypatch.setattr("app.cli.commands.session._workspaces_root", lambda: tmp_path)
+
+    # Create workspace where chat_id does not contain "crawler", but label in meta.json does
+    sess_dir = tmp_path / "cw-20260916-11223344"
+    sess_dir.mkdir(parents=True)
+    (sess_dir / "meta.json").write_text(
+        json.dumps({"created_at": "2026-09-16T12:00:00Z", "label": "custom-crawler-bot"}),
+        encoding="utf-8",
+    )
+
+    rc = main(["session", "list", "--query", "crawler", "--json"])
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["ok"] is True
+    assert data["total"] == 1
+    assert data["sessions"][0]["session_id"] == "cw-20260916-11223344"
+    assert data["sessions"][0]["label"] == "custom-crawler-bot"
+
+

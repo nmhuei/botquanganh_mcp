@@ -546,6 +546,34 @@ def test_host_workspace_list_returns_recent_workspaces(tmp_path, monkeypatch):
     assert "suggestion" in list_res
 
 
+def test_host_workspace_list_query_and_ghost_last_session(tmp_path, monkeypatch):
+    import json
+    _real_workspace_env(tmp_path, monkeypatch)
+
+    res1 = asyncio.run(host_workspace_bind(label="ml-pipeline", new=True))
+    res2 = asyncio.run(host_workspace_bind(label="frontend-ui", new=True))
+
+    from app.tools.workspace_tools import host_workspace_list
+
+    # 1. Query matching label
+    q_res = asyncio.run(host_workspace_list(query="pipeline"))
+    assert q_res["ok"] is True
+    assert len(q_res["workspaces"]) == 1
+    assert q_res["workspaces"][0]["chat_id"] == res1["chat_id"]
+
+    # 2. Poison .last_session with a deleted workspace ID
+    (tmp_path / ".last_session").write_text(
+        json.dumps({"chat_id": "cw-ghost-nonexistent"}), encoding="utf-8"
+    )
+
+    # host_workspace_list should ignore the ghost pointer and mark the most recent existing workspace as is_latest
+    list_res = asyncio.run(host_workspace_list())
+    assert list_res["ok"] is True
+    assert any(w["is_latest"] is True for w in list_res["workspaces"])
+    assert list_res["workspaces"][0]["is_latest"] is True
+
+
+
 # ---------------------------------------------------------------------------
 # Task 4: Implicit Attribution Fallback in Host Tools
 # ---------------------------------------------------------------------------

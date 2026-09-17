@@ -257,6 +257,21 @@ async def host_workspace_bind(
         return to_tool_error(exc)
 
 
+def _workspace_last_mtime(ws_dir: Path) -> float:
+    try:
+        mtime = ws_dir.stat().st_mtime
+        for sub in ("journal.jsonl", "STATE.md", "meta.json", "notes/log.txt", "notes"):
+            p = ws_dir / sub
+            if p.exists():
+                try:
+                    mtime = max(mtime, p.stat().st_mtime)
+                except OSError:
+                    pass
+        return mtime
+    except OSError:
+        return 0.0
+
+
 @mcp.tool(
     name="host_workspace_list",
     description=(
@@ -285,19 +300,19 @@ async def host_workspace_list(
                 suggestion="Call host_workspace_bind(new=True, label='<name>') to create your first workspace.",
             )
 
+        archive_root = root / ".archive"
         candidates: list[tuple[float, Path, bool]] = []
         import json
         from datetime import datetime, timezone
 
         for entry in root.iterdir():
             if entry.is_dir() and not entry.name.startswith("."):
-                mtime = entry.stat().st_mtime
+                mtime = _workspace_last_mtime(entry)
                 candidates.append((mtime, entry, False))
-        archive_root = root / ".archive"
         if include_archived and archive_root.is_dir():
             for entry in archive_root.iterdir():
                 if entry.is_dir() and not entry.name.startswith("."):
-                    mtime = entry.stat().st_mtime
+                    mtime = _workspace_last_mtime(entry)
                     candidates.append((mtime, entry, True))
 
         candidates.sort(key=lambda item: item[0], reverse=True)
@@ -308,15 +323,17 @@ async def host_workspace_list(
         if pointer_file.is_file():
             try:
                 p_data = json.loads(pointer_file.read_text(encoding="utf-8"))
-                last_active_id = p_data.get("chat_id")
+                candidate = p_data.get("chat_id")
+                if isinstance(candidate, str) and (
+                    (root / candidate).is_dir() or (archive_root / candidate).is_dir()
+                ):
+                    last_active_id = candidate
             except Exception:
                 pass
 
         workspaces: list[dict[str, Any]] = []
         for idx, (mtime, entry, archived) in enumerate(candidates):
             chat_id = entry.name
-            if query and query.lower() not in chat_id.lower():
-                continue
 
             meta_file = entry / "meta.json"
             created_at = None
@@ -328,6 +345,13 @@ async def host_workspace_list(
                     label = meta_data.get("label")
                 except Exception:
                     pass
+
+            if query:
+                q = query.lower()
+                matches_id = q in chat_id.lower()
+                matches_label = bool(label and q in label.lower())
+                if not matches_id and not matches_label:
+                    continue
 
             diff_sec = max(0, int(now_ts - mtime))
             if diff_sec < 60:

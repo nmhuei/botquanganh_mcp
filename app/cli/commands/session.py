@@ -33,6 +33,21 @@ def _relative_time_str(mtime: float) -> str:
     return f"{diff_sec // 86400}d ago"
 
 
+def _workspace_last_mtime(entry: Path) -> float:
+    try:
+        mtime = entry.stat().st_mtime
+        for sub in ("journal.jsonl", "STATE.md", "meta.json", "notes/log.txt", "notes"):
+            p = entry / sub
+            if p.exists():
+                try:
+                    mtime = max(mtime, p.stat().st_mtime)
+                except OSError:
+                    pass
+        return mtime
+    except OSError:
+        return 0.0
+
+
 def _read_last_session_id(root: Path | None) -> str | None:
     if root is None or not root.is_dir():
         return None
@@ -42,7 +57,8 @@ def _read_last_session_id(root: Path | None) -> str | None:
             data = json.loads(pointer.read_text(encoding="utf-8"))
             candidate = data.get("chat_id")
             if isinstance(candidate, str) and candidate:
-                return candidate
+                if (root / candidate).is_dir() or (root / ARCHIVE_DIR_NAME / candidate).is_dir():
+                    return candidate
         except Exception:
             pass
     return None
@@ -68,12 +84,12 @@ def handle_session_list(ctx: CLIContext, args: Any) -> int:
     candidates: list[tuple[float, Path, bool]] = []
     for entry in root.iterdir():
         if entry.is_dir() and not entry.name.startswith("."):
-            candidates.append((entry.stat().st_mtime, entry, False))
+            candidates.append((_workspace_last_mtime(entry), entry, False))
     archive_root = root / ARCHIVE_DIR_NAME
     if include_archived and archive_root.is_dir():
         for entry in archive_root.iterdir():
             if entry.is_dir() and not entry.name.startswith("."):
-                candidates.append((entry.stat().st_mtime, entry, True))
+                candidates.append((_workspace_last_mtime(entry), entry, True))
 
     candidates.sort(key=lambda item: item[0], reverse=True)
     active_session_id = _read_last_session_id(root)
@@ -81,8 +97,6 @@ def handle_session_list(ctx: CLIContext, args: Any) -> int:
     sessions: list[dict[str, Any]] = []
     for mtime, entry, archived in candidates:
         chat_id = entry.name
-        if query and query not in chat_id.lower():
-            continue
 
         meta_file = entry / META_NAME
         created_at = None
@@ -95,6 +109,13 @@ def handle_session_list(ctx: CLIContext, args: Any) -> int:
                     label = str(meta["label"])
             except Exception:
                 pass
+
+        if query:
+            q = query.lower()
+            matches_id = q in chat_id.lower()
+            matches_label = bool(label and q in label.lower())
+            if not matches_id and not matches_label:
+                continue
 
         ops_count = 0
         journal_file = entry / "journal.jsonl"
@@ -172,11 +193,15 @@ def handle_session_bind(ctx: CLIContext, args: Any) -> int:
     if not target_dir.is_dir():
         raise NotFoundCLIError(f"Session workspace '{chat_id}' not found under {root}.", 1)
 
-    # Update .last_session pointer
+    # Update .last_session pointer atomically
     pointer_file = root / ".last_session"
     pointer_data = {"chat_id": chat_id, "updated_at": datetime.now(timezone.utc).isoformat()}
     try:
-        pointer_file.write_text(json.dumps(pointer_data) + "\n", encoding="utf-8")
+        try:
+            from app.chat_workspace import _atomic_write, _json_line_bytes
+            _atomic_write(pointer_file, _json_line_bytes(pointer_data))
+        except Exception:
+            pointer_file.write_text(json.dumps(pointer_data) + "\n", encoding="utf-8")
     except Exception as exc:
         raise CLIError(f"Could not update .last_session: {exc}") from exc
 

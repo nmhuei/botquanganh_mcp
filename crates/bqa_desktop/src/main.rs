@@ -201,57 +201,104 @@ fn read_last_lines(path: &Path, max_lines: usize) -> Vec<String> {
 }
 
 fn scan_workspaces(root: &Path) -> Vec<SessionItem> {
-    let mut sessions = Vec::new();
-    if let Ok(entries) = fs::read_dir(root) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
-                if name.starts_with("cw-") {
-                    let mut ops = 0;
-                    let mut label = name.replace("cw-", "");
-                    let mut created_at = String::new();
-
-                    let meta_path = path.join("meta.json");
-                    if let Ok(content) = fs::read_to_string(&meta_path) {
-                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
-                            if let Some(l) = val.get("label").and_then(|v| v.as_str()) {
-                                if !l.trim().is_empty() {
-                                    label = l.to_string();
-                                }
-                            }
-                            if let Some(c) = val.get("created_at").and_then(|v| v.as_str()) {
-                                created_at = c.to_string();
-                            }
-                        }
-                    }
-
-                    let journal_path = path.join("journal.jsonl");
-                    if let Ok(meta) = fs::metadata(&journal_path) {
-                        let lines = read_last_lines(&journal_path, 300);
-                        ops = lines.len();
-                        if meta.len() > 100_000 && ops == 300 {
-                            ops = (meta.len() / 300) as usize;
-                        }
-                    }
-
-                    sessions.push(SessionItem {
-                        id: name.clone(),
-                        chat_id: name,
-                        label,
-                        ops,
-                        ops_count: ops,
-                        created_at,
-                        active: false,
-                    });
+    let mut last_session_id: Option<String> = None;
+    let pointer_path = root.join(".last_session");
+    if let Ok(content) = fs::read_to_string(&pointer_path) {
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+            if let Some(c) = val.get("chat_id").and_then(|v| v.as_str()) {
+                if root.join(c).is_dir() || root.join(".archive").join(c).is_dir() {
+                    last_session_id = Some(c.to_string());
                 }
             }
         }
     }
 
-    sessions.sort_by(|a, b| b.id.cmp(&a.id));
-    if let Some(first) = sessions.first_mut() {
-        first.active = true;
+    struct Scanned {
+        item: SessionItem,
+        mtime: u64,
+    }
+    let mut scanned_list = Vec::new();
+
+    let scan_dirs = [
+        (root.to_path_buf(), false),
+        (root.join(".archive"), true),
+    ];
+
+    for (dir, _is_archived) in scan_dirs {
+        if !dir.is_dir() {
+            continue;
+        }
+        if let Ok(entries) = fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                    if !name.starts_with('.') && (name.starts_with("cw-") || path.join("meta.json").exists() || path.join("journal.jsonl").exists()) {
+                        let mut ops = 0;
+                        let mut label = name.replace("cw-", "");
+                        let mut created_at = String::new();
+
+                        let meta_path = path.join("meta.json");
+                        if let Ok(content) = fs::read_to_string(&meta_path) {
+                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                                if let Some(l) = val.get("label").and_then(|v| v.as_str()) {
+                                    if !l.trim().is_empty() {
+                                        label = l.to_string();
+                                    }
+                                }
+                                if let Some(c) = val.get("created_at").and_then(|v| v.as_str()) {
+                                    created_at = c.to_string();
+                                }
+                            }
+                        }
+
+                        let journal_path = path.join("journal.jsonl");
+                        let mut mtime = entry.metadata().and_then(|m| m.modified()).ok()
+                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                            .map(|d| d.as_secs())
+                            .unwrap_or(0);
+
+                        if let Ok(meta) = fs::metadata(&journal_path) {
+                            let lines = read_last_lines(&journal_path, 300);
+                            ops = lines.len();
+                            if meta.len() > 100_000 && ops == 300 {
+                                ops = (meta.len() / 300) as usize;
+                            }
+                            if let Ok(j_mod) = meta.modified() {
+                                if let Ok(j_dur) = j_mod.duration_since(std::time::UNIX_EPOCH) {
+                                    mtime = mtime.max(j_dur.as_secs());
+                                }
+                            }
+                        }
+
+                        scanned_list.push(Scanned {
+                            item: SessionItem {
+                                id: name.clone(),
+                                chat_id: name,
+                                label,
+                                ops,
+                                ops_count: ops,
+                                created_at,
+                                active: false,
+                            },
+                            mtime,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    scanned_list.sort_by(|a, b| b.mtime.cmp(&a.mtime));
+
+    let mut sessions = Vec::with_capacity(scanned_list.len());
+    for (idx, mut sc) in scanned_list.into_iter().enumerate() {
+        if let Some(ref active_id) = last_session_id {
+            sc.item.active = sc.item.chat_id == *active_id;
+        } else if idx == 0 {
+            sc.item.active = true;
+        }
+        sessions.push(sc.item);
     }
     sessions
 }
@@ -341,8 +388,14 @@ fn read_session_commands(paths: &AppPaths, chat_id: &str) -> Vec<CommandItem> {
         }
     }
 
-    // 2. Read workspace journal.jsonl
-    let journal_path = paths.workspace_root.join(chat_id).join("journal.jsonl");
+    // 2. Read workspace journal.jsonl (check active and archived)
+    let mut journal_path = paths.workspace_root.join(chat_id).join("journal.jsonl");
+    if !journal_path.exists() {
+        let archive_path = paths.workspace_root.join(".archive").join(chat_id).join("journal.jsonl");
+        if archive_path.exists() {
+            journal_path = archive_path;
+        }
+    }
     let mut op_order: Vec<String> = Vec::new();
     let mut started_ops: HashMap<String, serde_json::Value> = HashMap::new();
     let mut result_ops: HashMap<String, serde_json::Value> = HashMap::new();
@@ -491,7 +544,7 @@ fn read_session_commands(paths: &AppPaths, chat_id: &str) -> Vec<CommandItem> {
                             PathBuf::from(&cwd).join(path_str),
                             paths.workspace_root.join(chat_id).join(path_str),
                             paths.repo_root.join(path_str),
-                            PathBuf::from("/home/light/Downloads").join(path_str),
+                            paths.workspace_root.parent().unwrap_or(&paths.workspace_root).join(path_str),
                         ];
                         let mut found_content = None;
                         for cand in &candidate_paths {
