@@ -581,9 +581,9 @@
       </div>
 
       <!-- Restart Button with auto-switch to Overview -->
-      <button id="btnRestart" onclick="handleRestartServer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="w-[125px] h-[28px] px-2.5 py-1 border hover:border-[#37425c] rounded-md text-[11px] font-medium transition flex items-center justify-center gap-1.5 active:scale-95 shadow-xs shrink-0" title="Khởi động lại Bridge Server">
+      <button id="btnRestart" onclick="handleRestartServer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="w-[88px] h-[28px] px-2.5 py-1 border hover:border-[#37425c] rounded-md text-[11px] font-medium font-sans transition flex items-center justify-center gap-1.5 active:scale-95 shadow-xs shrink-0 select-none whitespace-nowrap" title="Restart Bridge Server">
         <svg id="restartIcon" class="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-        <span id="restartLabel" class="truncate">Khởi động lại</span>
+        <span id="restartLabel" class="whitespace-nowrap">Restart</span>
       </button>
     </div>
   </header>
@@ -601,7 +601,7 @@
         <div style="background-color: var(--bg-header); border-color: var(--border);" class="flex items-center gap-2.5 border px-3 py-1.5 rounded-lg shadow-xs">
           <span id="bridgeStateText" style="color: var(--mint);" class="text-xs font-medium flex items-center gap-1.5 mr-1 font-mono">
             <span id="bridgeDot" style="background-color: var(--mint);" class="w-2 h-2 rounded-full"></span>
-            <span>Đang chạy</span>
+            <span>Running</span>
           </span>
 
           <!-- Actions container -->
@@ -631,12 +631,12 @@
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
             <span style="color: var(--text-sub);" class="text-[11px] uppercase tracking-wider font-sans font-semibold">MCP Cloudflare Tunnel Endpoint</span>
-            <span id="tunnelStatusBadge" style="color: var(--mint); background-color: var(--accent-soft); border-color: var(--border);" class="text-[10px] border px-2 py-0.5 rounded font-sans inline-flex items-center justify-center min-w-[125px] text-center shrink-0">Đã kết nối Edge</span>
+            <span id="tunnelStatusBadge" style="color: var(--mint); background-color: var(--accent-soft); border-color: var(--border);" class="text-[10px] border px-2 py-0.5 rounded font-sans inline-flex items-center justify-center min-w-[110px] text-center shrink-0">Edge Connected</span>
           </div>
           <div class="flex items-center gap-2 font-sans">
-            <button id="btnCopyTunnelUrl" onclick="copyBridgeUrl()" style="background-color: var(--accent-soft); border: 1px solid var(--accent); color: var(--accent);" class="w-[170px] h-[28px] px-3 py-1 rounded-md text-[11px] font-medium hover:brightness-125 transition flex items-center justify-center gap-1.5 shadow-xs shrink-0">
+            <button id="btnCopyTunnelUrl" onclick="copyBridgeUrl()" style="background-color: var(--accent-soft); border: 1px solid var(--accent); color: var(--accent);" class="w-[145px] h-[28px] px-3 py-1 rounded-md text-[11px] font-medium font-sans hover:brightness-125 transition flex items-center justify-center gap-1.5 shadow-xs shrink-0 select-none whitespace-nowrap">
               <svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" stroke-width="2"></rect><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke-width="2"></path></svg>
-              <span id="copyUrlLabel" class="truncate text-center">Sao chép Tunnel URL</span>
+              <span id="copyUrlLabel" class="whitespace-nowrap text-center">Copy Tunnel URL</span>
             </button>
             <button onclick="openSettingsDrawer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-2.5 py-1 border rounded-md text-[11px] transition shrink-0">
               Cài đặt Server
@@ -724,7 +724,7 @@
           </button>
           <span id="streamTitle" style="color: var(--text-main);" class="font-mono font-semibold truncate text-[11.5px] min-w-0" title="Active Session ID">Đang tải...</span>
           <div class="flex items-center gap-1 shrink-0 ml-auto">
-            <button id="btnCopyActiveSession" onclick="copySessionBind(activeChatId, this)" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--accent);" class="w-[82px] h-[24px] px-2 py-0.5 border rounded text-[11px] font-sans whitespace-nowrap flex items-center justify-center gap-1 transition hover:brightness-125 hover:border-indigo-400 shrink-0 select-none leading-none" title="Sao chép Session ID">
+            <button id="btnCopyActiveSession" onclick="copySessionBind(activeChatId, this)" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--accent);" class="w-[74px] h-[24px] px-2 py-0.5 border rounded text-[11px] font-sans whitespace-nowrap flex items-center justify-center gap-1 transition hover:brightness-125 hover:border-indigo-400 shrink-0 select-none leading-none" title="Copy Session ID">
               <svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
               <span class="btn-copy-text whitespace-nowrap">Copy</span>
             </button>
@@ -752,8 +752,8 @@
       <div style="border-color: var(--border); color: var(--text-sub);" class="px-4 py-2 border-b flex items-center justify-between gap-2 text-xs shrink-0 min-w-0 overflow-hidden">
         <span style="color: var(--text-main);" class="font-semibold whitespace-nowrap truncate min-w-0">Chi tiết Thực thi (Inspector)</span>
         <div class="flex items-center gap-2 shrink-0">
-          <button id="btnCopyDetails" onclick="copyDetails()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="w-[110px] h-[28px] px-2.5 py-1 border rounded-md text-[11px] font-sans transition whitespace-nowrap flex items-center justify-center shrink-0">
-            <span id="copyBtnLabel" class="truncate text-center">Sao chép</span>
+          <button id="btnCopyDetails" onclick="copyDetails()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="w-[78px] h-[28px] px-2.5 py-1 border rounded-md text-[11px] font-sans transition whitespace-nowrap flex items-center justify-center shrink-0 select-none" title="Copy command details">
+            <span id="copyBtnLabel" class="whitespace-nowrap text-center">Copy</span>
           </button>
         </div>
       </div>
@@ -801,11 +801,11 @@
             <div class="flex items-center justify-between gap-2 mb-1.5">
               <span style="color: var(--text-dim);" class="text-[10px] uppercase font-sans font-semibold whitespace-nowrap">Phiên làm việc (Session Bind)</span>
               <div class="flex items-center gap-1.5 shrink-0">
-                <button onclick="copySessionBind(activeChatId, this)" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--accent);" class="w-[88px] h-[24px] px-2 py-0.5 border rounded text-[11px] font-sans whitespace-nowrap flex items-center justify-center gap-1 transition hover:brightness-125 shrink-0 select-none leading-none" title="Sao chép Session ID">
+                <button onclick="copySessionBind(activeChatId, this)" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--accent);" class="w-[82px] h-[24px] px-2 py-0.5 border rounded text-[11px] font-sans whitespace-nowrap flex items-center justify-center gap-1 transition hover:brightness-125 shrink-0 select-none leading-none" title="Copy Session ID">
                   <svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                   <span class="btn-copy-text whitespace-nowrap">Copy ID</span>
                 </button>
-                <button onclick="copySessionBind(activeChatId, this, 'cli')" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-sub);" class="w-[88px] h-[24px] px-2 py-0.5 border rounded text-[11px] font-sans whitespace-nowrap flex items-center justify-center gap-1 transition hover:text-white shrink-0 select-none leading-none" title="Sao chép lệnh: bqa session bind <session_id>">
+                <button onclick="copySessionBind(activeChatId, this, 'cli')" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-sub);" class="w-[82px] h-[24px] px-2 py-0.5 border rounded text-[11px] font-sans whitespace-nowrap flex items-center justify-center gap-1 transition hover:text-white shrink-0 select-none leading-none" title="Copy: bqa session bind <session_id>">
                   <span class="btn-copy-text whitespace-nowrap">Copy CLI</span>
                 </button>
               </div>
@@ -894,8 +894,8 @@
       <div style="border-color: var(--border); color: var(--text-sub);" class="px-4 py-2.5 border-b flex items-center justify-between text-xs shrink-0">
         <span style="color: var(--text-main);" class="font-semibold">Log Event Forensics</span>
         <div class="flex items-center gap-1.5">
-          <button id="btnCopyLogJson" onclick="copyLogJson()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="w-[120px] h-[28px] px-2.5 py-1 border rounded-md text-[11px] font-sans transition whitespace-nowrap flex items-center justify-center shrink-0">
-            <span id="copyLogLabel" class="truncate text-center">Sao chép JSON</span>
+          <button id="btnCopyLogJson" onclick="copyLogJson()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="w-[96px] h-[28px] px-2.5 py-1 border rounded-md text-[11px] font-sans transition whitespace-nowrap flex items-center justify-center shrink-0 select-none" title="Copy JSON Forensics">
+            <span id="copyLogLabel" class="whitespace-nowrap text-center">Copy JSON</span>
           </button>
         </div>
       </div>
@@ -1194,9 +1194,9 @@
         <button onclick="closeSettingsDrawer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-3 py-1.5 rounded-lg text-xs font-medium border transition">
           Đóng
         </button>
-        <button id="btnApplyEnvHotReload" onclick="applyEnvHotReload()" style="background-color: var(--mint); color: #090b0f;" class="w-[172px] h-[32px] px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs hover:opacity-90 active:scale-95 shrink-0">
+        <button id="btnApplyEnvHotReload" onclick="applyEnvHotReload()" style="background-color: var(--mint); color: #090b0f;" class="w-[145px] h-[32px] px-4 py-1.5 rounded-lg text-xs font-bold font-sans transition flex items-center justify-center gap-1.5 shadow-xs hover:opacity-90 active:scale-95 shrink-0 whitespace-nowrap select-none">
           <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-          <span id="btnHotReloadLabel" class="truncate text-center">Lưu & Hot Reload</span>
+          <span id="btnHotReloadLabel" class="whitespace-nowrap text-center">Save & Reload</span>
         </button>
       </div>
     </div>
@@ -1333,7 +1333,7 @@
     // ==================== ENVIRONMENT HOT RELOAD ====================
     function applyEnvHotReload() {
       const btn = document.getElementById('btnHotReloadLabel');
-      if (btn) btn.innerText = 'Đang nạp lại .env...';
+      if (btn) btn.innerText = 'Reloading .env...';
 
       const configPayload = {
         HOST_WORKSPACE_DIR: document.getElementById('cfgWorkspaceDir')?.value || '',
@@ -1356,8 +1356,8 @@
     window.__onEnvSaved = function(success, message) {
       const btn = document.getElementById('btnHotReloadLabel');
       if (btn) {
-        btn.innerText = success ? '✓ Đã đồng bộ .env!' : 'Lỗi đồng bộ!';
-        setTimeout(() => { btn.innerText = 'Lưu & Hot Reload'; }, 2000);
+        btn.innerText = success ? '✓ Synced .env!' : 'Sync Failed!';
+        setTimeout(() => { btn.innerText = 'Save & Reload'; }, 2000);
       }
       showToast(success ? `⚡ ${message}` : `⚠️ ${message}`);
     };
@@ -2473,7 +2473,7 @@
       }
 
       if (bridgeStateText) {
-        bridgeStateText.innerHTML = `<span id="bridgeDot" style="background-color: ${isRunning ? 'var(--mint)' : 'var(--text-dim)'};" class="w-2 h-2 rounded-full"></span><span>${isRunning ? 'Đang chạy' : 'Đã dừng'}</span>`;
+        bridgeStateText.innerHTML = `<span id="bridgeDot" style="background-color: ${isRunning ? 'var(--mint)' : 'var(--text-dim)'};" class="w-2 h-2 rounded-full"></span><span>${isRunning ? 'Running' : 'Stopped'}</span>`;
         bridgeStateText.style.color = isRunning ? 'var(--mint)' : 'var(--text-dim)';
       }
 
@@ -2493,11 +2493,11 @@
 
       if (tunnelStatusBadge) {
         if (isTunnelRunning) {
-          tunnelStatusBadge.innerText = 'Đã kết nối Edge';
+          tunnelStatusBadge.innerText = 'Edge Connected';
           tunnelStatusBadge.style.color = 'var(--mint)';
           tunnelStatusBadge.style.backgroundColor = 'var(--accent-soft)';
         } else {
-          tunnelStatusBadge.innerText = 'Chưa kết nối Tunnel';
+          tunnelStatusBadge.innerText = 'Tunnel Inactive';
           tunnelStatusBadge.style.color = 'var(--text-dim)';
           tunnelStatusBadge.style.backgroundColor = 'var(--bg-base)';
         }
@@ -2659,11 +2659,11 @@
       const out = document.getElementById('inspectOutput')?.innerText || '';
       const text = `Command: ${cmd}\nOutput:\n${out}`;
       copyTextToClipboard(text, () => {
-        showToast('✓ Đã sao chép chi tiết lệnh');
+        showToast('✓ Copied command details');
         const btn = document.getElementById('copyBtnLabel');
         if (btn) {
-          btn.innerText = '✓ Đã copy!';
-          setTimeout(() => { btn.innerText = 'Sao chép'; }, 1500);
+          btn.innerText = 'Copied!';
+          setTimeout(() => { btn.innerText = 'Copy'; }, 1500);
         }
       });
     }
@@ -2671,11 +2671,11 @@
     function copyLogJson() {
       const json = document.getElementById('logInspectJson')?.innerText || '{}';
       copyTextToClipboard(json, () => {
-        showToast('✓ Đã sao chép JSON forensics');
+        showToast('✓ Copied JSON forensics');
         const btn = document.getElementById('copyLogLabel');
         if (btn) {
-          btn.innerText = '✓ Đã copy!';
-          setTimeout(() => { btn.innerText = 'Sao chép JSON'; }, 1500);
+          btn.innerText = 'Copied!';
+          setTimeout(() => { btn.innerText = 'Copy JSON'; }, 1500);
         }
       });
     }
@@ -2687,11 +2687,11 @@
         url = 'http://127.0.0.1:18427/mcp';
       }
       copyTextToClipboard(url, () => {
-        showToast('✓ Đã sao chép Tunnel URL: ' + url);
+        showToast('✓ Copied Tunnel URL: ' + url);
         const label = document.getElementById('copyUrlLabel');
         if (label) {
-          label.innerText = '✓ Đã copy URL!';
-          setTimeout(() => { label.innerText = 'Sao chép Tunnel URL'; }, 1500);
+          label.innerText = 'Copied!';
+          setTimeout(() => { label.innerText = 'Copy Tunnel URL'; }, 1500);
         }
       });
     }
@@ -2699,20 +2699,20 @@
     function copySessionBind(chatId, btnEl, type = 'id') {
       const targetId = chatId || activeChatId;
       if (!targetId) {
-        showToast('⚠️ Chưa chọn session nào để sao chép');
+        showToast('⚠️ No active session selected');
         return;
       }
       const textToCopy = type === 'cli' ? `bqa session bind ${targetId}` : targetId;
-      const labelDesc = type === 'cli' ? 'Lệnh CLI' : 'Session ID';
+      const labelDesc = type === 'cli' ? 'CLI command' : 'Session ID';
 
       copyTextToClipboard(textToCopy, () => {
-        showToast(`✓ Đã chép ${labelDesc}: ${targetId}`);
+        showToast(`✓ Copied ${labelDesc}: ${targetId}`);
         if (btnEl) {
           const textSpan = btnEl.querySelector('.btn-copy-text') || btnEl.querySelector('span:last-child');
           if (textSpan) {
             const origText = textSpan.innerText;
             const origColor = btnEl.style.color;
-            textSpan.innerText = 'Đã copy';
+            textSpan.innerText = 'Copied!';
             textSpan.classList.add('whitespace-nowrap');
             btnEl.style.color = 'var(--mint, #10b981)';
             setTimeout(() => {
@@ -2721,7 +2721,7 @@
             }, 1500);
           } else {
             const origHtml = btnEl.innerHTML;
-            btnEl.innerHTML = `<span class="text-emerald-400 whitespace-nowrap">Đã copy</span>`;
+            btnEl.innerHTML = `<span class="text-emerald-400 whitespace-nowrap">Copied!</span>`;
             setTimeout(() => {
               btnEl.innerHTML = origHtml;
             }, 1500);
