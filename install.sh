@@ -88,6 +88,28 @@ fi
 echo "[*] Installing bqa CLI package..."
 "$UV_BIN" pip install -e . --no-deps --python "$VENV_PYTHON" --quiet
 
+if command -v cargo >/dev/null 2>&1 && [ -f "$ROOT_DIR/crates/bqa_desktop/Cargo.toml" ]; then
+    if [ "${BQA_SKIP_CARGO_BUILD:-0}" = "1" ]; then
+        echo "[*] Skipping Rust Studio build (BQA_SKIP_CARGO_BUILD=1)."
+    elif [ -f "$ROOT_DIR/target/release/bqa-desktop" ]; then
+        echo "[+] Rust Native Desktop Studio binary already built: $ROOT_DIR/target/release/bqa-desktop"
+    else
+        echo "[*] Building Rust Native Desktop Studio (release)..."
+        if cargo build --release --manifest-path "$ROOT_DIR/crates/bqa_desktop/Cargo.toml"; then
+            echo "[+] Built Rust Native Desktop Studio successfully."
+        else
+            echo "[!] Warning: Cargo build failed. Python UI fallback will be used when running 'bqa ui'." >&2
+            echo "    To build Rust Native Studio manually, install webkit2gtk dev libraries:" >&2
+            echo "      Debian/Ubuntu: sudo apt install -y libwebkit2gtk-4.1-dev libgtk-3-dev build-essential" >&2
+            echo "      Fedora:        sudo dnf install -y webkit2gtk4.1-devel gtk3-devel" >&2
+            echo "      Arch:          sudo pacman -S webkit2gtk-4.1 gtk3" >&2
+        fi
+    fi
+elif [ ! -f "$ROOT_DIR/target/release/bqa-desktop" ]; then
+    echo "[*] Cargo not found. Skipping Rust Studio build (Python UI fallback available)."
+    echo "    To enable the ultra-fast Rust Native Studio, install Rust: https://rustup.rs"
+fi
+
 if [ ! -f .env ] && [ -f .env.example ]; then
     cp .env.example .env
     echo "[+] Created .env configuration from .env.example"
@@ -98,6 +120,9 @@ fi
 
 mkdir -p logs
 chmod +x install.sh bin/bqa scripts/*.sh
+if [ -f "$ROOT_DIR/target/release/bqa-desktop" ]; then
+    chmod +x "$ROOT_DIR/target/release/bqa-desktop"
+fi
 
 ./scripts/install_ui_fonts.sh
 
@@ -113,6 +138,11 @@ RESOLVED_BIN="$(readlink -f "$TARGET_LINK" 2>/dev/null || true)"
 [ "$RESOLVED_BIN" = "$SOURCE_BIN" ] \
     || fail "installed symlink resolves to '$RESOLVED_BIN' instead of '$SOURCE_BIN'."
 
+if [ -f "$ROOT_DIR/target/release/bqa-desktop" ]; then
+    ln -sfn ../target/release/bqa-desktop "$ROOT_DIR/bin/bqa-desktop"
+    ln -sfn "$ROOT_DIR/target/release/bqa-desktop" "$TARGET_DIR/bqa-desktop" 2>/dev/null || true
+fi
+
 echo "[*] Verifying CLI installation..."
 CLI_VERSION="$("$TARGET_LINK" version)"
 [ -n "$CLI_VERSION" ] || fail "verification failed when executing '$TARGET_LINK version'."
@@ -125,6 +155,9 @@ echo "=================================================="
 echo "        Installation Completed Successfully!      "
 echo "=================================================="
 echo "CLI Executable : $TARGET_LINK"
+if [ -f "$ROOT_DIR/target/release/bqa-desktop" ]; then
+    echo "Desktop Studio : $TARGET_DIR/bqa-desktop (Native Rust App)"
+fi
 echo "Project Path   : $ROOT_DIR"
 echo ""
 

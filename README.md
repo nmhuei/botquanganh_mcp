@@ -6,13 +6,18 @@ Máy chủ Host MCP và CLI vận hành `bqa` để thực thi các lệnh cho p
 
 Yêu cầu: Python >= 3.10, `git` và `uv` (cài nếu thiếu: `curl -LsSf https://astral.sh/uv/install.sh | sh`).
 
+Để biên dịch và khởi chạy **BQA Studio Native (Rust Desktop)** siêu nhẹ và mượt mà (`bqa ui`), cài đặt thêm Rust/Cargo (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`) và các thư viện WebKitGTK / GTK3:
+- **Debian / Ubuntu / Kali**: `sudo apt install -y libwebkit2gtk-4.1-dev libgtk-3-dev build-essential`
+- **Fedora**: `sudo dnf install -y webkit2gtk4.1-devel gtk3-devel`
+- **Arch Linux**: `sudo pacman -S webkit2gtk-4.1 gtk3`
+
+*(Nếu cài đặt trên server headless hoặc máy chưa có Rust/WebKitGTK, installer sẽ tự động bỏ qua build desktop; MCP Server, toàn bộ lệnh CLI và giao diện TUI vẫn hoạt động đầy đủ).*
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/nmhuei/botquanganh_mcp/main/install.sh | bash
 ```
 
-Installer sẽ clone repo về `~/.botquanganh_mcp` (nếu chạy ngoài thư mục repo), tạo virtualenv `.venv` bằng `uv venv --seed`,
-cài dependencies và CLI, kiểm tra/cài Noto Sans + Noto Sans Mono khi có thể, sinh `.env` từ `.env.example`, rồi symlink `bqa` vào `~/.local/bin/bqa`.
-Nếu Noto không thể cài, BQA Center dùng Qt system-font fallback thay vì lỗi khởi động.
+Installer sẽ clone repo về `~/.botquanganh_mcp` (nếu chạy ngoài thư mục repo), tạo virtualenv `.venv` bằng `uv venv --seed`, cài dependencies và CLI, tự động biên dịch BQA Studio Native nếu có `cargo`, kiểm tra/cài Noto Sans + Noto Sans Mono khi có thể, sinh `.env` từ `.env.example`, rồi symlink `bqa` (và `bqa-desktop`) vào `~/.local/bin/`.
 
 Khởi động service; khi từng thành phần sẵn sàng (server → tunnel → bridge → endpoint), URL connector được in ra như một dòng copy-safe:
 
@@ -37,7 +42,8 @@ Toàn bộ cấu hình nằm trong `.env` ở thư mục repo, được nạp kh
 | `HOST_INHERIT_ENV` | `true` | Kế thừa biến môi trường khi chạy command (đã lọc secret/token) |
 | `HOST_ENV_ALLOWLIST` | *(trống)* | Danh sách biến môi trường cho phép thêm khi chạy command |
 | `MAX_CONCURRENT_COMMANDS` | `100` | Số lệnh chạy đồng thời tối đa |
-| `MAX_TIMEOUT_SECONDS` | `60` | Thời gian chờ tối đa của một lệnh (giây) |
+| `DEFAULT_TIMEOUT_SECONDS` | `60` | Thời gian chờ mặc định cho mỗi lệnh thực thi (giây, `0` = vô hạn) |
+| `MAX_TIMEOUT_SECONDS` | `300` | Giới hạn thời gian chờ tối đa mà client có thể yêu cầu (giây, `0` = vô hạn) |
 | `MAX_OUTPUT_BYTES` | `500000` | Giới hạn byte stdout/stderr trả về |
 | `MAX_SINGLE_FILE_BYTES` | `3000000` | Giới hạn kích thước file tối đa khi đọc/ghi |
 | `SEARCH_TEXT_DEADLINE_SECONDS` | `15` | Giới hạn thời gian quét text đệ quy trước khi trả kết quả một phần |
@@ -56,14 +62,10 @@ Toàn bộ cấu hình nằm trong `.env` ở thư mục repo, được nạp kh
 | `HOST_CHAT_IDLE_ARCHIVE_HOURS` | `72` | Số giờ không hoạt động trước khi tự động archive workspace |
 | `HOST_CHAT_RETENTION_DAYS` | `30` | Số ngày lưu giữ workspace trước khi dọn dẹp vĩnh viễn |
 | `HOST_CHAT_MAX_WORKSPACES` | `128` | Giới hạn số lượng workspace tồn tại đồng thời |
+| `HOST_CHAT_SWEEP_INTERVAL_MINUTES` | `60` | Chu kỳ quét định kỳ dọn dẹp chat workspace (phút) |
+| `HOST_CHAT_SWEEP_APPLY` | `false` | Áp dụng xóa vĩnh viễn workspace hết hạn khi quét (`false` = dry-run) |
 
-Các tuỳ chọn chỉ thuộc desktop UI **không nằm trong `.env` của server**.
-BQA Center lưu chúng riêng tại `$XDG_CONFIG_HOME/bqa-center/ui.json` (mặc định
-`~/.config/bqa-center/ui.json`). Ví dụ, bấm `EN`/`VI` sẽ đổi toàn bộ label
-ngay trong cửa sổ đang mở và lưu `language` vào file JSON này; không restart
-MCP server, bridge hay tunnel. Nếu chưa có file preference, bản cũ
-`BQA_UI_LANGUAGE` trong `.env` chỉ được dùng một lần để migrate ngôn ngữ hiện
-tại rồi UI preference riêng sẽ được ưu tiên.
+Các tuỳ chọn giao diện của **BQA Studio (Rust Native)** như 16 chủ đề (themes), trạng thái cột (splitter widths), bộ lọc và session active được lưu tự động trong Webview Storage của ứng dụng. Giao diện Python QML Center lưu cấu hình riêng tại `$XDG_CONFIG_HOME/bqa-center/ui.json`.
 
 ## Cách dùng
 
@@ -77,12 +79,26 @@ bqa restart            # khởi động lại MCP server, giữ nguyên tunnel P
 bqa server restart     # chỉ restart bridge cục bộ
 bqa server status      # trạng thái riêng của bridge
 bqa url                # in URL connector (--quiet: chỉ chuỗi URL)
+
 # Interface
-bqa ui                 # BQA Center Qt Quick/QML trên desktop, chạy nền
-bqa ui --foreground    # tương thích: vẫn mở QML UI chạy nền
-bqa ui --inline         # giữ QML UI gắn với terminal cho đến khi đóng cửa sổ
-bqa ui --classic        # frontend Tkinter cũ khi cần fallback/debug
+bqa ui                 # BQA Native Studio (Rust Desktop), chạy nền mặc định
+bqa ui --foreground    # chạy BQA Native Studio gắn với terminal (foreground)
+bqa ui --classic       # frontend Tkinter dự phòng khi cần fallback/debug
 bqa tui                # bản TUI trong terminal (dùng khi SSH/headless)
+
+# Sessions & Workspaces
+bqa session list       # liệt kê danh sách agent sessions gần nhất
+bqa session new        # tạo và bind session mới (tuỳ chọn: --label "tên-dự-án")
+bqa session bind <id>  # gán active session sang session ID (hoặc 'latest')
+bqa session current    # hiển thị active session hiện tại
+bqa chats list         # liệt kê chat workspace cục bộ theo hoạt động gần nhất
+bqa chats show <chat_id> # xem path, STATE.md và thống kê journal
+bqa chats logs <chat_id> [--min-severity warn] [--category process]  # log phân loại/redact
+bqa chats archive|restore <chat_id> # quản lý vòng đời workspace
+bqa chats delete <chat_id> --yes    # xóa vĩnh viễn workspace đã archive
+bqa chats prune [--apply]           # dry-run/apply lifecycle sweep
+bqa chats stats        # số lượng và dung lượng workspace
+
 # Inspection
 bqa status             # trạng thái runtime tổng thể
 bqa health             # đọc REST health
@@ -91,13 +107,7 @@ bqa capabilities --tools|--limits|--host      # lọc: tools / limits / host
 bqa knowledge overview|guide|tools|search|all # guides + catalog tool (--query để lọc)
 bqa logs <server|tunnel|launcher|audit|follow> [-n 100] [-f] [--since 10m] [--grep TEXT]
 bqa logs all [-n 100] [-f] [--since 10m] [--grep TEXT]   # gộp cả 4 nguồn log, tiền tố [source]
-bqa chats list                                # liệt kê chat workspace cục bộ theo hoạt động gần nhất
-bqa chats show <chat_id>                      # xem path, STATE.md và thống kê journal
-bqa chats logs <chat_id> [--min-severity warn] [--category process]  # log phân loại/redact
-bqa chats archive|restore <chat_id>            # quản lý vòng đời workspace
-bqa chats delete <chat_id> --yes               # xóa vĩnh viễn workspace đã archive
-bqa chats prune [--apply]                      # dry-run/apply lifecycle sweep
-bqa chats stats                                # số lượng và dung lượng workspace
+
 # Files & commands
 bqa fs ls [path] --max 500                    # liệt kê thư mục (mặc định workspace root)
 bqa fs cat <path> --lines 1:50                # đọc file UTF-8 (--max-bytes N)
@@ -108,10 +118,12 @@ bqa fs mkdir <path>                           # tạo thư mục (mặc định 
 bqa fs search "từ khóa" --path docs --max 100 # tìm kiếm text đệ quy
 bqa cmd check "ls -la"                        # soi chính sách mà không chạy lệnh
 bqa cmd run "df -h" --timeout 30 --cwd DIR --check-first
+
 # Diagnostics
 bqa doctor              # chẩn đoán cục bộ + tunnel công khai
 bqa doctor --local-only # bỏ qua kiểm tra public tunnel
 bqa doctor --strict     # coi cảnh báo là thất bại
+
 # Config & help
 bqa config show|get KEY|path|validate [--strict]
 bqa completion bash|zsh|fish
@@ -119,7 +131,7 @@ bqa version
 bqa help [command]
 ```
 
-Khi cần debug runtime, `bqa logs all` gộp log server, tunnel, launcher và audit; REST `GET /api/v1/logs/tail` trả cùng bản chụp qua HTTP. Với log theo chat/workspace, dùng `bqa chats logs <chat_id>` hoặc live SSE `GET /api/v1/activity/stream`. BQA Center QML tổ chức thành `Overview / Activity / Workspaces / Logs / Diagnostics / Settings`; `Logs > Events` dùng structured workspace stream và `Logs > Runtime services` hiển thị snapshot log server/tunnel/launcher/audit/desktop.
+Khi cần debug runtime, `bqa logs all` gộp log server, tunnel, launcher và audit; REST `GET /api/v1/logs/tail` trả cùng bản chụp qua HTTP. Với log theo chat/workspace, dùng `bqa chats logs <chat_id>` hoặc live SSE `GET /api/v1/activity/stream`. BQA Studio Native tổ chức thành các tab `Overview / Activity / Logs` cùng bảng quản lý `Sessions` và thanh cài đặt `Settings Drawer`.
 
 Chat workspace cục bộ mặc định nằm dưới `~/Downloads/bqa-workspaces`.
 
@@ -127,4 +139,4 @@ Probe sức khỏe trực tiếp: `curl -s http://127.0.0.1:18427/healthz` · en
 
 ## Tài liệu
 
-[Hướng dẫn Toàn Diện BQA CLI & Debugging](docs/CLI_USAGE.md) · [Kiến trúc](docs/ARCHITECTURE.md) · [Vận hành](docs/OPERATIONS_RUNBOOK.md) · [Checklist phát hành](docs/RELEASE_CHECKLIST.md) · [Bảo mật](SECURITY.md) · [Giao diện CLI](docs/CLI_UI.md) · [Chat workspaces](docs/CHAT_WORKSPACES.md)
+[Hướng dẫn Toàn Diện BQA CLI & Rust Studio](docs/CLI_USAGE.md) · [Kiến trúc](docs/ARCHITECTURE.md) · [Vận hành](docs/OPERATIONS_RUNBOOK.md) · [Checklist phát hành](docs/RELEASE_CHECKLIST.md) · [Bảo mật](SECURITY.md) · [Giao diện CLI](docs/CLI_UI.md) · [Chat workspaces](docs/CHAT_WORKSPACES.md)

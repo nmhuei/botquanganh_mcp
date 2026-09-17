@@ -62,7 +62,11 @@ botquanganh_mcp/
 | | `bqa health` | Kiểm tra độ trễ và sức khỏe của REST API |
 | | `bqa capabilities` | Xem danh sách toàn bộ công cụ MCP đang kích hoạt |
 | | `bqa doctor` | Chạy chẩn đoán toàn diện hệ thống (tự động phát hiện lỗi) |
-| **📁 Phiên & File** | `bqa chats list` | Liệt kê toàn bộ các workspace phiên chat (`cw-...`) |
+| **📁 Phiên & File** | `bqa session list` | Liệt kê các session gần đây |
+| | `bqa session new [--label <tên>]` | Tạo session mới và bind tự động |
+| | `bqa session bind <id\|latest>` | Gán active session sang session đã có |
+| | `bqa session current` | Hiển thị active session hiện tại |
+| | `bqa chats list` | Liệt kê toàn bộ các workspace phiên chat (`cw-...`) |
 | | `bqa chats sweep` | Quét và dọn dẹp các workspace phiên chat hết hạn |
 | | `bqa fs ls <path>` | Duyệt file qua REST API an toàn |
 | | `bqa fs cat <path>` | Đọc nội dung file qua REST API an toàn |
@@ -128,7 +132,7 @@ bqa doctor --local-only
 - **Ngôn ngữ & Framework:** Rust (`tao` 0.31 để tạo cửa sổ native OS + `wry` 0.47 Webview).
 - **Kích thước nhị phân:** Chỉ **1.6 MB** (`target/release/bqa-desktop`).
 - **Giao diện người dùng:** 
-  - **12 Chủ đề (Themes):** Rose Pine Moon (mặc định), Linear Studio, GitHub Dimmed, Dracula, Nord, Tokyo Night, Gruvbox, Catppuccin, Monokai, Solarized, Vercel Mono, Clean Light.
+  - **16 Chủ đề (Themes):** Rose Pine Moon (mặc định), Linear Studio, GitHub Dimmed, Dracula, Nord, Tokyo Night, Gruvbox, Catppuccin, Monokai, Solarized, Vercel Mono, Clean Light, Exodia Neon, Cyberpunk, Obsidian, Midnight Teal.
   - **3 Tab:** `Tổng quan (Overview)`, `Hoạt động (Activity)`, `Nhật ký (Logs)`.
   - **Công thái học (Ergonomics):** Thanh trượt kéo thả chia cột linh hoạt (`resizer col-resize`), nút thu gọn inline trực tiếp trên cột (`«` và `» Sessions`), không bị nút toggle thừa che mất không gian.
   - **Settings Drawer:** Trượt ra từ cạnh phải, quản lý trực tiếp các thông số `.env`.
@@ -171,6 +175,7 @@ Hệ thống hỗ trợ nạp lại biến môi trường tức thì (Zero-Downt
    ```bash
    cargo build --release --manifest-path crates/bqa_desktop/Cargo.toml
    ```
+   *(Nếu thiếu thư viện đồ họa khi build: `sudo apt install -y libwebkit2gtk-4.1-dev libgtk-3-dev build-essential` trên Debian/Ubuntu/Kali hoặc `sudo dnf install -y webkit2gtk4.1-devel gtk3-devel` trên Fedora).*
 
 ### ❓ Tình huống 2: Bridge Server không phản hồi (:18427)
 1. Kiểm tra xem port 18427 có đang bị chiếm dụng không:

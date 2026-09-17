@@ -56,6 +56,7 @@ install_env() {
         BQA_BIN_DIR="$bin_dir" \
         BQA_SKIP_PIP_UPGRADE=true \
         PIP_DISABLE_PIP_VERSION_CHECK=1 \
+        BQA_SKIP_CARGO_BUILD=1 \
         "$@"
 }
 
@@ -124,6 +125,7 @@ mkdir -p "$OUTSIDE_DIR"
         BQA_BRANCH=main \
         BQA_SKIP_PIP_UPGRADE=true \
         PIP_DISABLE_PIP_VERSION_CHECK=1 \
+        BQA_SKIP_CARGO_BUILD=1 \
         bash
 ) > "$TMP_DIR/remote-install.log"
 verify_install "$REMOTE_TARGET" "$REMOTE_BIN"
@@ -145,6 +147,7 @@ git -C "$SOURCE_REPO" push --quiet origin main
         BQA_BRANCH=main \
         BQA_SKIP_PIP_UPGRADE=true \
         PIP_DISABLE_PIP_VERSION_CHECK=1 \
+        BQA_SKIP_CARGO_BUILD=1 \
         bash
 ) > "$TMP_DIR/remote-update.log"
 grep -q '^installer-update-ok$' "$REMOTE_TARGET/installer-update-marker.txt"
@@ -162,6 +165,7 @@ if (
         BQA_REPO_URL="$BARE_REPO" \
         BQA_BRANCH=main \
         BQA_SKIP_PIP_UPGRADE=true \
+        BQA_SKIP_CARGO_BUILD=1 \
         bash
 ) > "$TMP_DIR/dirty.out" 2> "$TMP_DIR/dirty.err"; then
     DIRTY_EXIT=0
@@ -187,6 +191,7 @@ if (
         BQA_REPO_URL="$BARE_REPO" \
         BQA_BRANCH=main \
         BQA_SKIP_PIP_UPGRADE=true \
+        BQA_SKIP_CARGO_BUILD=1 \
         bash
 ) > "$TMP_DIR/origin.out" 2> "$TMP_DIR/origin.err"; then
     ORIGIN_EXIT=0
@@ -208,6 +213,7 @@ if (
         BQA_REPO_URL="$BARE_REPO" \
         BQA_BRANCH=missing-branch \
         BQA_SKIP_PIP_UPGRADE=true \
+        BQA_SKIP_CARGO_BUILD=1 \
         bash
 ) > "$TMP_DIR/missing.out" 2> "$TMP_DIR/missing.err"; then
     MISSING_EXIT=0
