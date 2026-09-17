@@ -121,7 +121,9 @@ def handle_session_list(ctx: CLIContext, args: Any) -> int:
         journal_file = entry / "journal.jsonl"
         if journal_file.is_file():
             try:
-                ops_count = len(journal_file.read_text(encoding="utf-8", errors="replace").splitlines())
+                j_lines = journal_file.read_text(encoding="utf-8", errors="replace").splitlines()
+                started_count = sum(1 for line in j_lines if '"op_started"' in line)
+                ops_count = started_count if started_count > 0 else len(j_lines)
             except Exception:
                 pass
 
@@ -212,13 +214,16 @@ def handle_session_bind(ctx: CLIContext, args: Any) -> int:
     journal_file = target_dir / "journal.jsonl"
     if journal_file.is_file():
         try:
-            for line in reversed(journal_file.read_text(encoding="utf-8", errors="replace").splitlines()[-30:]):
+            for line in reversed(journal_file.read_text(encoding="utf-8", errors="replace").splitlines()[-40:]):
                 if not line.strip():
                     continue
                 rec = json.loads(line)
-                det = rec.get("details", {}) or {}
-                cmd = det.get("command") or det.get("cmd")
-                if cmd:
+                payload = rec.get("payload", {}) or rec.get("details", {}) or {}
+                cmd = payload.get("intent") or payload.get("command") or payload.get("cmd")
+                if (not cmd or cmd == "<redacted>") and payload.get("path"):
+                    kind = rec.get("kind") or "file"
+                    cmd = f"{kind} {payload['path']}"
+                if cmd and cmd != "<redacted>":
                     recent_cmds.append(str(cmd))
                 if len(recent_cmds) >= 3:
                     break

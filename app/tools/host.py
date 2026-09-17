@@ -145,7 +145,7 @@ def _bind_required_payload(tool: str) -> dict[str, Any]:
             ).strip()
         error["instructions"] = [
             "1. Call 'host_workspace_list()' to view previous workspaces/sessions.",
-            "2. Call 'host_workspace_bind(resume_id=...)' to resume an existing workspace, or 'host_workspace_bind(new=True, label=...)' to start a new workspace.",
+            "2. Call 'host_workspace_bind(resume_id=\"latest\")' to resume the most recent workspace, or 'host_workspace_bind()' to start a fresh new workspace.",
             "3. After binding, proceed with host operations.",
         ]
     return payload

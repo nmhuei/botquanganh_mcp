@@ -77,31 +77,64 @@ def _rehydrate_session_context(ws_dir: Path) -> dict[str, Any]:
     if journal_file.is_file():
         try:
             lines = journal_file.read_text(encoding="utf-8", errors="replace").splitlines()
-            for line in reversed(lines[-60:]):
+            ops_started: dict[str, dict[str, Any]] = {}
+            ops_result: dict[str, dict[str, Any]] = {}
+            op_order: list[str] = []
+
+            for line in lines[-120:]:
                 line = line.strip()
                 if not line:
                     continue
                 try:
                     data = json.loads(line)
-                    if data.get("type") == "op_result" or "ok" in data:
-                        details = data.get("details", {}) or {}
-                        payload = data.get("payload", {}) or {}
-                        cmd = details.get("command") or payload.get("command") or details.get("cmd") or ""
-                        tool = data.get("kind") or data.get("event_action") or "cmd"
-                        exit_code = details.get("exit_code", 0 if data.get("ok") else 1)
-                        stdout = str(details.get("stdout") or "")[:250]
-                        recent_commands.append({
-                            "tool": tool,
-                            "command": str(cmd)[:150] if cmd else "",
-                            "exit_code": exit_code,
-                            "ok": bool(data.get("ok", True)),
-                            "stdout_preview": stdout,
-                            "timestamp": data.get("ts") or data.get("timestamp") or "",
-                        })
-                        if len(recent_commands) >= 5:
-                            break
+                    op_id = data.get("op") or f"anon-{len(op_order)}"
+                    event_type = data.get("type")
+                    if event_type == "op_started":
+                        ops_started[op_id] = data
+                        if op_id not in op_order:
+                            op_order.append(op_id)
+                    elif event_type == "op_result" or "ok" in data:
+                        ops_result[op_id] = data
+                        if op_id not in op_order:
+                            op_order.append(op_id)
                 except Exception:
                     pass
+
+            for op_id in reversed(op_order):
+                started = ops_started.get(op_id, {})
+                result = ops_result.get(op_id, {})
+                s_payload = started.get("payload", {}) or started.get("details", {}) or {}
+                r_payload = result.get("payload", {}) or result.get("details", {}) or {}
+
+                tool = started.get("kind") or result.get("kind") or "cmd"
+                cmd = (
+                    s_payload.get("intent")
+                    or s_payload.get("command")
+                    or r_payload.get("command")
+                    or s_payload.get("cmd")
+                    or r_payload.get("cmd")
+                    or ""
+                )
+                if (not cmd or cmd == "<redacted>") and s_payload.get("path"):
+                    cmd = f"{tool} {s_payload['path']}"
+                elif not cmd or cmd == "<redacted>":
+                    cmd = s_payload.get("intent") or tool
+
+                ok = result.get("ok", True)
+                exit_code = r_payload.get("exit_code", 0 if ok else 1)
+                stdout = str(r_payload.get("stdout") or r_payload.get("stdout_preview") or "")[:250]
+                ts = result.get("ts") or started.get("ts") or ""
+
+                recent_commands.append({
+                    "tool": tool,
+                    "command": str(cmd)[:150],
+                    "exit_code": exit_code,
+                    "ok": bool(ok),
+                    "stdout_preview": stdout,
+                    "timestamp": ts,
+                })
+                if len(recent_commands) >= 5:
+                    break
         except Exception:
             pass
 
@@ -369,14 +402,18 @@ async def host_workspace_list(
             if journal_file.is_file():
                 try:
                     j_lines = journal_file.read_text(encoding="utf-8", errors="replace").splitlines()
-                    ops_count = len(j_lines)
-                    for j_line in reversed(j_lines[-20:]):
+                    started_count = sum(1 for line in j_lines if '"op_started"' in line)
+                    ops_count = started_count if started_count > 0 else len(j_lines)
+                    for j_line in reversed(j_lines[-40:]):
                         if not j_line.strip():
                             continue
                         rec = json.loads(j_line)
-                        det = rec.get("details", {}) or {}
-                        cmd_val = det.get("command") or det.get("cmd")
-                        if cmd_val:
+                        payload = rec.get("payload", {}) or rec.get("details", {}) or {}
+                        cmd_val = payload.get("intent") or payload.get("command") or payload.get("cmd")
+                        if (not cmd_val or cmd_val == "<redacted>") and payload.get("path"):
+                            kind = rec.get("kind") or "file"
+                            cmd_val = f"{kind} {payload['path']}"
+                        if cmd_val and cmd_val != "<redacted>":
                             last_cmd = str(cmd_val)[:100]
                             break
                 except Exception:

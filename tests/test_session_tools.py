@@ -54,6 +54,8 @@ def test_host_session_bind_and_context_rehydration(tmp_path: Path):
     found = next((s for s in res_list["sessions"] if s["session_id"] == session_id), None)
     assert found is not None
     assert found["is_latest"] is True
+    assert found["ops_count"] >= 2
+    assert found["last_command"] is not None
 
     # 3. Call host_session_bind to re-connect to this session
     res_bind = asyncio.run(host_session_bind(session_id=session_id))
@@ -61,6 +63,8 @@ def test_host_session_bind_and_context_rehydration(tmp_path: Path):
     assert res_bind["is_new"] is False
     assert res_bind["session_id"] == session_id
     assert "Initial note for project alpha" in res_bind["recent_notes"]
+    assert len(res_bind["recent_commands"]) >= 1
+    assert any(c["ok"] is True for c in res_bind["recent_commands"])
 
 
 def test_host_session_bind_no_args_creates_new_session_and_latest_resumes(tmp_path: Path):
