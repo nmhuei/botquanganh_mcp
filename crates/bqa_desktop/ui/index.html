@@ -182,28 +182,70 @@
     *::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.2); border-radius: 999px; }
 
     .resizer {
-      width: 5px;
+      width: 7px;
+      margin: 0 -3.5px;
       cursor: col-resize;
       background: transparent;
       position: relative;
-      z-index: 20;
+      z-index: 30;
       flex-shrink: 0;
-      transition: background 0.15s ease;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+    }
+    .resizer::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: -4px;
+      right: -4px;
+      background: transparent;
+      z-index: 1;
     }
     .resizer::after {
       content: '';
       position: absolute;
-      top: 0; bottom: 0;
-      left: 2px;
+      top: 0;
+      bottom: 0;
+      left: 3px;
       width: 1px;
       background: var(--border);
+      transition: background 0.15s ease, width 0.15s ease, left 0.15s ease, box-shadow 0.15s ease;
+      z-index: 2;
     }
     .resizer:hover::after,
     .resizer.dragging::after {
+      left: 2px;
+      width: 3px;
       background: var(--accent);
-      box-shadow: 0 0 6px var(--accent);
+      box-shadow: 0 0 8px var(--accent);
     }
-    .resizer.hidden { display: none; }
+    .resizer.hidden { display: none !important; }
+
+    /* While dragging a splitter: instantly disable all pane transitions, prevent text selection, and force col-resize cursor */
+    body.is-resizing {
+      user-select: none !important;
+      -webkit-user-select: none !important;
+      cursor: col-resize !important;
+    }
+    body.is-resizing * {
+      user-select: none !important;
+      -webkit-user-select: none !important;
+      cursor: col-resize !important;
+      pointer-events: none !important;
+    }
+    body.is-resizing .resizer {
+      pointer-events: auto !important;
+    }
+    body.is-resizing #paneSidebar,
+    body.is-resizing #paneStream,
+    body.is-resizing #paneInspector,
+    body.is-resizing #paneLogStream,
+    body.is-resizing #paneLogInspector {
+      transition: none !important;
+      will-change: width;
+    }
 
     /* Custom Form & Select Controls (Prevent WebKit white glitch) */
     select, input[type="text"], input[type="number"] {
@@ -635,7 +677,7 @@
   <div id="pageActivity" class="flex-1 flex overflow-hidden relative">
 
     <!-- CỘT 1: SESSIONS (CÓ NÚT THU GỌN INLINE « TRỰC TIẾP TRÊN HEADER) -->
-    <aside id="paneSidebar" style="background-color: var(--bg-header); border-color: var(--border);" class="w-56 min-w-[170px] max-w-[360px] border-r flex flex-col shrink-0">
+    <aside id="paneSidebar" style="background-color: var(--bg-header); border-color: var(--border);" class="w-56 min-w-[160px] max-w-[450px] border-r flex flex-col shrink-0">
       <div style="border-color: var(--border); color: var(--text-sub);" class="px-3 py-2 border-b flex items-center justify-between gap-1.5 text-xs shrink-0 min-w-0 overflow-hidden">
         <div class="flex items-center gap-1 min-w-0 truncate">
           <span class="font-semibold uppercase tracking-wider text-[10px] whitespace-nowrap">Sessions</span>
@@ -661,7 +703,7 @@
     <div id="resizerLeft" class="resizer"></div>
 
     <!-- CỘT 2: TÓM TẮT LỆNH (CÓ NÚT MỞ NHANH » KHI SIDEBAR BỊ THU GỌN) -->
-    <section id="paneStream" style="background-color: var(--bg-base); border-color: var(--border);" class="w-72 min-w-[240px] max-w-[500px] flex flex-col shrink-0 overflow-hidden border-r">
+    <section id="paneStream" style="background-color: var(--bg-base); border-color: var(--border);" class="w-72 min-w-[220px] max-w-[950px] flex flex-col shrink-0 overflow-hidden border-r">
       <div style="border-color: var(--border); color: var(--text-sub);" class="px-3 py-2 border-b text-xs shrink-0 flex items-center justify-between gap-2 min-w-0 overflow-hidden">
         <div class="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
           <button id="btnExpandSidebar" onclick="toggleSidebar()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="hidden px-1.5 py-0.5 border rounded text-[10.5px] font-mono items-center gap-1 transition hover:border-[#4f46e5] whitespace-nowrap shrink-0" title="Mở lại danh sách phiên">
@@ -842,7 +884,7 @@
     <div id="resizerLog" class="resizer"></div>
 
     <!-- CỘT 2: FORENSICS JSON -->
-    <aside id="paneLogInspector" style="background-color: var(--bg-header);" class="w-[420px] min-w-[280px] max-w-[800px] flex flex-col overflow-hidden shrink-0">
+    <aside id="paneLogInspector" style="background-color: var(--bg-header);" class="w-[420px] min-w-[280px] max-w-[950px] flex flex-col overflow-hidden shrink-0">
       <div style="border-color: var(--border); color: var(--text-sub);" class="px-4 py-2.5 border-b flex items-center justify-between text-xs shrink-0">
         <span style="color: var(--text-main);" class="font-semibold">Log Event Forensics</span>
         <div class="flex items-center gap-1.5">
@@ -1354,15 +1396,34 @@
 
     let isSidebarCollapsed = false;
     let isInspectorCollapsed = false;
-    let lastSidebarWidth = 224;
-    let lastStreamWidth = 288;
-    let lastLogInspectorWidth = 420;
+
+    // Load persisted widths from localStorage or fall back to defaults
+    const DEFAULT_SIDEBAR_WIDTH = 224;
+    const DEFAULT_STREAM_WIDTH = 320;
+    const DEFAULT_LOG_INSPECTOR_WIDTH = 420;
+
+    let lastSidebarWidth = parseInt(localStorage.getItem('bqa_sidebar_w'), 10) || DEFAULT_SIDEBAR_WIDTH;
+    if (lastSidebarWidth < 160 || lastSidebarWidth > 450) lastSidebarWidth = DEFAULT_SIDEBAR_WIDTH;
+
+    let lastStreamWidth = parseInt(localStorage.getItem('bqa_stream_w'), 10) || DEFAULT_STREAM_WIDTH;
+    if (lastStreamWidth < 220 || lastStreamWidth > 950) lastStreamWidth = DEFAULT_STREAM_WIDTH;
+
+    let lastLogInspectorWidth = parseInt(localStorage.getItem('bqa_log_insp_w'), 10) || DEFAULT_LOG_INSPECTOR_WIDTH;
+    if (lastLogInspectorWidth < 280 || lastLogInspectorWidth > 950) lastLogInspectorWidth = DEFAULT_LOG_INSPECTOR_WIDTH;
+
+    // Apply saved widths on load
+    if (sidebar) sidebar.style.width = lastSidebarWidth + 'px';
+    if (paneStream) {
+      paneStream.style.width = lastStreamWidth + 'px';
+      paneStream.style.maxWidth = 'none';
+    }
+    if (paneLogInspector) paneLogInspector.style.width = lastLogInspectorWidth + 'px';
 
     function toggleSidebar() {
       isSidebarCollapsed = !isSidebarCollapsed;
       if (!sidebar) return;
       if (isSidebarCollapsed) {
-        lastSidebarWidth = sidebar.offsetWidth > 50 ? sidebar.offsetWidth : 224;
+        lastSidebarWidth = sidebar.offsetWidth > 50 ? sidebar.offsetWidth : DEFAULT_SIDEBAR_WIDTH;
         sidebar.classList.add('pane-collapsed');
         if (resizerLeft) resizerLeft.classList.add('hidden');
         if (btnExpandSidebar) {
@@ -1396,7 +1457,7 @@
           if (resizerRight) resizerRight.classList.remove('hidden');
           paneStream.style.flex = "none";
           paneStream.style.width = lastStreamWidth + 'px';
-          paneStream.style.maxWidth = "500px";
+          paneStream.style.maxWidth = "none";
         }
       } else {
         if (!paneLogInspector) return;
@@ -1411,64 +1472,171 @@
       }
     }
 
-    let isDraggingLeft = false;
-    let isDraggingRight = false;
-    let isDraggingLog = false;
+    // High-performance silky drag resizer using Pointer Events & requestAnimationFrame
+    function setupPaneResizer({ resizer, onDragStart, onDragMove, onDragEnd, onDoubleClick }) {
+      if (!resizer) return;
 
-    if (resizerLeft) {
-      resizerLeft.addEventListener('mousedown', (e) => {
+      let isDragging = false;
+      let activePointerId = null;
+      let rafId = null;
+      let latestClientX = 0;
+
+      const handlePointerMove = (e) => {
+        if (!isDragging || e.pointerId !== activePointerId) return;
+        latestClientX = e.clientX;
+
+        if (!rafId) {
+          rafId = requestAnimationFrame(() => {
+            if (isDragging) {
+              onDragMove(latestClientX);
+            }
+            rafId = null;
+          });
+        }
+      };
+
+      const handlePointerUp = (e) => {
+        if (!isDragging || e.pointerId !== activePointerId) return;
+        isDragging = false;
+
+        if (rafId) {
+          cancelAnimationFrame(rafId);
+          rafId = null;
+        }
+
+        try {
+          if (resizer.hasPointerCapture(activePointerId)) {
+            resizer.releasePointerCapture(activePointerId);
+          }
+        } catch (_) {}
+
+        activePointerId = null;
+        resizer.classList.remove('dragging');
+        document.body.classList.remove('is-resizing');
+        window.removeEventListener('pointermove', handlePointerMove);
+        window.removeEventListener('pointerup', handlePointerUp);
+        window.removeEventListener('pointercancel', handlePointerUp);
+
+        if (onDragEnd) onDragEnd();
+      };
+
+      resizer.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return; // Primary button only
         e.preventDefault();
-        isDraggingLeft = true;
-        resizerLeft.classList.add('dragging');
-        document.body.style.cursor = 'col-resize';
+        e.stopPropagation();
+
+        isDragging = true;
+        activePointerId = e.pointerId;
+        latestClientX = e.clientX;
+
+        try {
+          resizer.setPointerCapture(activePointerId);
+        } catch (_) {}
+
+        resizer.classList.add('dragging');
+        document.body.classList.add('is-resizing');
+
+        if (onDragStart) onDragStart(e.clientX);
+
+        window.addEventListener('pointermove', handlePointerMove, { passive: true });
+        window.addEventListener('pointerup', handlePointerUp, { passive: true });
+        window.addEventListener('pointercancel', handlePointerUp, { passive: true });
       });
+
+      if (onDoubleClick) {
+        resizer.addEventListener('dblclick', (e) => {
+          e.preventDefault();
+          onDoubleClick();
+        });
+      }
     }
 
-    if (resizerRight) {
-      resizerRight.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        isDraggingRight = true;
-        resizerRight.classList.add('dragging');
-        document.body.style.cursor = 'col-resize';
-      });
-    }
-
-    if (resizerLog) {
-      resizerLog.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        isDraggingLog = true;
-        resizerLog.classList.add('dragging');
-        document.body.style.cursor = 'col-resize';
-      });
-    }
-
-    window.addEventListener('mousemove', (e) => {
-      if (isDraggingLeft && sidebar) {
-        const newWidth = Math.min(Math.max(e.clientX, 140), 360);
+    // Splitter 1: Left Sessions Sidebar
+    setupPaneResizer({
+      resizer: resizerLeft,
+      onDragStart: () => {},
+      onDragMove: (clientX) => {
+        if (!sidebar) return;
+        const minW = 160;
+        const maxW = Math.min(450, Math.floor(window.innerWidth * 0.45));
+        const newWidth = Math.min(Math.max(clientX, minW), maxW);
         sidebar.style.width = newWidth + 'px';
         lastSidebarWidth = newWidth;
-      }
-      if (isDraggingRight && paneStream) {
-        const streamLeft = paneStream.getBoundingClientRect().left;
-        const newWidth = Math.min(Math.max(e.clientX - streamLeft, 180), 500);
-        paneStream.style.width = newWidth + 'px';
-        lastStreamWidth = newWidth;
-      }
-      if (isDraggingLog && paneLogInspector) {
-        const newWidth = Math.min(Math.max(window.innerWidth - e.clientX, 220), window.innerWidth - 300);
-        paneLogInspector.style.width = newWidth + 'px';
-        lastLogInspectorWidth = newWidth;
+      },
+      onDragEnd: () => {
+        if (lastSidebarWidth) {
+          localStorage.setItem('bqa_sidebar_w', String(lastSidebarWidth));
+        }
+      },
+      onDoubleClick: () => {
+        if (sidebar) {
+          sidebar.style.width = DEFAULT_SIDEBAR_WIDTH + 'px';
+          lastSidebarWidth = DEFAULT_SIDEBAR_WIDTH;
+          localStorage.setItem('bqa_sidebar_w', String(DEFAULT_SIDEBAR_WIDTH));
+        }
       }
     });
 
-    window.addEventListener('mouseup', () => {
-      isDraggingLeft = false;
-      isDraggingRight = false;
-      isDraggingLog = false;
-      if (resizerLeft) resizerLeft.classList.remove('dragging');
-      if (resizerRight) resizerRight.classList.remove('dragging');
-      if (resizerLog) resizerLog.classList.remove('dragging');
-      document.body.style.cursor = '';
+    // Splitter 2: Middle Stream & Right Inspector
+    let streamDragOffset = 0;
+    setupPaneResizer({
+      resizer: resizerRight,
+      onDragStart: () => {
+        if (paneStream) {
+          streamDragOffset = paneStream.getBoundingClientRect().left;
+        }
+      },
+      onDragMove: (clientX) => {
+        if (!paneStream) return;
+        const minW = 220;
+        // Keep at least 300px for Inspector
+        const maxAvailable = Math.max(minW, window.innerWidth - streamDragOffset - 300);
+        const maxW = Math.min(950, maxAvailable);
+        const newWidth = Math.min(Math.max(clientX - streamDragOffset, minW), maxW);
+        paneStream.style.width = newWidth + 'px';
+        paneStream.style.maxWidth = 'none';
+        lastStreamWidth = newWidth;
+      },
+      onDragEnd: () => {
+        if (lastStreamWidth) {
+          localStorage.setItem('bqa_stream_w', String(lastStreamWidth));
+        }
+      },
+      onDoubleClick: () => {
+        if (paneStream) {
+          paneStream.style.width = DEFAULT_STREAM_WIDTH + 'px';
+          paneStream.style.maxWidth = 'none';
+          lastStreamWidth = DEFAULT_STREAM_WIDTH;
+          localStorage.setItem('bqa_stream_w', String(DEFAULT_STREAM_WIDTH));
+        }
+      }
+    });
+
+    // Splitter 3: Logs View Inspector
+    setupPaneResizer({
+      resizer: resizerLog,
+      onDragStart: () => {},
+      onDragMove: (clientX) => {
+        if (!paneLogInspector) return;
+        const minW = 280;
+        const maxAvailable = Math.max(minW, window.innerWidth - 300);
+        const maxW = Math.min(950, maxAvailable);
+        const newWidth = Math.min(Math.max(window.innerWidth - clientX, minW), maxW);
+        paneLogInspector.style.width = newWidth + 'px';
+        lastLogInspectorWidth = newWidth;
+      },
+      onDragEnd: () => {
+        if (lastLogInspectorWidth) {
+          localStorage.setItem('bqa_log_insp_w', String(lastLogInspectorWidth));
+        }
+      },
+      onDoubleClick: () => {
+        if (paneLogInspector) {
+          paneLogInspector.style.width = DEFAULT_LOG_INSPECTOR_WIDTH + 'px';
+          lastLogInspectorWidth = DEFAULT_LOG_INSPECTOR_WIDTH;
+          localStorage.setItem('bqa_log_insp_w', String(DEFAULT_LOG_INSPECTOR_WIDTH));
+        }
+      }
     });
 
     // ==================== 4-TAB INSPECTOR SWITCHER ====================
