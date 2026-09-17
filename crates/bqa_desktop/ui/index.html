@@ -238,6 +238,12 @@
       box-shadow: 0 0 8px var(--accent);
     }
     .resizer.hidden { display: none !important; }
+    .resizer.resizer-collapsed {
+      opacity: 0 !important;
+      pointer-events: none !important;
+      width: 0px !important;
+      margin: 0 !important;
+    }
 
     /* While dragging a splitter: instantly disable all pane transitions, prevent text selection, and force col-resize cursor */
     body.is-resizing {
@@ -313,36 +319,47 @@
     }
 
     #paneSidebar {
-      transition: width 0.24s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.24s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.18s ease, transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
-      will-change: width, min-width, opacity, transform;
+      transition: width 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+                  opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+                  transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+      will-change: width, opacity, transform;
     }
     #paneSidebar.pane-collapsed {
       width: 0px !important;
       min-width: 0px !important;
       border-right-width: 0px !important;
       opacity: 0 !important;
-      transform: translateX(-20px);
+      transform: translateX(-16px);
       pointer-events: none !important;
+      overflow: hidden !important;
     }
 
     #paneInspector {
-      transition: flex 0.24s cubic-bezier(0.4, 0, 0.2, 1), width 0.24s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.24s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.18s ease, transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
-      will-change: flex, width, min-width, opacity, transform;
+      transition: width 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+                  opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+                  transform 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+                  border-width 0.28s ease;
+      will-change: width, opacity, transform;
+      overflow: hidden !important;
     }
     #paneInspector.pane-collapsed {
-      flex: 0 0 0px !important;
       width: 0px !important;
       min-width: 0px !important;
       max-width: 0px !important;
       border-left-width: 0px !important;
       opacity: 0 !important;
-      transform: translateX(20px);
+      transform: translateX(16px);
       pointer-events: none !important;
+      overflow: hidden !important;
     }
 
     #paneLogInspector {
-      transition: width 0.24s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.24s cubic-bezier(0.4, 0, 0.2, 1), max-width 0.24s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.18s ease, transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
-      will-change: width, min-width, opacity, transform;
+      transition: width 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+                  opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+                  transform 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+                  border-width 0.28s ease;
+      will-change: width, opacity, transform;
+      overflow: hidden !important;
     }
     #paneLogInspector.pane-collapsed {
       width: 0px !important;
@@ -350,12 +367,14 @@
       max-width: 0px !important;
       border-left-width: 0px !important;
       opacity: 0 !important;
-      transform: translateX(20px);
+      transform: translateX(16px);
       pointer-events: none !important;
+      overflow: hidden !important;
     }
 
     #paneStream {
-      transition: width 0.24s cubic-bezier(0.4, 0, 0.2, 1), flex 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: width 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+      will-change: width;
     }
 
     /* Enforce strict single-line text layout without line breaks */
@@ -793,15 +812,19 @@
     <div id="resizerRight" class="resizer"></div>
 
     <!-- CỘT 3: KHUNG CHI TIẾT (HERO ELEMENT) -->
-    <aside id="paneInspector" style="background-color: var(--bg-header);" class="flex-1 min-w-[320px] flex flex-col overflow-hidden">
-      <div style="border-color: var(--border); color: var(--text-sub);" class="px-4 py-2 border-b flex items-center justify-between gap-2 text-xs shrink-0 min-w-0 overflow-hidden">
-        <span style="color: var(--text-main);" class="font-semibold whitespace-nowrap truncate min-w-0">Chi tiết Thực thi (Inspector)</span>
-        <div class="flex items-center gap-2 shrink-0">
-          <button id="btnCopyDetails" onclick="copyDetails()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="w-[78px] h-[28px] px-2.5 py-1 border rounded-md text-[11px] font-sans transition whitespace-nowrap flex items-center justify-center shrink-0 select-none" title="Copy command details">
-            <span id="copyBtnLabel" class="whitespace-nowrap text-center">Copy</span>
-          </button>
+    <aside id="paneInspector" style="background-color: var(--bg-header);" class="flex-1 flex flex-col overflow-hidden">
+      <div class="flex-1 flex flex-col min-w-[320px] h-full overflow-hidden">
+        <div style="border-color: var(--border); color: var(--text-sub);" class="px-4 py-2 border-b flex items-center justify-between gap-2 text-xs shrink-0 min-w-0 overflow-hidden">
+          <span style="color: var(--text-main);" class="font-semibold whitespace-nowrap truncate min-w-0">Chi tiết Thực thi (Inspector)</span>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button id="btnCopyDetails" onclick="copyDetails()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="w-[78px] h-[28px] px-2.5 py-1 border rounded-md text-[11px] font-sans transition whitespace-nowrap flex items-center justify-center shrink-0 select-none" title="Copy command details">
+              <span id="copyBtnLabel" class="whitespace-nowrap text-center">Copy</span>
+            </button>
+            <button id="btnCloseInspector" onclick="toggleInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white hover:bg-slate-700/30 transition shrink-0" title="Ẩn khung chi tiết (Close Inspector)">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+          </div>
         </div>
-      </div>
 
       <!-- 4 Inspector Tabs -->
       <div style="background-color: var(--bg-surface); border-color: var(--border);" class="px-3 py-1.5 border-b flex items-center gap-1 shrink-0 text-[11px] font-sans">
@@ -893,6 +916,7 @@
           <pre id="inspectRawJson" style="background-color: var(--bg-console); border-color: var(--border); color: var(--sky);" class="flex-1 border rounded-xl p-3.5 text-[11px] leading-relaxed overflow-auto select-text font-mono whitespace-pre-wrap">{}</pre>
         </div>
       </div>
+      </div>
     </aside>
 
   </div>
@@ -935,39 +959,44 @@
     <div id="resizerLog" class="resizer"></div>
 
     <!-- CỘT 2: FORENSICS JSON -->
-    <aside id="paneLogInspector" style="background-color: var(--bg-header);" class="w-[420px] min-w-[280px] max-w-[950px] flex flex-col overflow-hidden shrink-0">
-      <div style="border-color: var(--border); color: var(--text-sub);" class="px-4 py-2.5 border-b flex items-center justify-between text-xs shrink-0">
-        <span style="color: var(--text-main);" class="font-semibold">Log Event Forensics</span>
-        <div class="flex items-center gap-1.5">
-          <button id="btnCopyLogJson" onclick="copyLogJson()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="w-[96px] h-[28px] px-2.5 py-1 border rounded-md text-[11px] font-sans transition whitespace-nowrap flex items-center justify-center shrink-0 select-none" title="Copy JSON Forensics">
-            <span id="copyLogLabel" class="whitespace-nowrap text-center">Copy JSON</span>
-          </button>
-        </div>
-      </div>
-
-      <div class="flex-1 overflow-y-auto p-4 space-y-3">
-        <div class="grid grid-cols-2 gap-2.5 text-xs">
-          <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-2.5 rounded-lg">
-            <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans">Event ID</span>
-            <span id="logInspectId" style="color: var(--text-main);" class="font-semibold mt-0.5 block">evt-init</span>
-          </div>
-          <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-2.5 rounded-lg">
-            <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans">Severity / Category</span>
-            <span id="logInspectCategory" style="color: var(--mint);" class="font-semibold mt-0.5 block">SYSTEM · network</span>
+    <aside id="paneLogInspector" style="background-color: var(--bg-header);" class="w-[420px] max-w-[950px] flex flex-col overflow-hidden shrink-0">
+      <div class="flex-1 flex flex-col min-w-[280px] h-full overflow-hidden">
+        <div style="border-color: var(--border); color: var(--text-sub);" class="px-4 py-2.5 border-b flex items-center justify-between text-xs shrink-0">
+          <span style="color: var(--text-main);" class="font-semibold">Log Event Forensics</span>
+          <div class="flex items-center gap-1.5">
+            <button id="btnCopyLogJson" onclick="copyLogJson()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="w-[96px] h-[28px] px-2.5 py-1 border rounded-md text-[11px] font-sans transition whitespace-nowrap flex items-center justify-center shrink-0 select-none" title="Copy JSON Forensics">
+              <span id="copyLogLabel" class="whitespace-nowrap text-center">Copy JSON</span>
+            </button>
+            <button id="btnCloseLogInspector" onclick="toggleInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white hover:bg-slate-700/30 transition shrink-0" title="Ẩn chi tiết log (Close Inspector)">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
           </div>
         </div>
 
-        <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-2.5 rounded-lg text-xs">
-          <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans mb-1">Action & Session ID</span>
-          <div class="flex items-center justify-between">
-            <span id="logInspectAction" style="color: var(--accent);" class="font-semibold">bridge_init</span>
-            <span id="logInspectSession" style="color: var(--text-sub);">system</span>
+        <div class="flex-1 overflow-y-auto p-4 space-y-3">
+          <div class="grid grid-cols-2 gap-2.5 text-xs">
+            <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-2.5 rounded-lg">
+              <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans">Event ID</span>
+              <span id="logInspectId" style="color: var(--text-main);" class="font-semibold mt-0.5 block">evt-init</span>
+            </div>
+            <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-2.5 rounded-lg">
+              <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans">Severity / Category</span>
+              <span id="logInspectCategory" style="color: var(--mint);" class="font-semibold mt-0.5 block">SYSTEM · network</span>
+            </div>
           </div>
-        </div>
 
-        <div class="flex flex-col flex-1 min-h-[240px]">
-          <span style="color: var(--text-dim);" class="text-[10px] uppercase font-sans mb-1">Raw JSON Metadata Payload</span>
-          <pre id="logInspectJson" style="background-color: var(--bg-console); border-color: var(--border); color: var(--sky);" class="flex-1 border rounded-xl p-3.5 text-[11px] leading-relaxed overflow-auto select-text whitespace-pre-wrap">{}</pre>
+          <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-2.5 rounded-lg text-xs">
+            <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans mb-1">Action & Session ID</span>
+            <div class="flex items-center justify-between">
+              <span id="logInspectAction" style="color: var(--accent);" class="font-semibold">bridge_init</span>
+              <span id="logInspectSession" style="color: var(--text-sub);">system</span>
+            </div>
+          </div>
+
+          <div class="flex flex-col flex-1 min-h-[240px]">
+            <span style="color: var(--text-dim);" class="text-[10px] uppercase font-sans mb-1">Raw JSON Metadata Payload</span>
+            <pre id="logInspectJson" style="background-color: var(--bg-console); border-color: var(--border); color: var(--sky);" class="flex-1 border rounded-xl p-3.5 text-[11px] leading-relaxed overflow-auto select-text whitespace-pre-wrap">{}</pre>
+          </div>
         </div>
       </div>
     </aside>
@@ -1498,22 +1527,40 @@
     }
     if (paneLogInspector) paneLogInspector.style.width = lastLogInspectorWidth + 'px';
 
+    let inspectorAnimTimer = null;
+    let sidebarAnimTimer = null;
+
     function toggleSidebar() {
       isSidebarCollapsed = !isSidebarCollapsed;
       if (!sidebar) return;
       const btn = document.getElementById('btnToggleSidebar');
+
+      if (sidebarAnimTimer) {
+        clearTimeout(sidebarAnimTimer);
+        sidebarAnimTimer = null;
+      }
+
       if (isSidebarCollapsed) {
         lastSidebarWidth = sidebar.offsetWidth > 50 ? sidebar.offsetWidth : DEFAULT_SIDEBAR_WIDTH;
+        if (resizerLeft) resizerLeft.classList.add('resizer-collapsed');
         sidebar.classList.add('pane-collapsed');
-        if (resizerLeft) resizerLeft.classList.add('hidden');
+        sidebar.style.width = '0px';
         if (btn) {
           btn.style.color = 'var(--accent)';
           btn.title = 'Mở danh sách Sessions (Sidebar)';
         }
+        sidebarAnimTimer = setTimeout(() => {
+          if (isSidebarCollapsed && resizerLeft) resizerLeft.classList.add('hidden');
+          sidebarAnimTimer = null;
+        }, 290);
       } else {
+        if (resizerLeft) {
+          resizerLeft.classList.remove('hidden');
+          void resizerLeft.offsetWidth;
+          resizerLeft.classList.remove('resizer-collapsed');
+        }
         sidebar.classList.remove('pane-collapsed');
-        sidebar.style.width = lastSidebarWidth + 'px';
-        if (resizerLeft) resizerLeft.classList.remove('hidden');
+        sidebar.style.width = (lastSidebarWidth || DEFAULT_SIDEBAR_WIDTH) + 'px';
         if (btn) {
           btn.style.color = 'var(--text-sub)';
           btn.title = 'Ẩn danh sách Sessions (Sidebar)';
@@ -1529,43 +1576,123 @@
 
       if (isActivity) {
         if (!inspector || !paneStream) return;
+        if (inspectorAnimTimer) {
+          clearTimeout(inspectorAnimTimer);
+          inspectorAnimTimer = null;
+        }
+
         if (isInspectorCollapsed) {
+          // Smooth synchronized collapse of Activity Inspector
+          const streamRect = paneStream.getBoundingClientRect();
+          const inspRect = inspector.getBoundingClientRect();
+          const currentStreamW = streamRect.width;
+          const currentInspW = inspRect.width;
+          const totalW = currentStreamW + currentInspW + (resizerRight ? resizerRight.offsetWidth : 0);
+
+          // 1. Lock pixel widths so both panes start at exact current coordinates
+          paneStream.style.flex = 'none';
+          paneStream.style.width = currentStreamW + 'px';
+          inspector.style.flex = 'none';
+          inspector.style.width = currentInspW + 'px';
+          inspector.style.minWidth = '0px';
+
+          // Force reflow
+          void inspector.offsetWidth;
+
+          // 2. Trigger synchronized smooth width transition
+          if (resizerRight) resizerRight.classList.add('resizer-collapsed');
           inspector.classList.add('pane-collapsed');
-          if (resizerRight) resizerRight.classList.add('hidden');
-          paneStream.style.flex = "1";
-          paneStream.style.maxWidth = "none";
+          inspector.style.width = '0px';
+          paneStream.style.width = totalW + 'px';
+
           if (btnInsp) {
             btnInsp.style.color = 'var(--accent)';
             btnInsp.title = 'Mở Khung Chi Tiết Inspector';
           }
+
+          inspectorAnimTimer = setTimeout(() => {
+            if (isInspectorCollapsed) {
+              paneStream.style.flex = '1';
+              paneStream.style.width = 'auto';
+              if (resizerRight) resizerRight.classList.add('hidden');
+            }
+            inspectorAnimTimer = null;
+          }, 290);
         } else {
+          // Smooth synchronized expansion of Activity Inspector
+          if (resizerRight) {
+            resizerRight.classList.remove('hidden');
+            void resizerRight.offsetWidth;
+            resizerRight.classList.remove('resizer-collapsed');
+          }
+
+          const totalW = paneStream.offsetWidth;
+          const targetStreamW = Math.min(lastStreamWidth || DEFAULT_STREAM_WIDTH, Math.max(220, totalW - 320));
+          const targetInspW = Math.max(300, totalW - targetStreamW - (resizerRight ? resizerRight.offsetWidth : 0));
+
+          // Set starting frame
+          paneStream.style.flex = 'none';
+          paneStream.style.width = totalW + 'px';
+          inspector.style.flex = 'none';
+          inspector.style.width = '0px';
+          inspector.style.minWidth = '0px';
           inspector.classList.remove('pane-collapsed');
-          if (resizerRight) resizerRight.classList.remove('hidden');
-          paneStream.style.flex = "none";
-          paneStream.style.width = lastStreamWidth + 'px';
-          paneStream.style.maxWidth = "none";
+
+          // Force reflow
+          void inspector.offsetWidth;
+
+          // Animate to target widths in lockstep
+          paneStream.style.width = targetStreamW + 'px';
+          inspector.style.width = targetInspW + 'px';
+
           if (btnInsp) {
             btnInsp.style.color = 'var(--text-sub)';
             btnInsp.title = 'Thu gọn Khung Chi Tiết Inspector';
           }
+
+          inspectorAnimTimer = setTimeout(() => {
+            if (!isInspectorCollapsed) {
+              paneStream.style.flex = 'none';
+              paneStream.style.width = targetStreamW + 'px';
+              inspector.style.flex = '1';
+              inspector.style.width = 'auto';
+              inspector.style.minWidth = '280px';
+            }
+            inspectorAnimTimer = null;
+          }, 290);
         }
+
       } else {
+        // Smooth toggle for Logs Inspector
         if (!paneLogInspector) return;
         if (isInspectorCollapsed) {
+          paneLogInspector.style.minWidth = '0px';
           paneLogInspector.classList.add('pane-collapsed');
-          if (resizerLog) resizerLog.classList.add('hidden');
+          if (resizerLog) resizerLog.classList.add('resizer-collapsed');
           if (btnLogInsp) {
             btnLogInsp.style.color = 'var(--accent)';
             btnLogInsp.title = 'Mở Chi tiết Log';
           }
+          setTimeout(() => {
+            if (isInspectorCollapsed && resizerLog) resizerLog.classList.add('hidden');
+          }, 290);
         } else {
+          if (resizerLog) {
+            resizerLog.classList.remove('hidden');
+            void resizerLog.offsetWidth;
+            resizerLog.classList.remove('resizer-collapsed');
+          }
           paneLogInspector.classList.remove('pane-collapsed');
-          if (resizerLog) resizerLog.classList.remove('hidden');
-          paneLogInspector.style.width = lastLogInspectorWidth + 'px';
+          paneLogInspector.style.width = (lastLogInspectorWidth || DEFAULT_LOG_INSPECTOR_WIDTH) + 'px';
           if (btnLogInsp) {
             btnLogInsp.style.color = 'var(--text-sub)';
             btnLogInsp.title = 'Thu gọn Chi tiết Log';
           }
+          setTimeout(() => {
+            if (!isInspectorCollapsed) {
+              paneLogInspector.style.minWidth = '280px';
+            }
+          }, 290);
         }
       }
     }
