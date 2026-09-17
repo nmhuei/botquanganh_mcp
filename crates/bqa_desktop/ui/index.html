@@ -14,11 +14,27 @@
 
     window.onerror = function(msg, url, line, col, error) {
       sendToRust("console_error", { msg: String(msg) + " at " + String(url) + ":" + line + ":" + col + (error ? " " + String(error) : "") });
+      try {
+        const screen = document.getElementById('bootScreen');
+        if (screen) screen.style.display = 'none';
+      } catch (_) {}
       return false;
     };
     window.onunhandledrejection = function(event) {
       sendToRust("console_error", { msg: "Unhandled rejection: " + String(event.reason) });
     };
+
+    // Absolute failsafe watchdog: ensure boot screen is NEVER stuck
+    setTimeout(() => {
+      try {
+        const screen = document.getElementById('bootScreen');
+        if (screen && screen.style.display !== 'none') {
+          console.log("HEAD WATCHDOG: Auto-dismissing boot screen");
+          screen.style.opacity = '0';
+          setTimeout(() => { screen.style.display = 'none'; }, 250);
+        }
+      } catch (_) {}
+    }, 2200);
     console.log = (function(oldLog) {
       return function(...args) {
         if (oldLog) oldLog.apply(console, args);
@@ -1397,18 +1413,18 @@
     let isSidebarCollapsed = false;
     let isInspectorCollapsed = false;
 
-    // Load persisted widths from localStorage or fall back to defaults
+    // Load persisted widths from safe storage or fall back to defaults
     const DEFAULT_SIDEBAR_WIDTH = 224;
     const DEFAULT_STREAM_WIDTH = 320;
     const DEFAULT_LOG_INSPECTOR_WIDTH = 420;
 
-    let lastSidebarWidth = parseInt(localStorage.getItem('bqa_sidebar_w'), 10) || DEFAULT_SIDEBAR_WIDTH;
+    let lastSidebarWidth = parseInt(safeGetStorage('bqa_sidebar_w'), 10) || DEFAULT_SIDEBAR_WIDTH;
     if (lastSidebarWidth < 160 || lastSidebarWidth > 450) lastSidebarWidth = DEFAULT_SIDEBAR_WIDTH;
 
-    let lastStreamWidth = parseInt(localStorage.getItem('bqa_stream_w'), 10) || DEFAULT_STREAM_WIDTH;
+    let lastStreamWidth = parseInt(safeGetStorage('bqa_stream_w'), 10) || DEFAULT_STREAM_WIDTH;
     if (lastStreamWidth < 220 || lastStreamWidth > 950) lastStreamWidth = DEFAULT_STREAM_WIDTH;
 
-    let lastLogInspectorWidth = parseInt(localStorage.getItem('bqa_log_insp_w'), 10) || DEFAULT_LOG_INSPECTOR_WIDTH;
+    let lastLogInspectorWidth = parseInt(safeGetStorage('bqa_log_insp_w'), 10) || DEFAULT_LOG_INSPECTOR_WIDTH;
     if (lastLogInspectorWidth < 280 || lastLogInspectorWidth > 950) lastLogInspectorWidth = DEFAULT_LOG_INSPECTOR_WIDTH;
 
     // Apply saved widths on load
@@ -1565,14 +1581,14 @@
       },
       onDragEnd: () => {
         if (lastSidebarWidth) {
-          localStorage.setItem('bqa_sidebar_w', String(lastSidebarWidth));
+          safeSetStorage('bqa_sidebar_w', String(lastSidebarWidth));
         }
       },
       onDoubleClick: () => {
         if (sidebar) {
           sidebar.style.width = DEFAULT_SIDEBAR_WIDTH + 'px';
           lastSidebarWidth = DEFAULT_SIDEBAR_WIDTH;
-          localStorage.setItem('bqa_sidebar_w', String(DEFAULT_SIDEBAR_WIDTH));
+          safeSetStorage('bqa_sidebar_w', String(DEFAULT_SIDEBAR_WIDTH));
         }
       }
     });
@@ -1599,7 +1615,7 @@
       },
       onDragEnd: () => {
         if (lastStreamWidth) {
-          localStorage.setItem('bqa_stream_w', String(lastStreamWidth));
+          safeSetStorage('bqa_stream_w', String(lastStreamWidth));
         }
       },
       onDoubleClick: () => {
@@ -1607,7 +1623,7 @@
           paneStream.style.width = DEFAULT_STREAM_WIDTH + 'px';
           paneStream.style.maxWidth = 'none';
           lastStreamWidth = DEFAULT_STREAM_WIDTH;
-          localStorage.setItem('bqa_stream_w', String(DEFAULT_STREAM_WIDTH));
+          safeSetStorage('bqa_stream_w', String(DEFAULT_STREAM_WIDTH));
         }
       }
     });
@@ -1627,14 +1643,14 @@
       },
       onDragEnd: () => {
         if (lastLogInspectorWidth) {
-          localStorage.setItem('bqa_log_insp_w', String(lastLogInspectorWidth));
+          safeSetStorage('bqa_log_insp_w', String(lastLogInspectorWidth));
         }
       },
       onDoubleClick: () => {
         if (paneLogInspector) {
           paneLogInspector.style.width = DEFAULT_LOG_INSPECTOR_WIDTH + 'px';
           lastLogInspectorWidth = DEFAULT_LOG_INSPECTOR_WIDTH;
-          localStorage.setItem('bqa_log_insp_w', String(DEFAULT_LOG_INSPECTOR_WIDTH));
+          safeSetStorage('bqa_log_insp_w', String(DEFAULT_LOG_INSPECTOR_WIDTH));
         }
       }
     });
