@@ -133,8 +133,8 @@ impl AppPaths {
                     if k.trim() == "HOST_CHAT_ROOT" {
                         let clean_v = v.trim().trim_matches('"').trim_matches('\'');
                         if !clean_v.is_empty() {
-                            ws_root = if clean_v.starts_with("~/") {
-                                PathBuf::from(&home_dir).join(&clean_v[2..])
+                            ws_root = if let Some(stripped) = clean_v.strip_prefix("~/") {
+                                PathBuf::from(&home_dir).join(stripped)
                             } else {
                                 PathBuf::from(clean_v)
                             };
@@ -148,8 +148,8 @@ impl AppPaths {
         if let Ok(env_root) = std::env::var("HOST_CHAT_ROOT").or_else(|_| std::env::var("BQA_CHAT_WORKSPACES_DIR")) {
             let clean_v = env_root.trim();
             if !clean_v.is_empty() {
-                ws_root = if clean_v.starts_with("~/") {
-                    PathBuf::from(&home_dir).join(&clean_v[2..])
+                ws_root = if let Some(stripped) = clean_v.strip_prefix("~/") {
+                    PathBuf::from(&home_dir).join(stripped)
                 } else {
                     PathBuf::from(clean_v)
                 };
@@ -226,11 +226,11 @@ fn read_last_lines(path: &Path, max_lines: usize) -> Vec<String> {
     };
 
     let chunk_size: u64 = 8 * 1024 * 1024;
-    let start_pos = if file_len > chunk_size { file_len - chunk_size } else { 0 };
+    let start_pos = file_len.saturating_sub(chunk_size);
     let _ = reader.seek(SeekFrom::Start(start_pos));
 
     let mut lines = Vec::new();
-    let mut line_iter = reader.lines().flatten();
+    let mut line_iter = reader.lines().map_while(Result::ok);
     if start_pos > 0 {
         let _ = line_iter.next();
     }
@@ -337,7 +337,7 @@ fn scan_workspaces(root: &Path) -> Vec<SessionItem> {
         }
     }
 
-    scanned_list.sort_by(|a, b| b.mtime.cmp(&a.mtime));
+    scanned_list.sort_by_key(|b| std::cmp::Reverse(b.mtime));
 
     let mut sessions = Vec::with_capacity(scanned_list.len());
     for (idx, mut sc) in scanned_list.into_iter().enumerate() {
@@ -497,7 +497,7 @@ fn read_session_commands(paths: &AppPaths, chat_id: &str) -> Vec<CommandItem> {
         if let Ok(file) = fs::File::open(&mcp_log_path) {
             use std::io::{BufRead, BufReader};
             let reader = BufReader::new(file);
-            for line in reader.lines().flatten() {
+            for line in reader.lines().map_while(Result::ok) {
                 if !line.contains(chat_id) {
                     continue;
                 }
@@ -537,7 +537,7 @@ fn read_session_commands(paths: &AppPaths, chat_id: &str) -> Vec<CommandItem> {
             if let Ok(file) = fs::File::open(fpath) {
                 use std::io::{BufRead, BufReader};
                 let reader = BufReader::new(file);
-                for line in reader.lines().flatten() {
+                for line in reader.lines().map_while(Result::ok) {
                     let trimmed = line.trim();
                     if trimmed.is_empty() { continue; }
                     if let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) {
@@ -613,10 +613,10 @@ fn read_session_commands(paths: &AppPaths, chat_id: &str) -> Vec<CommandItem> {
             } else if kind == "host_read_file" && !p_path.is_empty() {
                 let start = p.get("start_line").and_then(|v| v.as_i64()).unwrap_or(1);
                 let end = p.get("end_line").and_then(|v| v.as_i64()).unwrap_or(100);
-                let rel_path = p_path.split('/').last().unwrap_or(p_path);
+                let rel_path = p_path.split('/').next_back().unwrap_or(p_path);
                 format!("read {} (lines {}-{})", rel_path, start, end)
             } else if kind == "host_write_file" && !p_path.is_empty() {
-                let rel_path = p_path.split('/').last().unwrap_or(p_path);
+                let rel_path = p_path.split('/').next_back().unwrap_or(p_path);
                 format!("write {}", rel_path)
             } else if kind == "host_search_text" && !p_query.is_empty() {
                 format!("search '{}'", p_query)
@@ -640,7 +640,7 @@ fn read_session_commands(paths: &AppPaths, chat_id: &str) -> Vec<CommandItem> {
 
         let exit_code = mcp.and_then(|m| m.get("exit_code")).and_then(|v| v.as_i64())
             .or_else(|| result.and_then(|r| r.get("payload")).and_then(|p| p.get("exit_code")).and_then(|v| v.as_i64()))
-            .unwrap_or_else(|| if is_ok { 0 } else { 1 }) as i32;
+            .unwrap_or(if is_ok { 0 } else { 1 }) as i32;
 
         let duration = mcp.and_then(|m| m.get("duration_ms")).and_then(|v| v.as_f64())
             .map(|d| format!("{:.0}ms", d))
@@ -1159,15 +1159,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         let mut last_trigger = std::time::Instant::now();
-        for res in rx {
-            if let Ok(event) = res {
-                if event.kind.is_modify() || event.kind.is_create() {
-                    if last_trigger.elapsed() >= std::time::Duration::from_millis(150) {
-                        last_trigger = std::time::Instant::now();
-                        let js = "if (window.__triggerFastPoll) window.__triggerFastPoll();".to_string();
-                        let _ = proxy_watcher.send_event(UserEvent::EvalScript(js));
-                    }
-                }
+        for event in rx.into_iter().flatten() {
+            if (event.kind.is_modify() || event.kind.is_create())
+                && last_trigger.elapsed() >= std::time::Duration::from_millis(150)
+            {
+                last_trigger = std::time::Instant::now();
+                let js = "if (window.__triggerFastPoll) window.__triggerFastPoll();".to_string();
+                let _ = proxy_watcher.send_event(UserEvent::EvalScript(js));
             }
         }
     });
