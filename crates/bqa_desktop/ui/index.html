@@ -575,15 +575,15 @@
 
     <!-- Right: Status Beacon & Actions -->
     <div style="color: var(--text-sub);" class="flex items-center space-x-2.5 text-xs">
-      <div style="background-color: var(--bg-base); border-color: var(--border);" class="flex items-center gap-2 border px-2.5 py-1 rounded-md text-[11px] font-mono">
-        <span id="topbarStatusDot" style="background-color: var(--mint);" class="w-1.5 h-1.5 rounded-full"></span>
-        <span id="topbarStatusText" style="color: var(--text-main);">0.0.0.0:18427</span>
+      <div style="background-color: var(--bg-base); border-color: var(--border);" class="flex items-center justify-center gap-2 border px-2.5 py-1 rounded-md text-[11px] font-mono min-w-[170px] shrink-0">
+        <span id="topbarStatusDot" style="background-color: var(--mint);" class="w-1.5 h-1.5 rounded-full shrink-0"></span>
+        <span id="topbarStatusText" style="color: var(--text-main);" class="truncate">0.0.0.0:18427</span>
       </div>
 
       <!-- Restart Button with auto-switch to Overview -->
-      <button id="btnRestart" onclick="handleRestartServer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-2.5 py-1 border hover:border-[#37425c] rounded-md text-[11px] font-medium transition flex items-center gap-1.5 active:scale-95 shadow-xs" title="Khởi động lại Bridge Server">
-        <svg id="restartIcon" class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-        <span id="restartLabel">Khởi động lại</span>
+      <button id="btnRestart" onclick="handleRestartServer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="w-[125px] h-[28px] px-2.5 py-1 border hover:border-[#37425c] rounded-md text-[11px] font-medium transition flex items-center justify-center gap-1.5 active:scale-95 shadow-xs shrink-0" title="Khởi động lại Bridge Server">
+        <svg id="restartIcon" class="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+        <span id="restartLabel" class="truncate">Khởi động lại</span>
       </button>
     </div>
   </header>
@@ -606,20 +606,20 @@
 
           <!-- Actions container -->
           <div id="bridgeActionsRunning" class="flex items-center gap-1.5">
-            <button onclick="promptRestartServer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-2.5 py-1 border hover:border-[#37425c] rounded-md text-[11px] font-medium transition flex items-center gap-1 active:scale-95 shadow-xs" title="Khởi động lại Bridge">
-              <svg id="restartIcon" class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+            <button onclick="promptRestartServer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="w-[84px] h-[28px] px-2.5 py-1 border hover:border-[#37425c] rounded-md text-[11px] font-medium transition flex items-center justify-center gap-1 active:scale-95 shadow-xs shrink-0" title="Khởi động lại Bridge">
+              <svg id="restartIcon" class="w-3 h-3 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
               <span id="restartLabel">Restart</span>
             </button>
-            <button onclick="promptStopServer()" class="px-2.5 py-1 bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 rounded-md text-[11px] font-medium transition flex items-center gap-1 active:scale-95 shadow-xs" title="Dừng Bridge Server">
-              <span class="w-2 h-2 rounded-xs bg-rose-400"></span>
+            <button onclick="promptStopServer()" class="w-[68px] h-[28px] px-2.5 py-1 bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 rounded-md text-[11px] font-medium transition flex items-center justify-center gap-1 active:scale-95 shadow-xs shrink-0" title="Dừng Bridge Server">
+              <span class="w-2 h-2 rounded-xs bg-rose-400 shrink-0"></span>
               <span>Stop</span>
             </button>
           </div>
 
           <!-- Stopped State Action (Hidden when running) -->
           <div id="bridgeActionsStopped" class="hidden items-center gap-1.5">
-            <button onclick="startBridgeServer()" class="px-3 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-md text-[11px] font-medium transition flex items-center gap-1 active:scale-95 shadow-xs" title="Khởi chạy Bridge Server">
-              <svg class="w-3 h-3 text-emerald-400" fill="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            <button onclick="startBridgeServer()" class="w-[74px] h-[28px] px-3 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-md text-[11px] font-medium transition flex items-center justify-center gap-1 active:scale-95 shadow-xs shrink-0" title="Khởi chạy Bridge Server">
+              <svg class="w-3 h-3 text-emerald-400 shrink-0" fill="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
               <span>Start</span>
             </button>
           </div>
@@ -631,14 +631,14 @@
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
             <span style="color: var(--text-sub);" class="text-[11px] uppercase tracking-wider font-sans font-semibold">MCP Cloudflare Tunnel Endpoint</span>
-            <span id="tunnelStatusBadge" style="color: var(--mint); background-color: var(--accent-soft); border-color: var(--border);" class="text-[10px] border px-1.5 py-0.2 rounded font-sans">Đã kết nối Edge</span>
+            <span id="tunnelStatusBadge" style="color: var(--mint); background-color: var(--accent-soft); border-color: var(--border);" class="text-[10px] border px-2 py-0.5 rounded font-sans inline-flex items-center justify-center min-w-[125px] text-center shrink-0">Đã kết nối Edge</span>
           </div>
           <div class="flex items-center gap-2 font-sans">
-            <button onclick="copyBridgeUrl()" style="background-color: var(--accent-soft); border: 1px solid var(--accent); color: var(--accent);" class="px-3 py-1 rounded-md text-[11px] font-medium hover:brightness-125 transition flex items-center gap-1.5 shadow-xs">
-              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" stroke-width="2"></rect><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke-width="2"></path></svg>
-              <span id="copyUrlLabel">Sao chép Tunnel URL</span>
+            <button id="btnCopyTunnelUrl" onclick="copyBridgeUrl()" style="background-color: var(--accent-soft); border: 1px solid var(--accent); color: var(--accent);" class="w-[170px] h-[28px] px-3 py-1 rounded-md text-[11px] font-medium hover:brightness-125 transition flex items-center justify-center gap-1.5 shadow-xs shrink-0">
+              <svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" stroke-width="2"></rect><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke-width="2"></path></svg>
+              <span id="copyUrlLabel" class="truncate text-center">Sao chép Tunnel URL</span>
             </button>
-            <button onclick="openSettingsDrawer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-2.5 py-1 border rounded-md text-[11px] transition">
+            <button onclick="openSettingsDrawer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-2.5 py-1 border rounded-md text-[11px] transition shrink-0">
               Cài đặt Server
             </button>
           </div>
@@ -724,9 +724,9 @@
           </button>
           <span id="streamTitle" style="color: var(--text-main);" class="font-mono font-semibold truncate text-[11.5px] min-w-0" title="Active Session ID">Đang tải...</span>
           <div class="flex items-center gap-1 shrink-0 ml-auto">
-            <button id="btnCopyActiveSession" onclick="copySessionBind(activeChatId, this)" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--accent);" class="px-1.5 py-0.5 border rounded text-[10.5px] font-mono flex items-center gap-1 transition hover:brightness-125 hover:border-indigo-400 shrink-0" title="Sao chép Session ID">
-              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-              <span>Copy</span>
+            <button id="btnCopyActiveSession" onclick="copySessionBind(activeChatId, this)" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--accent);" class="w-[72px] h-[22px] px-1.5 py-0.5 border rounded text-[10.5px] font-mono flex items-center justify-center gap-1 transition hover:brightness-125 hover:border-indigo-400 shrink-0" title="Sao chép Session ID">
+              <svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+              <span class="btn-copy-text">Copy</span>
             </button>
           </div>
         </div>
@@ -752,8 +752,8 @@
       <div style="border-color: var(--border); color: var(--text-sub);" class="px-4 py-2 border-b flex items-center justify-between gap-2 text-xs shrink-0 min-w-0 overflow-hidden">
         <span style="color: var(--text-main);" class="font-semibold whitespace-nowrap truncate min-w-0">Chi tiết Thực thi (Inspector)</span>
         <div class="flex items-center gap-2 shrink-0">
-          <button onclick="copyDetails()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-2.5 py-1 border rounded-md text-[11px] transition whitespace-nowrap shrink-0">
-            <span id="copyBtnLabel">Sao chép</span>
+          <button id="btnCopyDetails" onclick="copyDetails()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="w-[110px] h-[28px] px-2.5 py-1 border rounded-md text-[11px] font-sans transition whitespace-nowrap flex items-center justify-center shrink-0">
+            <span id="copyBtnLabel" class="truncate text-center">Sao chép</span>
           </button>
         </div>
       </div>
@@ -801,12 +801,12 @@
             <div class="flex items-center justify-between gap-2 mb-1.5">
               <span style="color: var(--text-dim);" class="text-[10px] uppercase font-sans font-semibold whitespace-nowrap">Phiên làm việc (Session Bind)</span>
               <div class="flex items-center gap-1.5 shrink-0">
-                <button onclick="copySessionBind(activeChatId, this)" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--accent);" class="px-2 py-0.5 border rounded text-[10.5px] font-mono flex items-center gap-1 transition hover:brightness-125" title="Sao chép Session ID">
-                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-                  <span>Copy ID</span>
+                <button onclick="copySessionBind(activeChatId, this)" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--accent);" class="w-[78px] h-[22px] px-2 py-0.5 border rounded text-[10.5px] font-mono flex items-center justify-center gap-1 transition hover:brightness-125 shrink-0" title="Sao chép Session ID">
+                  <svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                  <span class="btn-copy-text">Copy ID</span>
                 </button>
-                <button onclick="copySessionBind(activeChatId, this, 'cli')" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-sub);" class="px-2 py-0.5 border rounded text-[10.5px] font-mono flex items-center gap-1 transition hover:text-white" title="Sao chép lệnh: bqa session bind <session_id>">
-                  <span>Copy CLI</span>
+                <button onclick="copySessionBind(activeChatId, this, 'cli')" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-sub);" class="w-[84px] h-[22px] px-2 py-0.5 border rounded text-[10.5px] font-mono flex items-center justify-center gap-1 transition hover:text-white shrink-0" title="Sao chép lệnh: bqa session bind <session_id>">
+                  <span class="btn-copy-text">Copy CLI</span>
                 </button>
               </div>
             </div>
@@ -894,8 +894,8 @@
       <div style="border-color: var(--border); color: var(--text-sub);" class="px-4 py-2.5 border-b flex items-center justify-between text-xs shrink-0">
         <span style="color: var(--text-main);" class="font-semibold">Log Event Forensics</span>
         <div class="flex items-center gap-1.5">
-          <button onclick="copyLogJson()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-2.5 py-1 border rounded-md text-[11px] font-sans transition">
-            <span id="copyLogLabel">Sao chép JSON</span>
+          <button id="btnCopyLogJson" onclick="copyLogJson()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="w-[120px] h-[28px] px-2.5 py-1 border rounded-md text-[11px] font-sans transition whitespace-nowrap flex items-center justify-center shrink-0">
+            <span id="copyLogLabel" class="truncate text-center">Sao chép JSON</span>
           </button>
         </div>
       </div>
@@ -1194,9 +1194,9 @@
         <button onclick="closeSettingsDrawer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-3 py-1.5 rounded-lg text-xs font-medium border transition">
           Đóng
         </button>
-        <button onclick="applyEnvHotReload()" style="background-color: var(--mint); color: #090b0f;" class="px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-xs hover:opacity-90 active:scale-95">
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-          <span id="btnHotReloadLabel">Lưu & Hot Reload</span>
+        <button id="btnApplyEnvHotReload" onclick="applyEnvHotReload()" style="background-color: var(--mint); color: #090b0f;" class="w-[172px] h-[32px] px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs hover:opacity-90 active:scale-95 shrink-0">
+          <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+          <span id="btnHotReloadLabel" class="truncate text-center">Lưu & Hot Reload</span>
         </button>
       </div>
     </div>
@@ -2708,11 +2708,23 @@
       copyTextToClipboard(textToCopy, () => {
         showToast(`✓ Đã chép ${labelDesc}: ${targetId}`);
         if (btnEl) {
-          const origHtml = btnEl.innerHTML;
-          btnEl.innerHTML = `<svg class="w-3 h-3 inline text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg><span class="text-emerald-400 ml-1">Đã chép</span>`;
-          setTimeout(() => {
-            btnEl.innerHTML = origHtml;
-          }, 1500);
+          const textSpan = btnEl.querySelector('.btn-copy-text') || btnEl.querySelector('span:last-child');
+          if (textSpan) {
+            const origText = textSpan.innerText;
+            const origColor = btnEl.style.color;
+            textSpan.innerText = 'Đã chép';
+            btnEl.style.color = 'var(--mint, #10b981)';
+            setTimeout(() => {
+              textSpan.innerText = origText;
+              btnEl.style.color = origColor;
+            }, 1500);
+          } else {
+            const origHtml = btnEl.innerHTML;
+            btnEl.innerHTML = `<span class="text-emerald-400">Đã chép</span>`;
+            setTimeout(() => {
+              btnEl.innerHTML = origHtml;
+            }, 1500);
+          }
         }
       });
     }
