@@ -149,19 +149,31 @@ impl AppPaths {
     fn write_dotenv(&self, updates: &HashMap<String, String>) -> Result<(), std::io::Error> {
         let mut current = self.read_dotenv();
         for (k, v) in updates {
+            if k.contains('\n') || k.contains('\r') || v.contains('\n') || v.contains('\r') {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Newline not allowed in dotenv key or value",
+                ));
+            }
             current.insert(k.clone(), v.clone());
         }
 
         let mut lines = Vec::new();
         lines.push("# === BQA BRIDGE CONFIGURATION (MANAGED BY RUST NATIVE STUDIO) ===".to_string());
         for (k, v) in &current {
-            lines.push(format!("{}=\"{}\"", k, v));
+            let escaped_v = v.replace('\\', "\\\\").replace('"', "\\\"");
+            lines.push(format!("{}=\"{}\"", k, escaped_v));
         }
 
         if let Some(parent) = self.dotenv_path.parent() {
             let _ = fs::create_dir_all(parent);
         }
-        fs::write(&self.dotenv_path, lines.join("\n") + "\n")
+
+        let tmp_path = self.dotenv_path.with_extension(format!("tmp.{}", std::process::id()));
+        let content = lines.join("\n") + "\n";
+        fs::write(&tmp_path, content)?;
+        fs::rename(&tmp_path, &self.dotenv_path)?;
+        Ok(())
     }
 }
 
@@ -388,36 +400,39 @@ fn read_session_commands(paths: &AppPaths, chat_id: &str) -> Vec<CommandItem> {
         }
     }
 
-    // 2. Read workspace journal.jsonl (check active and archived)
-    let mut journal_path = paths.workspace_root.join(chat_id).join("journal.jsonl");
-    if !journal_path.exists() {
-        let archive_path = paths.workspace_root.join(".archive").join(chat_id).join("journal.jsonl");
-        if archive_path.exists() {
-            journal_path = archive_path;
-        }
-    }
+    // 2. Read workspace journal (reading rotated journal.jsonl.1 first, then active journal.jsonl)
+    let ws_dir = if paths.workspace_root.join(chat_id).is_dir() {
+        paths.workspace_root.join(chat_id)
+    } else {
+        paths.workspace_root.join(".archive").join(chat_id)
+    };
+    let journal_archive = ws_dir.join("journal.jsonl.1");
+    let journal_path = ws_dir.join("journal.jsonl");
+
     let mut op_order: Vec<String> = Vec::new();
     let mut started_ops: HashMap<String, serde_json::Value> = HashMap::new();
     let mut result_ops: HashMap<String, serde_json::Value> = HashMap::new();
 
-    if journal_path.exists() {
-        if let Ok(file) = fs::File::open(&journal_path) {
-            use std::io::{BufRead, BufReader};
-            let reader = BufReader::new(file);
-            for line in reader.lines().flatten() {
-                let trimmed = line.trim();
-                if trimmed.is_empty() { continue; }
-                if let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) {
-                    let op_id = val.get("op").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    if op_id.is_empty() { continue; }
-                    let event_type = val.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                    if event_type == "op_started" {
-                        if !started_ops.contains_key(&op_id) {
-                            op_order.push(op_id.clone());
+    for fpath in &[journal_archive, journal_path] {
+        if fpath.exists() {
+            if let Ok(file) = fs::File::open(fpath) {
+                use std::io::{BufRead, BufReader};
+                let reader = BufReader::new(file);
+                for line in reader.lines().flatten() {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() { continue; }
+                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                        let op_id = val.get("op").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        if op_id.is_empty() { continue; }
+                        let event_type = val.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                        if event_type == "op_started" {
+                            if !started_ops.contains_key(&op_id) {
+                                op_order.push(op_id.clone());
+                            }
+                            started_ops.insert(op_id, val);
+                        } else if event_type == "op_result" {
+                            result_ops.insert(op_id, val);
                         }
-                        started_ops.insert(op_id, val);
-                    } else if event_type == "op_result" {
-                        result_ops.insert(op_id, val);
                     }
                 }
             }
@@ -482,14 +497,19 @@ fn read_session_commands(paths: &AppPaths, chat_id: &str) -> Vec<CommandItem> {
             kind.to_string()
         };
 
+        let is_completed = result.is_some() || mcp.is_some();
+        let is_ok = result.and_then(|r| r.get("ok")).and_then(|v| v.as_bool())
+            .or_else(|| mcp.and_then(|m| m.get("phase")).map(|p| p == "completed"))
+            .unwrap_or(true);
+
         let exit_code = mcp.and_then(|m| m.get("exit_code")).and_then(|v| v.as_i64())
             .or_else(|| result.and_then(|r| r.get("payload")).and_then(|p| p.get("exit_code")).and_then(|v| v.as_i64()))
-            .unwrap_or(0) as i32;
+            .unwrap_or_else(|| if is_ok { 0 } else { 1 }) as i32;
 
         let duration = mcp.and_then(|m| m.get("duration_ms")).and_then(|v| v.as_f64())
             .map(|d| format!("{:.0}ms", d))
             .or_else(|| started.get("duration_ms").and_then(|v| v.as_f64()).map(|d| format!("{:.0}ms", d)))
-            .unwrap_or_else(|| "14ms".to_string());
+            .unwrap_or_else(|| "—".to_string());
 
         let timestamp = started.get("ts")
             .or_else(|| mcp.and_then(|m| m.get("timestamp")))
@@ -503,7 +523,13 @@ fn read_session_commands(paths: &AppPaths, chat_id: &str) -> Vec<CommandItem> {
             "09-16 08:22".to_string()
         };
 
-        let status = if exit_code == 0 { "success".to_string() } else { "failure".to_string() };
+        let status = if !is_completed {
+            "running".to_string()
+        } else if is_ok && exit_code == 0 {
+            "success".to_string()
+        } else {
+            "failure".to_string()
+        };
 
         let mut cwd = mcp.and_then(|m| m.get("cwd")).and_then(|v| v.as_str())
             .or_else(|| payload.and_then(|p| p.get("cwd")).and_then(|v| v.as_str()))
@@ -1007,8 +1033,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let paths_clone = Arc::clone(&paths);
     let proxy_clone = proxy.clone();
 
+    let enable_devtools = std::env::var("BQA_DEBUG").map(|v| v == "1").unwrap_or(false) || cfg!(debug_assertions);
     let builder = WebViewBuilder::new()
-        .with_devtools(true)
+        .with_devtools(enable_devtools)
         .with_html(html_content)
         .with_ipc_handler(move |req: wry::http::Request<String>| {
             let msg = req.body();
@@ -1110,8 +1137,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         "save_env" => {
                             if let Some(payload) = parsed.payload {
                                 if let Ok(map) = serde_json::from_value::<HashMap<String, String>>(payload) {
-                                    let ok = p.write_dotenv(&map).is_ok();
-                                    let js = format!("if (window.__onEnvSaved) window.__onEnvSaved({});", ok);
+                                    let res = p.write_dotenv(&map);
+                                    let (ok, msg) = match res {
+                                        Ok(_) => (true, "Đã cập nhật .env thành công (khởi động lại server để áp dụng)".to_string()),
+                                        Err(err) => (false, format!("Lỗi khi lưu .env: {}", err)),
+                                    };
+                                    let js = format!("if (window.__onEnvSaved) window.__onEnvSaved({}, '{}');", ok, msg.replace('\'', "\\'"));
                                     let _ = pr.send_event(UserEvent::EvalScript(js));
                                 }
                             }

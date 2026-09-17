@@ -284,12 +284,25 @@ def handle_session_current(ctx: CLIContext, _args: Any) -> int:
             renderer.hint("bqa session bind <session_id>", "Bind to a session with")
         return 1
 
-    target_dir = str(root / active_id) if root else ""
+    active_dir = root / active_id if root else None
+    archive_dir = root / ARCHIVE_DIR_NAME / active_id if root else None
+
+    is_archived = False
+    if active_dir and active_dir.is_dir():
+        target_path = active_dir
+    elif archive_dir and archive_dir.is_dir():
+        target_path = archive_dir
+        is_archived = True
+    else:
+        target_path = active_dir
+
+    target_dir = str(target_path) if target_path else ""
     payload = {
         "ok": True,
         "chat_id": active_id,
         "session_id": active_id,
         "path": target_dir,
+        "archived": is_archived,
     }
     if ctx.json_output:
         emit_json(payload)
@@ -301,9 +314,10 @@ def handle_session_current(ctx: CLIContext, _args: Any) -> int:
 
     renderer = renderer_for(ctx)
     renderer.header("Current Active Session", active_id)
+    status_text = "● ACTIVE (archived)" if is_archived else "● ACTIVE"
     renderer.facts([
         ("Session ID", active_id),
-        ("Status", "● ACTIVE"),
+        ("Status", status_text),
         ("Path", target_dir),
     ], no_wrap=("Session ID", "Path"))
     return 0

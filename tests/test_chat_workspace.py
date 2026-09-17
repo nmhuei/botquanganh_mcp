@@ -100,14 +100,10 @@ def test_raising_sibling_validator_falls_back_locally(monkeypatch):
     assert cw.is_valid_chat_id("abc") is False
 
 
-def test_missing_sibling_module_uses_local_pattern():
-    saved = sys.modules.pop("app.chat_identity", None)
-    try:
-        assert cw.is_valid_chat_id("abcdef") is True
-        assert cw.is_valid_chat_id("abcde") is False
-    finally:
-        if saved is not None:
-            sys.modules["app.chat_identity"] = saved
+def test_missing_sibling_module_uses_local_pattern(monkeypatch):
+    monkeypatch.setitem(sys.modules, "app.chat_identity", None)
+    assert cw.is_valid_chat_id("abcdef") is True
+    assert cw.is_valid_chat_id("abcde") is False
 
 
 # ---------------------------------------------------------------------------
@@ -809,4 +805,40 @@ def test_create_or_bind_trust_gateway_allows_resume_without_token(monkeypatch, t
     rebound = manager.create_or_bind(bound.chat_id, require_token=True, resume_token=None)
     assert rebound.chat_id == bound.chat_id
     assert not rebound.created
+
+
+def test_concurrent_independent_managers_race_free(tmp_path: Path):
+    import concurrent.futures
+
+    root = tmp_path / "chats"
+    root.mkdir(parents=True, exist_ok=True)
+    initial_mgr = cw.WorkspaceManager(root)
+    initial_mgr.create_or_bind("test-race")
+
+    errors = []
+
+    def worker(idx):
+        try:
+            mgr = cw.WorkspaceManager(root)
+            for i in range(20):
+                mgr.append_op_started("test-race", f"op-{idx}-{i}", "cmd", {"i": i})
+                mgr.append_op_result("test-race", f"op-{idx}-{i}", True, {"out": i})
+        except Exception as e:
+            errors.append(e)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+        list(ex.map(worker, range(6)))
+
+    assert len(errors) == 0
+    records = [
+        json.loads(line)
+        for line in (root / "test-race" / "journal.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert len(records) == 240
+    seqs = {r["seq"] for r in records}
+    assert len(seqs) == 240
+    meta = json.loads((root / "test-race" / "meta.json").read_text(encoding="utf-8"))
+    assert meta["next_seq"] == 241
+
 

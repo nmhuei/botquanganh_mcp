@@ -137,6 +137,22 @@ def test_strict_mode_rejects_state_change_without_chat_id(
     assert audit_events == []
 
 
+def test_strict_mode_rejects_save_note_without_chat_id(
+    host_workspace, monkeypatch, audit_events
+):
+    import asyncio
+    from app.tools.workspace_tools import host_save_note
+
+    set_mode(monkeypatch, "strict")
+
+    result = asyncio.run(host_save_note("unattributed note"))
+
+    assert result["ok"] is False
+    assert "strict" in result["error"]["message"]
+    assert "chat_id" in result["error"]["message"]
+    assert audit_events == []
+
+
 def test_strict_mode_allows_reads_without_chat_id(host_workspace, monkeypatch):
     set_mode(monkeypatch, "strict")
     (host_workspace / "present.txt").write_text("data\n")

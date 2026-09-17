@@ -33,6 +33,7 @@ _STATE_CHANGING_TOOLS = frozenset(
         "host_append_file",
         "host_make_directory",
         "host_run_command",
+        "host_save_note",
     }
 )
 

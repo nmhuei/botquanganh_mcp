@@ -341,7 +341,10 @@ class MetricsMiddleware:
             finish_once()
 
 
-_original_http_app = FastMCP.http_app
+if not hasattr(FastMCP, "_bqa_original_http_app"):
+    FastMCP._bqa_original_http_app = FastMCP.http_app
+
+_original_http_app = FastMCP._bqa_original_http_app
 
 
 def _chatgpt_http_app(self, *args, **kwargs):

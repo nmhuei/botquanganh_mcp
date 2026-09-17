@@ -22,6 +22,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+try:
+    import fcntl
+except ImportError:
+    fcntl = None  # type: ignore
+
 import app.config
 
 # Verbatim chat-id contract: 6..64 chars, alphanumeric first character.
@@ -464,10 +469,16 @@ def _json_line_bytes(obj: Mapping[str, Any]) -> bytes:
 
 
 def _atomic_write(path: Path, data: bytes) -> None:
-    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    rand = secrets.token_hex(8)
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.{rand}.tmp")
     descriptor = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     try:
-        os.write(descriptor, data)
+        total_written = 0
+        while total_written < len(data):
+            written = os.write(descriptor, data[total_written:])
+            if written == 0:
+                raise OSError("write zero bytes to temp file")
+            total_written += written
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
@@ -699,14 +710,28 @@ def _workspace_bytes(ws: Path) -> int:
 # ---------------------------------------------------------------------------
 
 
+# Module-level registry locks so separate WorkspaceManager instances
+# targeting the same workspace root synchronize properly in-process.
+_WORKSPACE_GLOBAL_LOCK = threading.Lock()
+_WORKSPACE_REGISTRY_LOCKS: dict[str, threading.RLock] = {}
+
+
+def _get_workspace_lock(root: Path, chat_id: str) -> threading.RLock:
+    key = f"{root.resolve()}:{chat_id}"
+    with _WORKSPACE_GLOBAL_LOCK:
+        lock = _WORKSPACE_REGISTRY_LOCKS.get(key)
+        if lock is None:
+            lock = threading.RLock()
+            _WORKSPACE_REGISTRY_LOCKS[key] = lock
+        return lock
+
+
 class WorkspaceManager:
     def __init__(self, root: Path, *, bind_wait_seconds: float = 5.0) -> None:
         self.root = Path(root)
         # A losing racer waits here for the winner's meta.json to appear;
         # past the deadline an existing directory counts as a squat.
         self.bind_wait_seconds = float(bind_wait_seconds)
-        self._master_lock = threading.Lock()
-        self._workspace_locks: dict[str, threading.Lock] = {}
 
     def limits(self) -> WorkspaceLimits:
         return read_limits()
@@ -714,13 +739,8 @@ class WorkspaceManager:
     def workspace_path(self, chat_id: str) -> Path:
         return self.root / validate_chat_id(chat_id)
 
-    def _lock_for(self, chat_id: str) -> threading.Lock:
-        with self._master_lock:
-            lock = self._workspace_locks.get(chat_id)
-            if lock is None:
-                lock = threading.Lock()
-                self._workspace_locks[chat_id] = lock
-            return lock
+    def _lock_for(self, chat_id: str) -> threading.RLock:
+        return _get_workspace_lock(self.root, chat_id)
 
     def get_latest_active_chat_id(self, filter_label: str | None = None) -> str | None:
         """Find the most recently active workspace ID, optionally matching label."""
@@ -1027,42 +1047,79 @@ class WorkspaceManager:
         validated = validate_chat_id(chat_id)
         with self._lock_for(validated):
             ws = self.root / validated
-            meta = load_workspace_meta(ws, expected_chat_id=validated)
-            journal = ws / JOURNAL_NAME
-            _repair_torn_tail(journal)
-            record = {"seq": int(meta["next_seq"]), "ts": _utc_now_iso(), **base}
-            encoded = _json_line_bytes(record)
-            # Gate before rotation: rotation only relocates bytes, the append
-            # is what would grow the footprint past the quota. The gate must
-            # also stay ahead of the next_seq bump so a refusal burns no seq.
-            self._enforce_quota(ws, validated, len(encoded))
-            if rotates and self._needs_rotation(journal, len(encoded)):
-                unresolved = pending_operations(read_journal_records(ws))
-                os.replace(journal, ws / JOURNAL_ARCHIVE_NAME)
-                # The replace destroys the previous archive generation, taking
-                # any still-unresolved op_started record with it: re-append
-                # them verbatim (original seq/ts/kind/payload) into the fresh
-                # journal so pending tracking survives unlimited rotations.
-                if unresolved:
-                    descriptor = os.open(
-                        journal, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600
-                    )
-                    try:
-                        for pending_record in unresolved:
-                            os.write(descriptor, _json_line_bytes(pending_record))
-                    finally:
-                        os.close(descriptor)
-            # Bump next_seq before the journal write: a kill in between then
-            # skips a seq (visible gap) instead of letting the next append
-            # reuse one already on disk.
-            meta["next_seq"] = int(meta["next_seq"]) + 1
-            _atomic_write(ws / META_NAME, _json_line_bytes(meta))
-            descriptor = os.open(journal, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+            lock_fd = None
+            if fcntl is not None:
+                try:
+                    lock_file = ws / ".lock"
+                    lock_fd = os.open(lock_file, os.O_CREAT | os.O_RDWR, 0o600)
+                    fcntl.flock(lock_fd, fcntl.LOCK_EX)
+                except OSError:
+                    if lock_fd is not None:
+                        try:
+                            os.close(lock_fd)
+                        except OSError:
+                            pass
+                    lock_fd = None
             try:
-                os.write(descriptor, encoded)
+                meta = load_workspace_meta(ws, expected_chat_id=validated)
+                journal = ws / JOURNAL_NAME
+                _repair_torn_tail(journal)
+                record = {"seq": int(meta["next_seq"]), "ts": _utc_now_iso(), **base}
+                encoded = _json_line_bytes(record)
+                # Gate before rotation: rotation only relocates bytes, the append
+                # is what would grow the footprint past the quota. The gate must
+                # also stay ahead of the next_seq bump so a refusal burns no seq.
+                self._enforce_quota(ws, validated, len(encoded))
+                if rotates and self._needs_rotation(journal, len(encoded)):
+                    unresolved = pending_operations(read_journal_records(ws))
+                    os.replace(journal, ws / JOURNAL_ARCHIVE_NAME)
+                    # The replace destroys the previous archive generation, taking
+                    # any still-unresolved op_started record with it: re-append
+                    # them verbatim (original seq/ts/kind/payload) into the fresh
+                    # journal so pending tracking survives unlimited rotations.
+                    if unresolved:
+                        descriptor = os.open(
+                            journal, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600
+                        )
+                        try:
+                            for pending_record in unresolved:
+                                pending_bytes = _json_line_bytes(pending_record)
+                                total_w = 0
+                                while total_w < len(pending_bytes):
+                                    w = os.write(descriptor, pending_bytes[total_w:])
+                                    if w == 0:
+                                        break
+                                    total_w += w
+                            os.fsync(descriptor)
+                        finally:
+                            os.close(descriptor)
+                # Bump next_seq before the journal write: a kill in between then
+                # skips a seq (visible gap) instead of letting the next append
+                # reuse one already on disk.
+                meta["next_seq"] = int(meta["next_seq"]) + 1
+                _atomic_write(ws / META_NAME, _json_line_bytes(meta))
+                descriptor = os.open(journal, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+                try:
+                    total_written = 0
+                    while total_written < len(encoded):
+                        written = os.write(descriptor, encoded[total_written:])
+                        if written == 0:
+                            raise OSError("write zero bytes to journal")
+                        total_written += written
+                    os.fsync(descriptor)
+                finally:
+                    os.close(descriptor)
+                return record
             finally:
-                os.close(descriptor)
-            return record
+                if lock_fd is not None:
+                    try:
+                        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                    except OSError:
+                        pass
+                    try:
+                        os.close(lock_fd)
+                    except OSError:
+                        pass
 
     def _needs_rotation(self, journal: Path, incoming_bytes: int) -> bool:
         limit = read_limits().journal_max_bytes

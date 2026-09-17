@@ -431,7 +431,7 @@ async def host_workspace_list(
                 except Exception:
                     pass
 
-            is_latest = (chat_id == last_active_id) or (last_active_id is None and idx == 0)
+            is_latest = (chat_id == last_active_id) or (last_active_id is None and not workspaces)
 
             item = {
                 "chat_id": chat_id,
@@ -449,7 +449,11 @@ async def host_workspace_list(
             workspaces.append(item)
 
         total_matched = len(workspaces)
-        limited_workspaces = workspaces[:limit]
+        try:
+            safe_limit = max(1, min(int(limit), 100)) if limit is not None else 10
+        except (ValueError, TypeError):
+            safe_limit = 10
+        limited_workspaces = workspaces[:safe_limit]
 
         return tool_success(
             f"Found {total_matched} workspace(s).",
