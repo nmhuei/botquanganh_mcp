@@ -21,8 +21,6 @@ EXPECTED_TOOLS = {
     "host_workspace_bind",
     "host_workspace_list",
     "host_save_note",
-    "host_session_list",
-    "host_session_bind",
 }
 
 

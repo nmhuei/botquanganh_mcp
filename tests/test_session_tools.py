@@ -85,4 +85,4 @@ def test_gating_blocks_commands_before_session_established(tmp_path: Path, monke
     assert res["ok"] is False
     error = res.get("error", {})
     assert "instructions" in error or "suggestion" in error
-    assert "host_session_bind" in str(error) or "host_session_list" in str(error)
+    assert "host_workspace_bind" in str(error) or "host_workspace_list" in str(error)

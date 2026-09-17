@@ -62,13 +62,11 @@ def _invalid_chat_id_payload() -> dict[str, Any]:
         }
 
 
-# Tools exempt from enforce-mode binding: host_session_bind and host_workspace_bind ARE the ways in,
+# Tools exempt from enforce-mode binding: host_workspace_bind and host_workspace_list ARE the ways in,
 # so demanding a prior bind from them would deadlock every caller.
 BIND_EXEMPT_TOOLS = frozenset({
     "host_workspace_bind",
     "host_workspace_list",
-    "host_session_bind",
-    "host_session_list",
 })
 
 
@@ -143,11 +141,11 @@ def _bind_required_payload(tool: str) -> dict[str, Any]:
         if "host_workspace_bind" not in combined:
             error["message"] = (
                 f"{str(error.get('message', '')).strip()} "
-                "Call host_session_bind (or host_workspace_bind) first."
+                "Call host_workspace_bind first."
             ).strip()
         error["instructions"] = [
-            "1. Call 'host_session_list()' to view previous sessions.",
-            "2. Call 'host_session_bind(session_id=...)' to resume an existing session, or 'host_session_bind(new=True, label=...)' to start a new session.",
+            "1. Call 'host_workspace_list()' to view previous workspaces/sessions.",
+            "2. Call 'host_workspace_bind(resume_id=...)' to resume an existing workspace, or 'host_workspace_bind(new=True, label=...)' to start a new workspace.",
             "3. After binding, proceed with host operations.",
         ]
     return payload
