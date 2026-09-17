@@ -58,97 +58,97 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    /* ==================== 13 WORLD-CLASS DEVELOPER THEMES ==================== */
+    /* ==================== 16 WORLD-CLASS DEVELOPER THEMES ==================== */
     :root, html[data-theme="exodia"] {
-      --bg-base: #06080e; --bg-header: #0a0d16; --bg-surface: #0e1320; --bg-card: #131a2c;
+      --bg-base: #06080e; --bg-header: #090d16; --bg-surface: #0e1320; --bg-card: #131a2c;
       --bg-selected: #1b2640; --bg-console: #030407; --border: #1e2a42; --border-hover: #00f0ff;
-      --accent: #00f0ff; --accent-soft: rgba(0, 240, 255, 0.2);
+      --accent: #00f0ff; --accent-soft: rgba(0, 240, 255, 0.18);
       --text-main: #f8fafc; --text-sub: #94a3b8; --text-dim: #64748b;
       --mint: #00ff88; --sky: #38bdf8;
     }
     html[data-theme="linear"] {
-      --bg-base: #0d0f14; --bg-header: #12151d; --bg-surface: #171b26; --bg-card: #1c2230;
-      --bg-selected: #242c3f; --bg-console: #090b0f; --border: #23293a; --border-hover: #343e57;
-      --accent: #5e6ad2; --accent-soft: rgba(94, 106, 210, 0.15);
+      --bg-base: #0d0f14; --bg-header: #131620; --bg-surface: #171b28; --bg-card: #1e2333;
+      --bg-selected: #272e42; --bg-console: #080a0e; --border: #252c3e; --border-hover: #5e6ad2;
+      --accent: #5e6ad2; --accent-soft: rgba(94, 106, 210, 0.18);
       --text-main: #f3f4f6; --text-sub: #9ca3af; --text-dim: #6b7280;
       --mint: #34d399; --sky: #38bdf8;
     }
     html[data-theme="github"] {
       --bg-base: #1c2128; --bg-header: #22272e; --bg-surface: #22272e; --bg-card: #2d333b;
-      --bg-selected: #373e47; --bg-console: #181c22; --border: #373e47; --border-hover: #444c56;
-      --accent: #539bf5; --accent-soft: rgba(83, 155, 245, 0.15);
-      --text-main: #adbac7; --text-sub: #768390; --text-dim: #545d68;
+      --bg-selected: #373e47; --bg-console: #161b22; --border: #373e47; --border-hover: #539bf5;
+      --accent: #539bf5; --accent-soft: rgba(83, 155, 245, 0.18);
+      --text-main: #adbac7; --text-sub: #8b949e; --text-dim: #656d76;
       --mint: #57ab5a; --sky: #6cb6ff;
     }
     html[data-theme="vercel"] {
-      --bg-base: #000000; --bg-header: #0a0a0a; --bg-surface: #0f0f0f; --bg-card: #171717;
-      --bg-selected: #262626; --bg-console: #050505; --border: #262626; --border-hover: #404040;
-      --accent: #ffffff; --accent-soft: rgba(255, 255, 255, 0.1);
-      --text-main: #ededed; --text-sub: #888888; --text-dim: #525252;
-      --mint: #ededed; --sky: #a1a1a1;
+      --bg-base: #000000; --bg-header: #0a0a0a; --bg-surface: #111111; --bg-card: #181818;
+      --bg-selected: #242424; --bg-console: #050505; --border: #262626; --border-hover: #ffffff;
+      --accent: #ffffff; --accent-soft: rgba(255, 255, 255, 0.14);
+      --text-main: #ededed; --text-sub: #a1a1a1; --text-dim: #666666;
+      --mint: #50e3c2; --sky: #0070f3;
     }
     html[data-theme="dracula"] {
       --bg-base: #21222c; --bg-header: #282a36; --bg-surface: #282a36; --bg-card: #343746;
-      --bg-selected: #44475a; --bg-console: #191a21; --border: #44475a; --border-hover: #6272a4;
-      --accent: #bd93f9; --accent-soft: rgba(189, 147, 249, 0.15);
+      --bg-selected: #44475a; --bg-console: #191a21; --border: #44475a; --border-hover: #bd93f9;
+      --accent: #bd93f9; --accent-soft: rgba(189, 147, 249, 0.18);
       --text-main: #f8f8f2; --text-sub: #bfbfbf; --text-dim: #6272a4;
       --mint: #50fa7b; --sky: #8be9fd;
     }
     html[data-theme="nord"] {
       --bg-base: #242933; --bg-header: #2e3440; --bg-surface: #2e3440; --bg-card: #3b4252;
-      --bg-selected: #434c5e; --bg-console: #1d212a; --border: #3b4252; --border-hover: #4c566a;
-      --accent: #88c0d0; --accent-soft: rgba(136, 192, 208, 0.15);
+      --bg-selected: #434c5e; --bg-console: #1d212a; --border: #3b4252; --border-hover: #88c0d0;
+      --accent: #88c0d0; --accent-soft: rgba(136, 192, 208, 0.18);
       --text-main: #eceff4; --text-sub: #d8dee9; --text-dim: #7b88a1;
       --mint: #a3be8c; --sky: #81a1c1;
     }
     html[data-theme="tokyo"] {
       --bg-base: #16161e; --bg-header: #1f2335; --bg-surface: #1f2335; --bg-card: #292e42;
-      --bg-selected: #3b4261; --bg-console: #13141c; --border: #292e42; --border-hover: #414868;
-      --accent: #7aa2f7; --accent-soft: rgba(122, 162, 247, 0.15);
+      --bg-selected: #3b4261; --bg-console: #13141c; --border: #292e42; --border-hover: #7aa2f7;
+      --accent: #7aa2f7; --accent-soft: rgba(122, 162, 247, 0.18);
       --text-main: #c0caf5; --text-sub: #9aa5ce; --text-dim: #565f89;
       --mint: #9ece6a; --sky: #7dcfff;
     }
     html[data-theme="gruvbox"] {
       --bg-base: #1d2021; --bg-header: #282828; --bg-surface: #282828; --bg-card: #32302f;
-      --bg-selected: #3c3836; --bg-console: #141617; --border: #3c3836; --border-hover: #504945;
-      --accent: #fabd2f; --accent-soft: rgba(250, 189, 47, 0.15);
+      --bg-selected: #3c3836; --bg-console: #141617; --border: #3c3836; --border-hover: #fabd2f;
+      --accent: #fabd2f; --accent-soft: rgba(250, 189, 47, 0.18);
       --text-main: #ebdbb2; --text-sub: #a89984; --text-dim: #7c6f64;
       --mint: #b8bb26; --sky: #83a598;
     }
     html[data-theme="catppuccin"] {
       --bg-base: #181825; --bg-header: #1e1e2e; --bg-surface: #1e1e2e; --bg-card: #313244;
-      --bg-selected: #45475a; --bg-console: #11111b; --border: #313244; --border-hover: #585b70;
-      --accent: #cba6f7; --accent-soft: rgba(203, 166, 247, 0.15);
+      --bg-selected: #45475a; --bg-console: #11111b; --border: #313244; --border-hover: #cba6f7;
+      --accent: #cba6f7; --accent-soft: rgba(203, 166, 247, 0.18);
       --text-main: #cdd6f4; --text-sub: #a6adc8; --text-dim: #6c7086;
       --mint: #a6e3a1; --sky: #89dceb;
     }
     html[data-theme="monokai"] {
       --bg-base: #19181a; --bg-header: #221f22; --bg-surface: #221f22; --bg-card: #2d2a2e;
-      --bg-selected: #403e41; --bg-console: #121113; --border: #2d2a2e; --border-hover: #4d494e;
-      --accent: #ffd866; --accent-soft: rgba(255, 216, 102, 0.15);
+      --bg-selected: #403e41; --bg-console: #121113; --border: #2d2a2e; --border-hover: #ffd866;
+      --accent: #ffd866; --accent-soft: rgba(255, 216, 102, 0.18);
       --text-main: #fcfcfa; --text-sub: #939293; --text-dim: #727072;
       --mint: #a9dc76; --sky: #78dce8;
     }
     html[data-theme="rosepine"] {
       --bg-base: #191724; --bg-header: #232136; --bg-surface: #232136; --bg-card: #2a273f;
-      --bg-selected: #393552; --bg-console: #14121e; --border: #2a273f; --border-hover: #44415a;
-      --accent: #ea9a97; --accent-soft: rgba(234, 154, 151, 0.15);
+      --bg-selected: #393552; --bg-console: #14121e; --border: #2a273f; --border-hover: #ea9a97;
+      --accent: #ea9a97; --accent-soft: rgba(234, 154, 151, 0.18);
       --text-main: #e0def4; --text-sub: #908caa; --text-dim: #6e6a86;
       --mint: #9ccfd8; --sky: #c4a7e7;
     }
     html[data-theme="solarized"] {
       --bg-base: #00212b; --bg-header: #002b36; --bg-surface: #002b36; --bg-card: #073642;
-      --bg-selected: #0e4c5b; --bg-console: #00171e; --border: #073642; --border-hover: #586e75;
-      --accent: #268bd2; --accent-soft: rgba(38, 139, 210, 0.15);
+      --bg-selected: #0e4c5b; --bg-console: #00171e; --border: #073642; --border-hover: #268bd2;
+      --accent: #268bd2; --accent-soft: rgba(38, 139, 210, 0.18);
       --text-main: #93a1a1; --text-sub: #657b83; --text-dim: #586e75;
       --mint: #859900; --sky: #2aa198;
     }
     html[data-theme="light"] {
       --bg-base: #f8fafc; --bg-header: #ffffff; --bg-surface: #ffffff; --bg-card: #f1f5f9;
-      --bg-selected: #e2e8f0; --bg-console: #0f172a; --border: #e2e8f0; --border-hover: #cbd5e1;
-      --accent: #4f46e5; --accent-soft: rgba(79, 70, 229, 0.1);
-      --text-main: #0f172a; --text-sub: #64748b; --text-dim: #94a3b8;
-      --mint: #10b981; --sky: #0284c7;
+      --bg-selected: #e2e8f0; --bg-console: #1a2233; --border: #e2e8f0; --border-hover: #4f46e5;
+      --accent: #4f46e5; --accent-soft: rgba(79, 70, 229, 0.12);
+      --text-main: #0f172a; --text-sub: #334155; --text-dim: #64748b;
+      --mint: #10b981; --sky: #38bdf8;
     }
 
     /* ===== VJP-PRO SUITE THEMES ===== */
@@ -168,10 +168,10 @@
     }
     html[data-theme="vjp-light"] {
       --bg-base: #f4f6f5; --bg-header: #ffffff; --bg-surface: #ffffff; --bg-card: #eef2f0;
-      --bg-selected: #dde5e1; --bg-console: #090d0c; --border: #d4ded9; --border-hover: #2e8b57;
+      --bg-selected: #dde5e1; --bg-console: #15221c; --border: #d4ded9; --border-hover: #2e8b57;
       --accent: #2e8b57; --accent-soft: rgba(46, 139, 87, 0.15);
-      --text-main: #0c1211; --text-sub: #4a5c55; --text-dim: #7a8f87;
-      --mint: #10b981; --sky: #0284c7;
+      --text-main: #0c1211; --text-sub: #2d3f37; --text-dim: #556c62;
+      --mint: #10b981; --sky: #38bdf8;
     }
 
     body {
@@ -404,12 +404,24 @@
       will-change: transform;
     }
     button:hover {
-      opacity: 0.92;
+      opacity: 0.94;
     }
     button:active {
       transform: scale(0.96) translateZ(0) !important;
       opacity: 0.8 !important;
       transition-duration: 0.03s !important;
+    }
+
+    /* Standard Interactive Action Button */
+    .btn-action {
+      background-color: var(--bg-surface) !important;
+      border: 1px solid var(--border) !important;
+      color: var(--text-main) !important;
+      transition: all 0.15s ease !important;
+    }
+    .btn-action:hover {
+      border-color: var(--border-hover) !important;
+      box-shadow: 0 0 8px var(--accent-soft) !important;
     }
 
     /* Session Item Hover & Click Feedback */
@@ -420,9 +432,9 @@
     }
     .session-item:hover:not(.active) {
       background-color: var(--bg-surface) !important;
-      border-color: var(--border) !important;
+      border-color: var(--border-hover) !important;
       transform: translateX(2px) translateZ(0);
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
     }
     .session-item:active {
       transform: scale(0.98) translateZ(0) !important;
@@ -640,14 +652,14 @@
       </div>
 
       <!-- Restart Button with auto-switch to Overview -->
-      <button id="btnRestart" onclick="handleRestartServer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="h-[28px] px-2.5 py-1 border hover:border-[#37425c] rounded-md text-[11px] font-medium font-sans transition flex items-center justify-center gap-1.5 active:scale-95 shadow-xs shrink-0 select-none whitespace-nowrap" title="Restart Bridge Server">
-        <svg id="restartIcon" class="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+      <button id="btnRestart" onclick="handleRestartServer()" class="btn-action h-[28px] px-2.5 py-1 rounded-md text-[11px] font-medium font-sans transition flex items-center justify-center gap-1.5 active:scale-95 shadow-xs shrink-0 select-none whitespace-nowrap" title="Restart Bridge Server">
+        <svg id="restartIcon" style="color: var(--text-sub);" class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
         <span id="restartLabel" class="whitespace-nowrap">Restart</span>
       </button>
 
       <!-- Settings Button in Top Navbar -->
-      <button id="btnSettingsTrigger" onclick="openSettingsDrawer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="h-[28px] px-2.5 py-1 border hover:border-[#37425c] rounded-md text-[11px] font-medium font-sans transition flex items-center justify-center gap-1.5 active:scale-95 shadow-xs shrink-0 select-none whitespace-nowrap" title="Cài đặt hệ thống (Settings · Ctrl+,)">
-        <svg class="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+      <button id="btnSettingsTrigger" onclick="openSettingsDrawer()" class="btn-action h-[28px] px-2.5 py-1 rounded-md text-[11px] font-medium font-sans transition flex items-center justify-center gap-1.5 active:scale-95 shadow-xs shrink-0 select-none whitespace-nowrap" title="Cài đặt hệ thống (Settings · Ctrl+,)">
+        <svg style="color: var(--text-sub);" class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
         <span class="whitespace-nowrap">Settings</span>
       </button>
     </div>
@@ -671,8 +683,8 @@
 
           <!-- Actions container -->
           <div id="bridgeActionsRunning" class="flex items-center gap-1.5">
-            <button onclick="promptRestartServer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="w-[84px] h-[28px] px-2.5 py-1 border hover:border-[#37425c] rounded-md text-[11px] font-medium transition flex items-center justify-center gap-1 active:scale-95 shadow-xs shrink-0" title="Khởi động lại Bridge">
-              <svg id="restartIcon" class="w-3 h-3 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+            <button onclick="promptRestartServer()" class="btn-action w-[84px] h-[28px] px-2.5 py-1 rounded-md text-[11px] font-medium transition flex items-center justify-center gap-1 active:scale-95 shadow-xs shrink-0" title="Khởi động lại Bridge">
+              <svg id="restartIcon" style="color: var(--text-sub);" class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
               <span id="restartLabel">Restart</span>
             </button>
             <button onclick="promptStopServer()" class="w-[68px] h-[28px] px-2.5 py-1 bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 rounded-md text-[11px] font-medium transition flex items-center justify-center gap-1 active:scale-95 shadow-xs shrink-0" title="Dừng Bridge Server">
@@ -792,7 +804,7 @@
           </button>
           <span id="streamTitle" style="color: var(--text-main);" class="font-mono font-semibold truncate text-[11.5px] min-w-0" title="Active Session ID">Đang tải...</span>
           <div class="flex items-center gap-1 shrink-0 ml-auto">
-            <button id="btnCopyActiveSession" onclick="copySessionBind(activeChatId, this)" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--accent);" class="w-[74px] h-[24px] px-2 py-0.5 border rounded text-[11px] font-sans whitespace-nowrap flex items-center justify-center gap-1 transition hover:brightness-125 hover:border-indigo-400 shrink-0 select-none leading-none" title="Copy Session ID">
+            <button id="btnCopyActiveSession" onclick="copySessionBind(activeChatId, this)" style="color: var(--accent);" class="btn-action w-[74px] h-[24px] px-2 py-0.5 rounded text-[11px] font-sans whitespace-nowrap flex items-center justify-center gap-1 shrink-0 select-none leading-none" title="Copy Session ID">
               <svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
               <span class="btn-copy-text whitespace-nowrap">Copy</span>
             </button>
@@ -873,11 +885,11 @@
             <div class="flex items-center justify-between gap-2 mb-1.5">
               <span style="color: var(--text-dim);" class="text-[10px] uppercase font-sans font-semibold whitespace-nowrap">Phiên làm việc (Session Bind)</span>
               <div class="flex items-center gap-1.5 shrink-0">
-                <button onclick="copySessionBind(activeChatId, this)" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--accent);" class="w-[82px] h-[24px] px-2 py-0.5 border rounded text-[11px] font-sans whitespace-nowrap flex items-center justify-center gap-1 transition hover:brightness-125 shrink-0 select-none leading-none" title="Copy Session ID">
+                <button onclick="copySessionBind(activeChatId, this)" style="color: var(--accent);" class="btn-action w-[82px] h-[24px] px-2 py-0.5 rounded text-[11px] font-sans whitespace-nowrap flex items-center justify-center gap-1 shrink-0 select-none leading-none" title="Copy Session ID">
                   <svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                   <span class="btn-copy-text whitespace-nowrap">Copy ID</span>
                 </button>
-                <button onclick="copySessionBind(activeChatId, this, 'cli')" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-sub);" class="w-[82px] h-[24px] px-2 py-0.5 border rounded text-[11px] font-sans whitespace-nowrap flex items-center justify-center gap-1 transition hover:text-white shrink-0 select-none leading-none" title="Copy: bqa session bind <session_id>">
+                <button onclick="copySessionBind(activeChatId, this, 'cli')" style="color: var(--text-sub);" class="btn-action w-[82px] h-[24px] px-2 py-0.5 rounded text-[11px] font-sans whitespace-nowrap flex items-center justify-center gap-1 shrink-0 select-none leading-none" title="Copy: bqa session bind <session_id>">
                   <span class="btn-copy-text whitespace-nowrap">Copy CLI</span>
                 </button>
               </div>
@@ -968,7 +980,7 @@
         <div style="border-color: var(--border); color: var(--text-sub);" class="px-4 py-2.5 border-b flex items-center justify-between text-xs shrink-0">
           <span style="color: var(--text-main);" class="font-semibold">Log Event Forensics</span>
           <div class="flex items-center gap-1.5">
-            <button id="btnCopyLogJson" onclick="copyLogJson()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="w-[96px] h-[28px] px-2.5 py-1 border rounded-md text-[11px] font-sans transition whitespace-nowrap flex items-center justify-center shrink-0 select-none" title="Copy JSON Forensics">
+            <button id="btnCopyLogJson" onclick="copyLogJson()" class="btn-action w-[96px] h-[28px] px-2.5 py-1 rounded-md text-[11px] font-sans transition whitespace-nowrap flex items-center justify-center shrink-0 select-none" title="Copy JSON Forensics">
               <span id="copyLogLabel" class="whitespace-nowrap text-center">Copy JSON</span>
             </button>
             <button id="btnCloseLogInspector" onclick="closeInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white hover:bg-slate-700/30 transition shrink-0" title="Ẩn chi tiết log (Close Inspector)">
