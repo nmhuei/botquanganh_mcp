@@ -399,6 +399,41 @@ fn delete_workspace_folder(workspace_root: &Path, chat_id: &str) -> (bool, Strin
     }
 }
 
+fn copy_to_system_clipboard(text: &str) {
+    use std::io::Write;
+    if let Ok(mut child) = Command::new("xclip")
+        .args(["-selection", "clipboard"])
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+    {
+        if let Some(mut stdin) = child.stdin.take() {
+            let _ = stdin.write_all(text.as_bytes());
+        }
+        let _ = child.wait();
+        return;
+    }
+    if let Ok(mut child) = Command::new("wl-copy")
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+    {
+        if let Some(mut stdin) = child.stdin.take() {
+            let _ = stdin.write_all(text.as_bytes());
+        }
+        let _ = child.wait();
+        return;
+    }
+    if let Ok(mut child) = Command::new("xsel")
+        .args(["--clipboard", "--input"])
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+    {
+        if let Some(mut stdin) = child.stdin.take() {
+            let _ = stdin.write_all(text.as_bytes());
+        }
+        let _ = child.wait();
+    }
+}
+
 fn sanitize_honeypot_text(text: &str) -> String {
     let lower = text.to_lowercase();
     if !lower.contains("x-llm")
@@ -1219,35 +1254,51 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .and_then(|v| v.get("action"))
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("");
-                            let success = match act {
+                            let (success, msg) = match act {
                                 "start" => {
-                                    Command::new("bqa")
+                                    let ok = Command::new("bqa")
                                         .arg("start")
                                         .current_dir(&p.repo_root)
                                         .status()
                                         .map(|s| s.success())
-                                        .unwrap_or(false)
+                                        .unwrap_or(false);
+                                    (ok, if ok { "Đã khởi chạy FastMCP server" } else { "Không thể khởi chạy FastMCP server" })
                                 }
                                 "stop" => {
-                                    Command::new("bqa")
+                                    let ok = Command::new("bqa")
                                         .arg("stop")
                                         .current_dir(&p.repo_root)
                                         .status()
                                         .map(|s| s.success())
-                                        .unwrap_or(false)
+                                        .unwrap_or(false);
+                                    (ok, if ok { "Đã dừng FastMCP server" } else { "Không thể dừng FastMCP server" })
                                 }
                                 "restart" => {
-                                    Command::new("bqa")
+                                    let ok = Command::new("bqa")
                                         .arg("restart")
                                         .current_dir(&p.repo_root)
                                         .status()
                                         .map(|s| s.success())
-                                        .unwrap_or(false)
+                                        .unwrap_or(false);
+                                    (ok, if ok { "Đã khởi động lại FastMCP server" } else { "Không thể khởi động lại FastMCP server" })
                                 }
-                                _ => false,
+                                _ => (false, "Thao tác không xác định"),
                             };
-                            let js = format!("if (window.__onLifecycleActionFinished) window.__onLifecycleActionFinished('{}', {});", act, success);
+                            let js = format!(
+                                "if (window.__onLifecycleActionFinished) window.__onLifecycleActionFinished('{}', {}, '{}');",
+                                act, success, msg
+                            );
                             let _ = pr.send_event(UserEvent::EvalScript(js));
+                        }
+                        "copy_to_clipboard" => {
+                            let text = parsed.payload
+                                .as_ref()
+                                .and_then(|v| v.get("text"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
+                            if !text.is_empty() {
+                                copy_to_system_clipboard(text);
+                            }
                         }
                         "save_env" => {
                             if let Some(payload) = parsed.payload {

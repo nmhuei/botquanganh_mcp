@@ -1176,11 +1176,11 @@
           <div class="grid grid-cols-2 gap-2 pt-2">
             <div>
               <label style="color: var(--text-dim);" class="text-[10px] uppercase font-semibold block mb-1">MCP_BIND_HOST</label>
-              <input type="text" value="0.0.0.0" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px]">
+              <input id="cfgBindHost" type="text" value="0.0.0.0" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px]">
             </div>
             <div>
               <label style="color: var(--text-dim);" class="text-[10px] uppercase font-semibold block mb-1">MCP_PORT</label>
-              <input type="text" value="18427" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px]">
+              <input id="cfgPort" type="text" value="18427" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px]">
             </div>
           </div>
         </div>
@@ -1345,7 +1345,9 @@
         MAX_OUTPUT_BYTES: document.getElementById('cfgMaxOutput')?.value || '1048576',
         GATEWAY_TOKEN: document.getElementById('cfgToken')?.value || '',
         REQUIRE_AUTH: document.getElementById('cfgRequireAuth')?.value || 'false',
-        ATTRIBUTION_MODE: document.getElementById('cfgAttribution')?.value || 'full'
+        ATTRIBUTION_MODE: document.getElementById('cfgAttribution')?.value || 'full',
+        MCP_BIND_HOST: document.getElementById('cfgBindHost')?.value || '0.0.0.0',
+        MCP_PORT: document.getElementById('cfgPort')?.value || '18427'
       };
 
       sendToRust('save_env', configPayload);
@@ -2503,7 +2505,9 @@
 
       if (bridgeUrlDisplay) {
         const fallback = `http://127.0.0.1:${port}/mcp`;
-        bridgeUrlDisplay.innerText = status.tunnel_url || status.url || fallback;
+        const activeUrl = status.tunnel_url || status.url || fallback;
+        bridgeUrlDisplay.innerText = activeUrl;
+        latestTunnelUrl = activeUrl;
       }
 
       // Populate Settings Drawer Fields
@@ -2517,6 +2521,8 @@
       if (status.gateway_token) setVal('cfgToken', status.gateway_token);
       if (status.require_auth !== undefined) setVal('cfgRequireAuth', status.require_auth ? 'true' : 'false');
       if (status.attribution_mode) setVal('cfgAttribution', status.attribution_mode);
+      if (status.fastmcp_port) setVal('cfgPort', String(status.fastmcp_port));
+      if (status.bind_host) setVal('cfgBindHost', String(status.bind_host));
     };
 
     function setVal(id, val) {
@@ -2596,18 +2602,67 @@
       const restartIcon = document.getElementById('restartIcon');
       if (restartIcon) restartIcon.classList.remove('animate-spin');
 
-      showToast(success ? `✓ ${message}` : `⚠️ Thất bại: ${message}`);
+      const msg = message || (success ? `Thao tác ${action} thành công` : `Thao tác ${action} thất bại`);
+      showToast(success ? `✓ ${msg}` : `⚠️ ${msg}`);
       sendToRust('get_runtime_status');
     };
 
     // ==================== CLIPBOARD & TOAST ====================
+    let latestTunnelUrl = '';
+
+    function copyTextToClipboard(text, onSuccess, onFail) {
+      if (!text) {
+        showToast('⚠️ Nội dung sao chép trống');
+        return;
+      }
+
+      // 1. Immediately send to Rust backend so Linux system clipboard is updated via xclip/wl-copy
+      sendToRust('copy_to_clipboard', { text: text });
+
+      let succeeded = false;
+      const triggerSuccess = () => {
+        if (!succeeded) {
+          succeeded = true;
+          if (onSuccess) onSuccess();
+        }
+      };
+
+      const fallbackExec = () => {
+        try {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.style.position = 'fixed';
+          ta.style.left = '-9999px';
+          ta.style.top = '-9999px';
+          ta.setAttribute('readonly', '');
+          document.body.appendChild(ta);
+          ta.focus();
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        } catch (_) {}
+        // Rust xclip already performed the copy at the OS level
+        triggerSuccess();
+      };
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text)
+          .then(triggerSuccess)
+          .catch(() => fallbackExec());
+      } else {
+        fallbackExec();
+      }
+    }
+
     function copyDetails() {
       const cmd = document.getElementById('inspectCommand')?.innerText || '';
       const out = document.getElementById('inspectOutput')?.innerText || '';
-      navigator.clipboard.writeText(`Command: ${cmd}\nOutput:\n${out}`).then(() => {
+      const text = `Command: ${cmd}\nOutput:\n${out}`;
+      copyTextToClipboard(text, () => {
+        showToast('✓ Đã sao chép chi tiết lệnh');
         const btn = document.getElementById('copyBtnLabel');
         if (btn) {
-          btn.innerText = 'Đã sao chép!';
+          btn.innerText = '✓ Đã sao chép!';
           setTimeout(() => { btn.innerText = 'Sao chép'; }, 1500);
         }
       });
@@ -2615,22 +2670,28 @@
 
     function copyLogJson() {
       const json = document.getElementById('logInspectJson')?.innerText || '{}';
-      navigator.clipboard.writeText(json).then(() => {
+      copyTextToClipboard(json, () => {
+        showToast('✓ Đã sao chép JSON forensics');
         const btn = document.getElementById('copyLogLabel');
         if (btn) {
-          btn.innerText = 'Đã sao chép!';
+          btn.innerText = '✓ Đã sao chép!';
           setTimeout(() => { btn.innerText = 'Sao chép JSON'; }, 1500);
         }
       });
     }
 
     function copyBridgeUrl() {
-      const url = document.getElementById('bridgeUrlDisplay')?.innerText || '';
-      navigator.clipboard.writeText(url).then(() => {
-        const btn = document.getElementById('copyUrlLabel');
-        if (btn) {
-          btn.innerText = 'Đã sao chép!';
-          setTimeout(() => { btn.innerText = 'Sao chép Tunnel URL'; }, 1500);
+      const displayEl = document.getElementById('bridgeUrlDisplay');
+      let url = (latestTunnelUrl || displayEl?.innerText || '').trim();
+      if (!url || url.includes('Đang đồng bộ') || url.includes('...')) {
+        url = 'http://127.0.0.1:18427/mcp';
+      }
+      copyTextToClipboard(url, () => {
+        showToast('✓ Đã sao chép Tunnel URL: ' + url);
+        const label = document.getElementById('copyUrlLabel');
+        if (label) {
+          label.innerText = '✓ Đã sao chép!';
+          setTimeout(() => { label.innerText = 'Sao chép Tunnel URL'; }, 1500);
         }
       });
     }
@@ -2644,7 +2705,7 @@
       const textToCopy = type === 'cli' ? `bqa session bind ${targetId}` : targetId;
       const labelDesc = type === 'cli' ? 'Lệnh CLI' : 'Session ID';
 
-      const doFeedback = () => {
+      copyTextToClipboard(textToCopy, () => {
         showToast(`✓ Đã chép ${labelDesc}: ${targetId}`);
         if (btnEl) {
           const origHtml = btnEl.innerHTML;
@@ -2653,34 +2714,7 @@
             btnEl.innerHTML = origHtml;
           }, 1500);
         }
-      };
-
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(textToCopy)
-          .then(doFeedback)
-          .catch(() => fallbackClipboardCopy(textToCopy, doFeedback));
-      } else {
-        fallbackClipboardCopy(textToCopy, doFeedback);
-      }
-    }
-
-    function fallbackClipboardCopy(text, callback) {
-      try {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.style.position = 'fixed';
-        ta.style.left = '-9999px';
-        ta.style.top = '-9999px';
-        document.body.appendChild(ta);
-        ta.focus();
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-        if (callback) callback();
-      } catch (err) {
-        console.error('Copy fallback failed:', err);
-        showToast('⚠️ Không thể sao chép vào bộ nhớ tạm');
-      }
+      });
     }
 
     function showToast(msg) {
