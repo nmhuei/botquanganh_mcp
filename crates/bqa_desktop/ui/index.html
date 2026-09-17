@@ -633,16 +633,22 @@
     </div>
 
     <!-- Right: Status Beacon & Actions -->
-    <div style="color: var(--text-sub);" class="flex items-center space-x-2.5 text-xs">
-      <div style="background-color: var(--bg-base); border-color: var(--border);" class="flex items-center justify-center gap-2 border px-2.5 py-1 rounded-md text-[11px] font-mono min-w-[170px] shrink-0">
+    <div style="color: var(--text-sub);" class="flex items-center space-x-2 text-xs">
+      <div style="background-color: var(--bg-base); border-color: var(--border);" class="flex items-center justify-center gap-2 border px-2.5 py-1 rounded-md text-[11px] font-mono min-w-[155px] shrink-0">
         <span id="topbarStatusDot" style="background-color: var(--mint);" class="w-1.5 h-1.5 rounded-full shrink-0"></span>
         <span id="topbarStatusText" style="color: var(--text-main);" class="truncate">0.0.0.0:18427</span>
       </div>
 
       <!-- Restart Button with auto-switch to Overview -->
-      <button id="btnRestart" onclick="handleRestartServer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="w-[88px] h-[28px] px-2.5 py-1 border hover:border-[#37425c] rounded-md text-[11px] font-medium font-sans transition flex items-center justify-center gap-1.5 active:scale-95 shadow-xs shrink-0 select-none whitespace-nowrap" title="Restart Bridge Server">
+      <button id="btnRestart" onclick="handleRestartServer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="h-[28px] px-2.5 py-1 border hover:border-[#37425c] rounded-md text-[11px] font-medium font-sans transition flex items-center justify-center gap-1.5 active:scale-95 shadow-xs shrink-0 select-none whitespace-nowrap" title="Restart Bridge Server">
         <svg id="restartIcon" class="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
         <span id="restartLabel" class="whitespace-nowrap">Restart</span>
+      </button>
+
+      <!-- Settings Button in Top Navbar -->
+      <button id="btnSettingsTrigger" onclick="openSettingsDrawer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="h-[28px] px-2.5 py-1 border hover:border-[#37425c] rounded-md text-[11px] font-medium font-sans transition flex items-center justify-center gap-1.5 active:scale-95 shadow-xs shrink-0 select-none whitespace-nowrap" title="Cài đặt hệ thống (Settings · Ctrl+,)">
+        <svg class="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+        <span class="whitespace-nowrap">Settings</span>
       </button>
     </div>
   </header>
@@ -1000,103 +1006,84 @@
     </aside>
   </div>
 
-  <!-- ==================== FLOATING SETTINGS TRIGGER BUTTON ==================== -->
-  <button id="btnSettingsTrigger" onclick="openSettingsDrawer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="fixed bottom-4 right-4 z-40 px-3.5 py-2 border rounded-full shadow-xl hover:border-[#6366f1] hover:shadow-indigo-500/20 transition flex items-center gap-2 text-xs font-medium group active:scale-95">
-    <svg class="w-4 h-4 group-hover:rotate-45 transition-transform duration-300 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-    <span>Cài đặt</span>
-  </button>
-
   <!-- ==================== SLIDE-OUT SETTINGS DRAWER ==================== -->
   <div id="settingsBackdrop" onclick="closeSettingsDrawer()" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs transition-opacity duration-300 opacity-0 pointer-events-none"></div>
 
-  <aside id="settingsDrawer" style="background-color: var(--bg-header); border-color: var(--border);" class="fixed top-0 right-0 bottom-0 w-[450px] max-w-full z-50 border-l shadow-2xl flex flex-col transform translate-x-full transition-transform duration-300 ease-out font-sans">
-    <div style="border-color: var(--border);" class="p-4 border-b flex items-center justify-between shrink-0">
+  <aside id="settingsDrawer" style="background-color: var(--bg-header); border-color: var(--border);" class="fixed top-0 right-0 bottom-0 w-[390px] max-w-full z-50 border-l shadow-2xl flex flex-col transform translate-x-full transition-transform duration-300 ease-out font-sans">
+    <!-- Header -->
+    <div style="border-color: var(--border);" class="px-4 py-3 border-b flex items-center justify-between shrink-0">
       <div class="flex items-center gap-2">
-        <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-        <div>
-          <h2 style="color: var(--text-main);" class="text-sm font-bold">Cấu Hình Máy Chủ & Môi Trường</h2>
-          <span style="color: var(--text-dim);" class="text-[10px] font-mono">Quản lý qua Rust Backend</span>
-        </div>
+        <svg class="w-4 h-4 text-indigo-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+        <h2 style="color: var(--text-main);" class="text-xs font-bold uppercase tracking-wider">Cài đặt hệ thống (Settings)</h2>
       </div>
-      <button onclick="closeSettingsDrawer()" style="color: var(--text-sub);" class="hover:text-white p-1 rounded-md transition" title="Đóng">
+      <button onclick="closeSettingsDrawer()" style="color: var(--text-sub);" class="hover:text-white p-1 rounded-md transition" title="Đóng (Esc)">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
       </button>
     </div>
 
-    <div class="flex-1 overflow-y-auto p-4 space-y-3 text-xs">
+    <!-- Scrollable content -->
+    <div class="flex-1 overflow-y-auto p-3.5 space-y-2.5 text-xs">
       <!-- MỤC 1: WORKSPACES & ĐƯỜNG DẪN -->
       <div style="background-color: var(--bg-surface); border-color: var(--border);" class="border rounded-xl overflow-hidden shadow-xs">
-        <button onclick="toggleSection('secPaths')" class="w-full p-3.5 flex items-center justify-between text-left hover:opacity-90 transition">
-          <div class="flex items-center gap-2.5">
-            <span class="text-sm">📂</span>
-            <div>
-              <div class="flex items-center gap-1.5">
-                <h3 style="color: var(--text-main);" class="font-semibold text-xs">1. Workspaces & Đường Dẫn</h3>
-                <span style="color: var(--mint); background-color: var(--accent-soft);" class="text-[9px] px-1 rounded font-mono font-medium">Hot Reload</span>
-              </div>
-              <p style="color: var(--text-dim);" class="text-[10px]">HOST_WORKSPACE_DIR & Thư mục Chat</p>
-            </div>
+        <button onclick="toggleSection('secPaths')" class="w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:opacity-90 transition">
+          <div class="flex items-center gap-2">
+            <span class="text-xs">📂</span>
+            <span style="color: var(--text-main);" class="font-semibold text-xs">Thư mục & Workspaces</span>
           </div>
           <svg id="arrow-secPaths" class="w-3.5 h-3.5 text-slate-400 transform transition-transform duration-200 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
         </button>
 
-        <div id="secPaths" class="p-3.5 pt-0 border-t space-y-2.5 font-mono" style="border-color: var(--border);">
+        <div id="secPaths" class="p-3 pt-0 border-t space-y-2 font-mono text-[11px]" style="border-color: var(--border);">
           <div class="pt-2">
-            <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">HOST_WORKSPACE_DIR (Gốc phân quyền)</label>
-            <input id="cfgWorkspaceDir" type="text" value="/home/light" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px] focus:outline-hidden">
+            <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Workspace Root <span style="color: var(--text-dim);">(HOST_WORKSPACE_DIR)</span></label>
+            <input id="cfgWorkspaceDir" type="text" value="/home/light" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px] focus:outline-hidden">
           </div>
 
           <div>
-            <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">HOST_DEFAULT_DIR (Thư mục mặc định)</label>
-            <input id="cfgDefaultDir" type="text" value="/home/light/Downloads/bqa" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px]">
+            <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Thư mục mặc định <span style="color: var(--text-dim);">(HOST_DEFAULT_DIR)</span></label>
+            <input id="cfgDefaultDir" type="text" value="/home/light/Downloads/bqa" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px]">
           </div>
 
           <div>
-            <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">HOST_CHAT_ROOT (Thư mục lưu phiên)</label>
-            <input id="cfgChatRoot" type="text" value="/home/light/Downloads/bqa-workspaces" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px]">
+            <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Thư mục lưu phiên <span style="color: var(--text-dim);">(HOST_CHAT_ROOT)</span></label>
+            <input id="cfgChatRoot" type="text" value="/home/light/Downloads/bqa-workspaces" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px]">
           </div>
         </div>
       </div>
 
-      <!-- MỤC 2: CHÍNH SÁCH LỆNH & TIMEOUT -->
+      <!-- MỤC 2: CHÍNH SÁCH & TIMEOUT -->
       <div style="background-color: var(--bg-surface); border-color: var(--border);" class="border rounded-xl overflow-hidden shadow-xs">
-        <button onclick="toggleSection('secExecution')" class="w-full p-3.5 flex items-center justify-between text-left hover:opacity-90 transition">
-          <div class="flex items-center gap-2.5">
-            <span class="text-sm">⚡</span>
-            <div>
-              <div class="flex items-center gap-1.5">
-                <h3 style="color: var(--text-main);" class="font-semibold text-xs">2. Thực Thi & Giới Hạn (Policy)</h3>
-                <span style="color: var(--mint); background-color: var(--accent-soft);" class="text-[9px] px-1 rounded font-mono font-medium">Hot Reload</span>
-              </div>
-              <p style="color: var(--text-dim);" class="text-[10px]">Guarded policy, Timeouts & Limits</p>
-            </div>
+        <button onclick="toggleSection('secExecution')" class="w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:opacity-90 transition">
+          <div class="flex items-center gap-2">
+            <span class="text-xs">⚡</span>
+            <span style="color: var(--text-main);" class="font-semibold text-xs">Chính sách lệnh & Giới hạn</span>
           </div>
-          <svg id="arrow-secExecution" class="w-3.5 h-3.5 text-slate-400 transform transition-transform duration-200 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+          <svg id="arrow-secExecution" class="w-3.5 h-3.5 text-slate-400 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
         </button>
 
-        <div id="secExecution" class="p-3.5 pt-0 border-t space-y-2.5 font-mono" style="border-color: var(--border);">
+        <div id="secExecution" class="p-3 pt-0 border-t space-y-2 font-mono text-[11px] hidden" style="border-color: var(--border);">
           <div class="grid grid-cols-2 gap-2 pt-2">
             <div>
-              <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">COMMAND POLICY</label>
-              <select id="cfgPolicy" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2 py-1.5 text-[11px] cursor-pointer">
-                <option value="guarded" selected>guarded (An toàn)</option>
-                <option value="allowlist">allowlist (Chỉ định)</option>
+              <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Chính sách (Policy)</label>
+              <select id="cfgPolicy" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2 py-1 text-[11px] cursor-pointer">
+                <option value="guarded" selected>guarded</option>
+                <option value="allowlist">allowlist</option>
               </select>
             </div>
             <div>
-              <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">DEFAULT TIMEOUT (s)</label>
-              <input id="cfgDefaultTimeout" type="number" value="60" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px]">
+              <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Timeout mặc định (s)</label>
+              <input id="cfgDefaultTimeout" type="number" value="60" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px]">
             </div>
           </div>
 
           <div class="grid grid-cols-2 gap-2">
             <div>
-              <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">MAX TIMEOUT (s)</label>
-              <input id="cfgMaxTimeout" type="number" value="300" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px]">
+              <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Timeout tối đa (s)</label>
+              <input id="cfgMaxTimeout" type="number" value="300" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px]">
             </div>
             <div>
-              <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">MAX OUTPUT (BYTES)</label>
-              <input id="cfgMaxOutput" type="number" value="5000000" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px]">
+              <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Max Output (Bytes)</label>
+              <input id="cfgMaxOutput" type="number" value="5000000" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px]">
             </div>
           </div>
         </div>
@@ -1104,38 +1091,32 @@
 
       <!-- MỤC 3: BẢO MẬT & XÁC THỰC -->
       <div style="background-color: var(--bg-surface); border-color: var(--border);" class="border rounded-xl overflow-hidden shadow-xs">
-        <button onclick="toggleSection('secSecurity')" class="w-full p-3.5 flex items-center justify-between text-left hover:opacity-90 transition">
-          <div class="flex items-center gap-2.5">
-            <span class="text-sm">🛡️</span>
-            <div>
-              <div class="flex items-center gap-1.5">
-                <h3 style="color: var(--text-main);" class="font-semibold text-xs">3. Bảo Mật & Xác Thực (Auth)</h3>
-                <span style="color: var(--mint); background-color: var(--accent-soft);" class="text-[9px] px-1 rounded font-mono font-medium">Hot Reload</span>
-              </div>
-              <p style="color: var(--text-dim);" class="text-[10px]">GATEWAY_TOKEN & Attribution Mode</p>
-            </div>
+        <button onclick="toggleSection('secSecurity')" class="w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:opacity-90 transition">
+          <div class="flex items-center gap-2">
+            <span class="text-xs">🛡️</span>
+            <span style="color: var(--text-main);" class="font-semibold text-xs">Bảo mật & Xác thực (Auth)</span>
           </div>
           <svg id="arrow-secSecurity" class="w-3.5 h-3.5 text-slate-400 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
         </button>
 
-        <div id="secSecurity" class="p-3.5 pt-0 border-t space-y-2.5 font-mono hidden" style="border-color: var(--border);">
+        <div id="secSecurity" class="p-3 pt-0 border-t space-y-2 font-mono text-[11px] hidden" style="border-color: var(--border);">
           <div class="pt-2">
-            <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">GATEWAY_TOKEN</label>
-            <input id="cfgToken" type="text" value="mcp_gateway_9f8d1c7a3b4e5f60" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px]">
+            <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Gateway Token</label>
+            <input id="cfgToken" type="text" value="mcp_gateway_9f8d1c7a3b4e5f60" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px]">
           </div>
 
           <div class="grid grid-cols-2 gap-2">
             <div>
-              <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">REQUIRE_AUTH</label>
-              <select id="cfgRequireAuth" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2 py-1.5 text-[11px] cursor-pointer">
-                <option value="false" selected>false (Không bắt buộc)</option>
-                <option value="true">true (Bắt buộc Token)</option>
+              <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Bắt buộc Auth</label>
+              <select id="cfgRequireAuth" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2 py-1 text-[11px] cursor-pointer">
+                <option value="false" selected>false (Tắt)</option>
+                <option value="true">true (Bật)</option>
               </select>
             </div>
             <div>
-              <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">ATTRIBUTION_MODE</label>
-              <select id="cfgAttribution" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2 py-1.5 text-[11px] cursor-pointer">
-                <option value="enforce" selected>enforce (Bắt buộc)</option>
+              <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Attribution Mode</label>
+              <select id="cfgAttribution" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2 py-1 text-[11px] cursor-pointer">
+                <option value="enforce" selected>enforce</option>
                 <option value="strict">strict</option>
                 <option value="tag">tag</option>
                 <option value="off">off</option>
@@ -1145,130 +1126,106 @@
         </div>
       </div>
 
-      <!-- MỤC 4: GIAO DIỆN & CHỦ ĐỀ (13 THEMES) -->
-      <div style="background-color: var(--bg-surface); border-color: var(--border);" class="border rounded-xl overflow-hidden transition">
-        <button onclick="toggleSection('secTheme')" class="w-full p-3.5 flex items-center justify-between text-left hover:opacity-90 transition">
-          <div class="flex items-center gap-2.5">
-            <span class="text-sm">🎨</span>
-            <div>
-              <h3 style="color: var(--text-main);" class="font-semibold text-xs">4. Giao Diện & Chủ Đề (16 Theme · VJP-PRO Suite)</h3>
-              <p style="color: var(--text-dim);" class="text-[10px]">Tùy chọn phong cách phối màu developer & security console</p>
-            </div>
+      <!-- MỤC 4: GIAO DIỆN & CHỦ ĐỀ (GỌN GÀNG, TIẾT KIỆM KHÔNG GIAN) -->
+      <div style="background-color: var(--bg-surface); border-color: var(--border);" class="border rounded-xl overflow-hidden shadow-xs">
+        <button onclick="toggleSection('secTheme')" class="w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:opacity-90 transition">
+          <div class="flex items-center gap-2">
+            <span class="text-xs">🎨</span>
+            <span style="color: var(--text-main);" class="font-semibold text-xs">Giao diện & Chủ đề (16 Themes)</span>
           </div>
           <svg id="arrow-secTheme" class="w-3.5 h-3.5 text-slate-400 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
         </button>
 
-        <div id="secTheme" class="p-3 pt-0 border-t space-y-1.5 hidden" style="border-color: var(--border);">
-          <div class="grid grid-cols-2 gap-1.5 pt-2">
-            <button onclick="selectThemeFromDrawer('vjp-terminal')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="vjp-terminal" style="background-color: var(--bg-base); border-color: var(--border);">
-              <span class="w-3 h-3 rounded-full bg-[#a3ff12] shadow-[0_0_8px_#a3ff12] shrink-0"></span>
-              <span class="truncate text-[11px] font-bold text-[#a3ff12]">UCS Terminal (VJP)</span>
-            </button>
-            <button onclick="selectThemeFromDrawer('vjp-command')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="vjp-command" style="background-color: var(--bg-base); border-color: var(--border);">
-              <span class="w-3 h-3 rounded-full bg-[#42d5ad] shadow-[0_0_8px_#42d5ad] shrink-0"></span>
-              <span class="truncate text-[11px] font-bold text-[#42d5ad]">Command Center (VJP)</span>
-            </button>
-            <button onclick="selectThemeFromDrawer('vjp-light')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="vjp-light" style="background-color: var(--bg-base); border-color: var(--border);">
-              <span class="w-3 h-3 rounded-full bg-[#2e8b57] shrink-0"></span>
-              <span class="truncate text-[11px]">UCS Light Pro (VJP)</span>
-            </button>
-            <button onclick="selectThemeFromDrawer('exodia')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="exodia" style="background-color: var(--bg-base); border-color: var(--border);">
-              <span class="w-3 h-3 rounded-full bg-gradient-to-tr from-[#00f0ff] via-[#00ff88] to-[#c084fc] shadow-[0_0_8px_#00f0ff] shrink-0"></span>
-              <span class="truncate text-[11px] font-bold text-[#00f0ff]">Exodia Neon</span>
-            </button>
-            <button onclick="selectThemeFromDrawer('rosepine')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="rosepine" style="background-color: var(--bg-base); border-color: var(--border);">
-              <span class="w-3 h-3 rounded-full bg-[#ea9a97] shrink-0"></span>
-              <span class="truncate text-[11px]">Rose Pine Moon</span>
-            </button>
-            <button onclick="selectThemeFromDrawer('linear')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="linear" style="background-color: var(--bg-base); border-color: var(--border);">
-              <span class="w-3 h-3 rounded-full bg-[#5e6ad2] shrink-0"></span>
-              <span class="truncate text-[11px]">Linear Studio</span>
-            </button>
-            <button onclick="selectThemeFromDrawer('github')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="github" style="background-color: var(--bg-base); border-color: var(--border);">
-              <span class="w-3 h-3 rounded-full bg-[#539bf5] shrink-0"></span>
-              <span class="truncate text-[11px]">GitHub Dimmed</span>
-            </button>
-            <button onclick="selectThemeFromDrawer('dracula')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="dracula" style="background-color: var(--bg-base); border-color: var(--border);">
-              <span class="w-3 h-3 rounded-full bg-[#bd93f9] shrink-0"></span>
-              <span class="truncate text-[11px]">Dracula</span>
-            </button>
-            <button onclick="selectThemeFromDrawer('nord')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="nord" style="background-color: var(--bg-base); border-color: var(--border);">
-              <span class="w-3 h-3 rounded-full bg-[#88c0d0] shrink-0"></span>
-              <span class="truncate text-[11px]">Nord Arctic</span>
-            </button>
-            <button onclick="selectThemeFromDrawer('tokyo')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="tokyo" style="background-color: var(--bg-base); border-color: var(--border);">
-              <span class="w-3 h-3 rounded-full bg-[#7aa2f7] shrink-0"></span>
-              <span class="truncate text-[11px]">Tokyo Night</span>
-            </button>
-            <button onclick="selectThemeFromDrawer('gruvbox')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="gruvbox" style="background-color: var(--bg-base); border-color: var(--border);">
-              <span class="w-3 h-3 rounded-full bg-[#fabd2f] shrink-0"></span>
-              <span class="truncate text-[11px]">Gruvbox Retro</span>
-            </button>
-            <button onclick="selectThemeFromDrawer('catppuccin')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="catppuccin" style="background-color: var(--bg-base); border-color: var(--border);">
-              <span class="w-3 h-3 rounded-full bg-[#cba6f7] shrink-0"></span>
-              <span class="truncate text-[11px]">Catppuccin</span>
-            </button>
-            <button onclick="selectThemeFromDrawer('monokai')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="monokai" style="background-color: var(--bg-base); border-color: var(--border);">
-              <span class="w-3 h-3 rounded-full bg-[#ffd866] shrink-0"></span>
-              <span class="truncate text-[11px]">Monokai Pro</span>
-            </button>
-            <button onclick="selectThemeFromDrawer('solarized')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="solarized" style="background-color: var(--bg-base); border-color: var(--border);">
-              <span class="w-3 h-3 rounded-full bg-[#268bd2] shrink-0"></span>
-              <span class="truncate text-[11px]">Solarized Dark</span>
-            </button>
-            <button onclick="selectThemeFromDrawer('vercel')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="vercel" style="background-color: var(--bg-base); border-color: var(--border);">
-              <span class="w-3 h-3 rounded-full bg-[#ffffff] shrink-0"></span>
-              <span class="truncate text-[11px]">Vercel Mono</span>
-            </button>
-            <button onclick="selectThemeFromDrawer('light')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="light" style="background-color: var(--bg-base); border-color: var(--border);">
-              <span class="w-3 h-3 rounded-full bg-[#4f46e5] shrink-0"></span>
-              <span class="truncate text-[11px]">Clean Light</span>
-            </button>
+        <div id="secTheme" class="p-3 pt-0 border-t space-y-2.5 hidden" style="border-color: var(--border);">
+          <div class="pt-2">
+            <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-1">Theme hệ thống</label>
+            <select id="cfgThemeSelect" onchange="selectThemeFromDrawer(this.value)" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-xs cursor-pointer font-sans">
+              <option value="vjp-terminal">🟢 UCS Terminal (VJP Mặc định)</option>
+              <option value="vjp-command">🟩 Command Center (VJP)</option>
+              <option value="vjp-light">⚪ UCS Light Pro (VJP)</option>
+              <option value="exodia">🔷 Exodia Neon</option>
+              <option value="rosepine">🌸 Rose Pine Moon</option>
+              <option value="linear">🟣 Linear Studio</option>
+              <option value="github">🔵 GitHub Dimmed</option>
+              <option value="dracula">🧛 Dracula</option>
+              <option value="nord">❄️ Nord Arctic</option>
+              <option value="tokyo">🗼 Tokyo Night</option>
+              <option value="gruvbox">🍂 Gruvbox Retro</option>
+              <option value="catppuccin">🐱 Catppuccin</option>
+              <option value="monokai">💛 Monokai Pro</option>
+              <option value="solarized">☀️ Solarized Dark</option>
+              <option value="vercel">⬛ Vercel Mono</option>
+              <option value="light">☀️ Clean Light</option>
+            </select>
+          </div>
+
+          <div>
+            <label style="color: var(--text-dim);" class="text-[10px] font-sans block mb-1">Bảng màu nhanh</label>
+            <div class="grid grid-cols-8 gap-1.5">
+              <button onclick="selectThemeFromDrawer('vjp-terminal')" class="theme-card h-6 rounded-md border flex items-center justify-center transition hover:scale-105" data-theme-val="vjp-terminal" style="background-color: #0b0f0e; border-color: var(--border);" title="UCS Terminal">
+                <span class="w-2.5 h-2.5 rounded-full bg-[#a3ff12]"></span>
+              </button>
+              <button onclick="selectThemeFromDrawer('vjp-command')" class="theme-card h-6 rounded-md border flex items-center justify-center transition hover:scale-105" data-theme-val="vjp-command" style="background-color: #0d1217; border-color: var(--border);" title="Command Center">
+                <span class="w-2.5 h-2.5 rounded-full bg-[#42d5ad]"></span>
+              </button>
+              <button onclick="selectThemeFromDrawer('exodia')" class="theme-card h-6 rounded-md border flex items-center justify-center transition hover:scale-105" data-theme-val="exodia" style="background-color: #050814; border-color: var(--border);" title="Exodia Neon">
+                <span class="w-2.5 h-2.5 rounded-full bg-[#00f0ff]"></span>
+              </button>
+              <button onclick="selectThemeFromDrawer('linear')" class="theme-card h-6 rounded-md border flex items-center justify-center transition hover:scale-105" data-theme-val="linear" style="background-color: #0f1015; border-color: var(--border);" title="Linear Studio">
+                <span class="w-2.5 h-2.5 rounded-full bg-[#5e6ad2]"></span>
+              </button>
+              <button onclick="selectThemeFromDrawer('dracula')" class="theme-card h-6 rounded-md border flex items-center justify-center transition hover:scale-105" data-theme-val="dracula" style="background-color: #282a36; border-color: var(--border);" title="Dracula">
+                <span class="w-2.5 h-2.5 rounded-full bg-[#bd93f9]"></span>
+              </button>
+              <button onclick="selectThemeFromDrawer('nord')" class="theme-card h-6 rounded-md border flex items-center justify-center transition hover:scale-105" data-theme-val="nord" style="background-color: #2e3440; border-color: var(--border);" title="Nord Arctic">
+                <span class="w-2.5 h-2.5 rounded-full bg-[#88c0d0]"></span>
+              </button>
+              <button onclick="selectThemeFromDrawer('monokai')" class="theme-card h-6 rounded-md border flex items-center justify-center transition hover:scale-105" data-theme-val="monokai" style="background-color: #272822; border-color: var(--border);" title="Monokai Pro">
+                <span class="w-2.5 h-2.5 rounded-full bg-[#ffd866]"></span>
+              </button>
+              <button onclick="selectThemeFromDrawer('vjp-light')" class="theme-card h-6 rounded-md border flex items-center justify-center transition hover:scale-105" data-theme-val="vjp-light" style="background-color: #f7f9f8; border-color: var(--border);" title="UCS Light Pro">
+                <span class="w-2.5 h-2.5 rounded-full bg-[#2e8b57]"></span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- MỤC 5: MẠNG & PORT -->
-      <div style="background-color: var(--bg-surface); border-color: var(--border);" class="border rounded-xl overflow-hidden">
-        <button onclick="toggleSection('secNetwork')" class="w-full p-3.5 flex items-center justify-between text-left hover:opacity-90 transition">
-          <div class="flex items-center gap-2.5">
-            <span class="text-sm">🌐</span>
-            <div>
-              <div class="flex items-center gap-1.5">
-                <h3 style="color: var(--text-main);" class="font-semibold text-xs">5. Mạng & Socket Binding</h3>
-                <span style="color: var(--text-dim);" class="text-[9px] px-1 rounded font-mono">Cần Restart</span>
-              </div>
-              <p style="color: var(--text-dim);" class="text-[10px]">MCP_BIND_HOST (0.0.0.0) & MCP_PORT (18427)</p>
-            </div>
+      <!-- MỤC 5: MẠNG & SOCKET -->
+      <div style="background-color: var(--bg-surface); border-color: var(--border);" class="border rounded-xl overflow-hidden shadow-xs">
+        <button onclick="toggleSection('secNetwork')" class="w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:opacity-90 transition">
+          <div class="flex items-center gap-2">
+            <span class="text-xs">🌐</span>
+            <span style="color: var(--text-main);" class="font-semibold text-xs">Mạng & Cổng Socket</span>
           </div>
           <svg id="arrow-secNetwork" class="w-3.5 h-3.5 text-slate-400 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
         </button>
 
-        <div id="secNetwork" class="p-3.5 pt-0 border-t space-y-2 font-mono hidden" style="border-color: var(--border);">
+        <div id="secNetwork" class="p-3 pt-0 border-t space-y-2 font-mono text-[11px] hidden" style="border-color: var(--border);">
           <div class="grid grid-cols-2 gap-2 pt-2">
             <div>
-              <label style="color: var(--text-dim);" class="text-[10px] uppercase font-semibold block mb-1">MCP_BIND_HOST</label>
-              <input id="cfgBindHost" type="text" value="0.0.0.0" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px]">
+              <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">MCP_BIND_HOST</label>
+              <input id="cfgBindHost" type="text" value="0.0.0.0" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px]">
             </div>
             <div>
-              <label style="color: var(--text-dim);" class="text-[10px] uppercase font-semibold block mb-1">MCP_PORT</label>
-              <input id="cfgPort" type="text" value="18427" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px]">
+              <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">MCP_PORT <span style="color: var(--text-dim);">(cần restart)</span></label>
+              <input id="cfgPort" type="text" value="18427" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px]">
             </div>
           </div>
         </div>
       </div>
-
     </div>
 
-    <div style="background-color: var(--bg-header); border-color: var(--border);" class="p-3.5 border-t flex items-center justify-between shrink-0 font-sans">
-      <span style="color: var(--text-dim);" class="text-[10.5px]">Tự động ghi đè .env</span>
+    <!-- Footer -->
+    <div style="background-color: var(--bg-header); border-color: var(--border);" class="p-3 border-t flex items-center justify-between shrink-0 font-sans">
+      <span style="color: var(--text-dim);" class="text-[10.5px]">Lưu vào tệp .env</span>
       <div class="flex items-center gap-2">
-        <button onclick="closeSettingsDrawer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-3 py-1.5 rounded-lg text-xs font-medium border transition">
+        <button onclick="closeSettingsDrawer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-3 py-1.5 rounded-lg text-xs font-medium border transition hover:opacity-80">
           Đóng
         </button>
-        <button id="btnApplyEnvHotReload" onclick="applyEnvHotReload()" style="background-color: var(--mint); color: #090b0f;" class="w-[145px] h-[32px] px-4 py-1.5 rounded-lg text-xs font-bold font-sans transition flex items-center justify-center gap-1.5 shadow-xs hover:opacity-90 active:scale-95 shrink-0 whitespace-nowrap select-none">
+        <button id="btnApplyEnvHotReload" onclick="applyEnvHotReload()" style="background-color: var(--mint); color: #090b0f;" class="h-[30px] px-3.5 py-1 rounded-lg text-xs font-bold font-sans transition flex items-center justify-center gap-1.5 shadow-xs hover:opacity-90 active:scale-95 shrink-0 whitespace-nowrap select-none">
           <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-          <span id="btnHotReloadLabel" class="whitespace-nowrap text-center">Save & Reload</span>
+          <span id="btnHotReloadLabel" class="whitespace-nowrap text-center">Lưu cấu hình</span>
         </button>
       </div>
     </div>
@@ -1346,6 +1303,10 @@
     function setTheme(theme) {
       try {
         document.documentElement.setAttribute('data-theme', theme);
+        const themeSelect = document.getElementById('cfgThemeSelect');
+        if (themeSelect && themeSelect.value !== theme) {
+          themeSelect.value = theme;
+        }
         document.querySelectorAll('.theme-card').forEach(card => {
           if (card.getAttribute('data-theme-val') === theme) {
             card.style.borderColor = 'var(--accent)';
@@ -3306,6 +3267,16 @@
         }
         closeLifecycleModal();
         closeDeleteWorkspaceModal();
+        closeSettingsDrawer();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === ',') {
+        e.preventDefault();
+        const drawer = document.getElementById('settingsDrawer');
+        if (drawer && !drawer.classList.contains('translate-x-full')) {
+          closeSettingsDrawer();
+        } else {
+          openSettingsDrawer();
+        }
       }
     });
 
