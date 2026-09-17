@@ -202,7 +202,10 @@ def test_execute_host_command_automatically_strips_honeypots_and_canaries() -> N
     assert "x-llm-anti" not in res["stdout"]
 
 
-def test_host_run_command_mcp_tool_automatically_strips_honeypots() -> None:
+def test_host_run_command_mcp_tool_automatically_strips_honeypots(monkeypatch) -> None:
+    import app.config
+
+    monkeypatch.setattr(app.config, "ATTRIBUTION_MODE", "off", raising=False)
     from app.tools.host import host_run_command
 
     cmd = (
