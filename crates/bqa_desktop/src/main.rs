@@ -83,6 +83,55 @@ struct AppPaths {
 
 static SAVE_ENV_SEQ: AtomicU64 = AtomicU64::new(0);
 
+fn unescape_dotenv_value(val: &str) -> String {
+    let trimmed = val.trim();
+    if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"') {
+        let inner = &trimmed[1..trimmed.len() - 1];
+        let mut out = String::with_capacity(inner.len());
+        let mut chars = inner.chars().peekable();
+        while let Some(ch) = chars.next() {
+            if ch == '\\' {
+                if let Some(&next_ch) = chars.peek() {
+                    match next_ch {
+                        '\\' => {
+                            out.push('\\');
+                            chars.next();
+                        }
+                        '"' => {
+                            out.push('"');
+                            chars.next();
+                        }
+                        'n' => {
+                            out.push('\n');
+                            chars.next();
+                        }
+                        'r' => {
+                            out.push('\r');
+                            chars.next();
+                        }
+                        't' => {
+                            out.push('\t');
+                            chars.next();
+                        }
+                        _ => {
+                            out.push(ch);
+                        }
+                    }
+                } else {
+                    out.push(ch);
+                }
+            } else {
+                out.push(ch);
+            }
+        }
+        out
+    } else if trimmed.len() >= 2 && trimmed.starts_with('\'') && trimmed.ends_with('\'') {
+        trimmed[1..trimmed.len() - 1].to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
 impl AppPaths {
     fn new() -> Self {
         let repo_root = std::env::var("BQA_REPO_ROOT")
@@ -136,12 +185,12 @@ impl AppPaths {
                 }
                 if let Some((k, v)) = trimmed.split_once('=') {
                     if k.trim() == "HOST_CHAT_ROOT" {
-                        let clean_v = v.trim().trim_matches('"').trim_matches('\'');
+                        let clean_v = unescape_dotenv_value(v);
                         if !clean_v.is_empty() {
                             ws_root = if let Some(stripped) = clean_v.strip_prefix("~/") {
                                 PathBuf::from(&home_dir).join(stripped)
                             } else {
-                                PathBuf::from(clean_v)
+                                PathBuf::from(&clean_v)
                             };
                         }
                     }
@@ -179,8 +228,8 @@ impl AppPaths {
                     continue;
                 }
                 if let Some((k, v)) = trimmed.split_once('=') {
-                    let clean_v = v.trim().trim_matches('"').trim_matches('\'');
-                    map.insert(k.trim().to_string(), clean_v.to_string());
+                    let clean_v = unescape_dotenv_value(v);
+                    map.insert(k.trim().to_string(), clean_v);
                 }
             }
         }
@@ -686,14 +735,34 @@ fn read_session_commands(paths: &AppPaths, chat_id: &str) -> Vec<CommandItem> {
             kind.to_string()
         };
 
-        let is_completed = result.is_some() || mcp.is_some();
-        let is_ok = result.and_then(|r| r.get("ok")).and_then(|v| v.as_bool())
-            .or_else(|| mcp.and_then(|m| m.get("phase")).map(|p| p == "completed"))
-            .unwrap_or(true);
+        let mcp_completed = mcp
+            .and_then(|m| m.get("phase"))
+            .and_then(|p| p.as_str())
+            .map(|p| p == "completed")
+            .unwrap_or(false);
+        let is_completed = result.is_some() || mcp_completed;
 
-        let exit_code = mcp.and_then(|m| m.get("exit_code")).and_then(|v| v.as_i64())
-            .or_else(|| result.and_then(|r| r.get("payload")).and_then(|p| p.get("exit_code")).and_then(|v| v.as_i64()))
-            .unwrap_or(if is_ok { 0 } else { 1 }) as i32;
+        let is_ok = if is_completed {
+            result.and_then(|r| r.get("ok")).and_then(|v| v.as_bool())
+                .or_else(|| {
+                    if mcp_completed {
+                        mcp.and_then(|m| m.get("exit_code")).and_then(|v| v.as_i64()).map(|code| code == 0)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(true)
+        } else {
+            true
+        };
+
+        let exit_code = if is_completed {
+            mcp.and_then(|m| m.get("exit_code")).and_then(|v| v.as_i64())
+                .or_else(|| result.and_then(|r| r.get("payload")).and_then(|p| p.get("exit_code")).and_then(|v| v.as_i64()))
+                .unwrap_or(if is_ok { 0 } else { 1 }) as i32
+        } else {
+            0
+        };
 
         let duration = mcp.and_then(|m| m.get("duration_ms")).and_then(|v| v.as_f64())
             .map(|d| format!("{:.0}ms", d))
@@ -1535,6 +1604,61 @@ mod tests {
         assert!(paths.dotenv_path.exists());
         let content = fs::read_to_string(&paths.dotenv_path).unwrap();
         assert!(content.contains("TEST_KEY="));
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_dotenv_escape_roundtrip() {
+        let temp_dir = std::env::temp_dir().join(format!("bqa_test_escape_{}", std::process::id()));
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let mut paths = AppPaths::new();
+        paths.dotenv_path = temp_dir.join(".env");
+
+        let mut updates = HashMap::new();
+        let complex_value = r#"C:\Users\test\"special"\path\with\backslashes"#.to_string();
+        updates.insert("COMPLEX_KEY".to_string(), complex_value.clone());
+
+        // First save
+        assert!(paths.write_dotenv(&updates).is_ok());
+        let read1 = paths.read_dotenv();
+        assert_eq!(read1.get("COMPLEX_KEY"), Some(&complex_value));
+
+        // Second save (re-saving without changing the value must not double-escape)
+        let updates_empty = HashMap::new();
+        assert!(paths.write_dotenv(&updates_empty).is_ok());
+        let read2 = paths.read_dotenv();
+        assert_eq!(read2.get("COMPLEX_KEY"), Some(&complex_value));
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_running_command_not_marked_failure() {
+        let temp_dir = std::env::temp_dir().join(format!("bqa_test_running_cmd_{}", std::process::id()));
+        let ws_dir = temp_dir.join("workspaces/cw-test-running");
+        let logs_dir = temp_dir.join("logs");
+        let _ = fs::create_dir_all(&ws_dir);
+        let _ = fs::create_dir_all(&logs_dir);
+
+        // 1. Write journal with op_started but NO op_result yet
+        let journal_content = r#"{"type":"op_started","op":"op-running-1","kind":"host_run_command","payload":{"command":"sleep 60"},"ts":"2026-09-17T10:00:00Z"}"#;
+        fs::write(ws_dir.join("journal.jsonl"), format!("{}\n", journal_content)).unwrap();
+
+        // 2. Write MCP command activity with phase: "started"
+        let mcp_content = r#"{"chat_id":"cw-test-running","operation_id":"op-running-1","phase":"started","command":"sleep 60","timestamp":"2026-09-17T10:00:00Z"}"#;
+        fs::write(logs_dir.join("mcp_command_activity.jsonl"), format!("{}\n", mcp_content)).unwrap();
+
+        let mut paths = AppPaths::new();
+        paths.workspace_root = temp_dir.join("workspaces");
+        paths.repo_root = temp_dir.clone();
+
+        let cmds = read_session_commands(&paths, "cw-test-running");
+        assert_eq!(cmds.len(), 1);
+        let cmd = &cmds[0];
+        assert_eq!(cmd.status, "running", "In-progress command must have status 'running', got '{}'", cmd.status);
+        assert_eq!(cmd.exit_code, 0, "In-progress command must have exit_code 0, got {}", cmd.exit_code);
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
