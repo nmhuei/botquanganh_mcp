@@ -33,7 +33,7 @@ jobs:
       - name: Install system dependencies for headless Qt
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon-x11-0 libegl-mesa0
+          sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon-x11-0 libegl-mesa0 libxcb-cursor0
 
       - name: Prepare development configuration
         run: |
