@@ -2074,7 +2074,7 @@
         row.style.borderColor = 'var(--accent)';
         row.classList.add('selected', 'shadow-xs');
         activeActionRowEl = row;
-        selectCommand(c);
+        selectCommand(c, true);
       };
 
       return row;
@@ -2194,7 +2194,7 @@
       }
     }
 
-    function selectCommand(c) {
+    function selectCommand(c, userTriggered = false) {
       selectedCommand = c;
       if (!c) return;
 
@@ -2259,6 +2259,10 @@
       // Tab 4: Raw JSON
       if (inspectRawJson) {
         inspectRawJson.innerText = c.raw_json ? formatJson(c.raw_json) : JSON.stringify(c, null, 2);
+      }
+
+      if (userTriggered && isInspectorCollapsed) {
+        toggleInspector();
       }
     }
 
@@ -2409,7 +2413,7 @@
           row.style.borderColor = 'var(--accent)';
           row.classList.add('selected', 'shadow-xs');
           activeLogRowEl = row;
-          selectLog(l);
+          selectLog(l, true);
         };
 
         container.appendChild(row);
@@ -2420,7 +2424,7 @@
       }
     }
 
-    function selectLog(l) {
+    function selectLog(l, userTriggered = false) {
       if (!l) return;
       const logInspectId = document.getElementById('logInspectId');
       const logInspectCategory = document.getElementById('logInspectCategory');
@@ -2434,6 +2438,10 @@
       if (logInspectAction) logInspectAction.innerText = l.action || 'event';
       if (logInspectSession) logInspectSession.innerText = l.session || 'system';
       if (logInspectJson) logInspectJson.innerText = l.json ? formatJson(l.json) : JSON.stringify(l, null, 2);
+
+      if (userTriggered && isInspectorCollapsed) {
+        toggleInspector();
+      }
     }
 
     // ==================== RUNTIME STATUS & LIFECYCLE ====================
