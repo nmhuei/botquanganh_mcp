@@ -40,8 +40,10 @@ struct SessionItem {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CommandItem {
+    id: String,
     tool: String,
     cmd: String,
+    intent: Option<String>,
     exit_code: i32,
     duration: String,
     timestamp: String,
@@ -78,7 +80,41 @@ struct AppPaths {
 
 impl AppPaths {
     fn new() -> Self {
-        let repo_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let repo_root = std::env::var("BQA_REPO_ROOT")
+            .map(PathBuf::from)
+            .ok()
+            .or_else(|| {
+                if let Ok(cur) = std::env::current_dir() {
+                    let mut probe = cur;
+                    loop {
+                        if probe.join("logs/mcp_command_activity.jsonl").exists() || probe.join("crates/bqa_desktop").exists() {
+                            return Some(probe);
+                        }
+                        if !probe.pop() { break; }
+                    }
+                }
+                None
+            })
+            .or_else(|| {
+                if let Ok(exe) = std::env::current_exe() {
+                    let mut probe = exe;
+                    loop {
+                        if probe.join("logs/mcp_command_activity.jsonl").exists() || probe.join("crates/bqa_desktop").exists() {
+                            return Some(probe);
+                        }
+                        if !probe.pop() { break; }
+                    }
+                }
+                None
+            })
+            .unwrap_or_else(|| {
+                let default_path = PathBuf::from("/home/light/GitHub/botquanganh_mcp");
+                if default_path.exists() {
+                    default_path
+                } else {
+                    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+                }
+            });
         let home_dir = std::env::var("HOME").unwrap_or_else(|_| "/home/light".to_string());
         let dotenv = repo_root.join(".env");
         let gateway_log = repo_root.join("logs/gateway.log");
@@ -456,25 +492,40 @@ fn read_session_commands(paths: &AppPaths, chat_id: &str) -> Vec<CommandItem> {
             .unwrap_or("host_run_command");
         let payload = started.get("payload");
 
+        // Extract intent note if present in payload
+        let raw_intent = payload
+            .and_then(|p| p.get("intent"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty());
+        let intent_note = raw_intent.map(sanitize_honeypot_text);
+
         // Derive user-friendly command / action title
+        // Prioritize actual unredacted shell/tool command over intent note
         let cmd = if let Some(m) = mcp {
             let mcp_cmd = m.get("command").and_then(|v| v.as_str()).unwrap_or("");
             if !mcp_cmd.is_empty() && mcp_cmd != "<redacted>" {
                 mcp_cmd.to_string()
-            } else if let Some(intent) = payload.and_then(|p| p.get("intent")).and_then(|v| v.as_str()) {
-                intent.to_string()
+            } else if let Some(p) = payload {
+                let p_cmd = p.get("command").and_then(|v| v.as_str()).unwrap_or("");
+                if !p_cmd.is_empty() && p_cmd != "<redacted>" {
+                    p_cmd.to_string()
+                } else if let Some(int) = raw_intent {
+                    int.to_string()
+                } else {
+                    mcp_cmd.to_string()
+                }
+            } else if let Some(int) = raw_intent {
+                int.to_string()
             } else {
                 mcp_cmd.to_string()
             }
         } else if let Some(p) = payload {
             let p_cmd = p.get("command").and_then(|v| v.as_str()).unwrap_or("");
-            let p_intent = p.get("intent").and_then(|v| v.as_str()).unwrap_or("");
             let p_path = p.get("path").and_then(|v| v.as_str()).unwrap_or("");
             let p_query = p.get("query").and_then(|v| v.as_str()).unwrap_or("");
 
-            if !p_intent.is_empty() {
-                p_intent.to_string()
-            } else if !p_cmd.is_empty() && p_cmd != "<redacted>" {
+            if !p_cmd.is_empty() && p_cmd != "<redacted>" {
                 p_cmd.to_string()
             } else if kind == "host_read_file" && !p_path.is_empty() {
                 let start = p.get("start_line").and_then(|v| v.as_i64()).unwrap_or(1);
@@ -490,6 +541,8 @@ fn read_session_commands(paths: &AppPaths, chat_id: &str) -> Vec<CommandItem> {
                 format!("bind {}", p.get("label").and_then(|v| v.as_str()).unwrap_or(chat_id))
             } else if kind == "host_knowledge" {
                 format!("docs: {}", p.get("section").and_then(|v| v.as_str()).unwrap_or("overview"))
+            } else if let Some(int) = raw_intent {
+                int.to_string()
             } else {
                 p.get("summary").and_then(|v| v.as_str()).unwrap_or(kind).to_string()
             }
@@ -652,9 +705,14 @@ fn read_session_commands(paths: &AppPaths, chat_id: &str) -> Vec<CommandItem> {
             serde_json::to_string_pretty(&serde_json::Value::Object(combo)).unwrap_or_default()
         };
 
+        let sanitized_cmd = sanitize_honeypot_text(&cmd);
+        let final_intent = intent_note.filter(|int| int != &sanitized_cmd);
+
         commands.push(CommandItem {
+            id: op_id.to_string(),
             tool: kind.to_string(),
-            cmd: sanitize_honeypot_text(&cmd),
+            cmd: sanitized_cmd,
+            intent: final_intent,
             exit_code,
             duration,
             timestamp,
@@ -674,6 +732,13 @@ fn read_session_commands(paths: &AppPaths, chat_id: &str) -> Vec<CommandItem> {
         if !op_id.is_empty() && started_ops.contains_key(op_id) {
             continue;
         }
+        let item_id = if !op_id.is_empty() {
+            op_id.to_string()
+        } else {
+            let ts = m.get("timestamp").and_then(|v| v.as_str()).unwrap_or("");
+            let raw_c = m.get("command").and_then(|v| v.as_str()).unwrap_or("");
+            format!("mcp_{}_{}", ts, raw_c)
+        };
         let tool = m.get("tool").and_then(|v| v.as_str()).unwrap_or("host_run_command").to_string();
         let raw_cmd = m.get("command").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let cmd = sanitize_honeypot_text(&raw_cmd);
@@ -688,8 +753,10 @@ fn read_session_commands(paths: &AppPaths, chat_id: &str) -> Vec<CommandItem> {
         let raw_json = serde_json::to_string_pretty(&m).unwrap_or_default();
 
         commands.push(CommandItem {
+            id: item_id,
             tool,
             cmd,
+            intent: None,
             exit_code,
             duration,
             timestamp,
@@ -1177,4 +1244,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             _ => (),
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_read_pwnbox_session() {
+        let mut paths = AppPaths::new();
+        paths.repo_root = PathBuf::from("/home/light/GitHub/botquanganh_mcp");
+        println!("REPO ROOT: {:?}", paths.repo_root);
+        println!("MCP LOG EXISTS: {:?}", paths.repo_root.join("logs/mcp_command_activity.jsonl").exists());
+        let cmds = read_session_commands(&paths, "cw-20260917-pwnbox-breeze-web-ctf-d3b20f57");
+        println!("Loaded {} commands", cmds.len());
+        for (i, c) in cmds.iter().enumerate().take(5) {
+            println!("[{}] id={} ts={} tool={} cmd={} intent={:?}", i, c.id, c.timestamp, c.tool, c.cmd, c.intent);
+        }
+        assert!(!cmds.is_empty());
+        let target = cmds.iter().find(|c| c.id == "op-67782c99");
+        assert!(target.is_some(), "op-67782c99 should exist");
+        let item = target.unwrap();
+        assert!(item.cmd.contains("for u in supervisor"), "cmd should be actual bash loop, got: {}", item.cmd);
+        assert!(item.intent.as_ref().map(|s| s.contains("Test the enumerated usernames")).unwrap_or(false), "intent should contain note, got: {:?}", item.intent);
+    }
 }

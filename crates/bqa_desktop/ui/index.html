@@ -771,6 +771,11 @@
             <div id="inspectCommand" style="color: var(--text-main);" class="select-text break-all font-mono">uv run pytest tests/test_qml_backend.py</div>
           </div>
 
+          <div id="inspectIntentCard" style="background-color: var(--bg-base); border-color: var(--border);" class="border p-3 rounded-lg min-w-0 hidden">
+            <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans mb-1 whitespace-nowrap">Ý định / Ghi chú (Intent)</span>
+            <div id="inspectIntent" style="color: var(--accent);" class="select-text break-all text-xs"></div>
+          </div>
+
           <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-3 rounded-lg min-w-0">
             <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans mb-1 whitespace-nowrap">Thư mục (CWD)</span>
             <div id="inspectCwd" style="color: var(--text-sub);" class="select-text break-all font-mono">/home/light/GitHub/botquanganh_mcp</div>
@@ -1742,9 +1747,10 @@
         currentRenderedChatId = chatId;
         let commandToSelect = currentCommands[0];
         if (!sessionSwitched && selectedCommand) {
+          const prevId = selectedCommand.id;
           const prevTs = selectedCommand.timestamp;
           const prevCmd = selectedCommand.cmd;
-          const match = currentCommands.find(c => c.timestamp === prevTs && c.cmd === prevCmd);
+          const match = currentCommands.find(c => (prevId && c.id === prevId) || (c.timestamp === prevTs && c.cmd === prevCmd));
           if (match) commandToSelect = match;
         }
         renderCommandStream(commandToSelect, sessionSwitched);
@@ -1758,7 +1764,7 @@
 
     function createCommandRow(c, isSelected) {
       const row = document.createElement('div');
-      const key = `${c.timestamp}_${c.cmd}`;
+      const key = c.id || `${c.timestamp}_${c.cmd}`;
       row.setAttribute('data-cmd-key', key);
       const isSuccess = c.exit_code === 0;
       row.className = `action-row ${isSelected ? 'selected shadow-xs' : ''} p-2 rounded-lg border cursor-pointer flex flex-col gap-0.5 min-w-0 overflow-hidden`;
@@ -1766,6 +1772,7 @@
       row.style.borderColor = isSelected ? 'var(--accent)' : 'var(--border)';
 
       const timeDisplay = formatLocalTime(c.timestamp || c.time_short, 'short');
+      const hasIntent = c.intent && c.intent.trim().length > 0 && c.intent !== c.cmd;
 
       row.innerHTML = `
         <div class="flex items-center justify-between gap-1 text-[11px] min-w-0 overflow-hidden">
@@ -1778,11 +1785,17 @@
             <span class="status-display font-semibold whitespace-nowrap" style="color: ${isSuccess ? 'var(--mint)' : '#ff6b61'};">${isSuccess ? 'OK' : 'ERR ' + c.exit_code}</span>
           </div>
         </div>
-        <div style="color: var(--text-main);" class="font-medium truncate text-[11px] min-w-0 mt-0.5 cmd-text"></div>
+        <div style="color: var(--text-main);" class="font-medium truncate text-[11px] min-w-0 mt-0.5 cmd-text font-mono"></div>
+        <div class="intent-container ${hasIntent ? '' : 'hidden'} text-[10.5px] truncate min-w-0 mt-0.5 flex items-center gap-1" style="color: var(--text-dim);">
+          <span style="color: var(--accent);" class="shrink-0 text-[10px]">🎯</span>
+          <span class="truncate intent-text"></span>
+        </div>
       `;
 
       const cmdEl = row.querySelector('.cmd-text');
       if (cmdEl) cmdEl.innerText = c.cmd || '';
+      const intentEl = row.querySelector('.intent-text');
+      if (intentEl && hasIntent) intentEl.innerText = c.intent;
 
       row.onclick = () => {
         if (activeActionRowEl && activeActionRowEl !== row) {
@@ -1810,6 +1823,8 @@
         return;
       }
 
+      const getCmdKey = (c) => (c && (c.id || `${c.timestamp}_${c.cmd}`)) || '';
+
       // If session switched or container has loading placeholder: perform clean initial render
       const hasPlaceholder = container.innerText.includes('Đang tải') || container.innerText.includes('Chưa có');
       if (sessionSwitched || hasPlaceholder || container.children.length === 0) {
@@ -1817,7 +1832,7 @@
         activeActionRowEl = null;
         const fragment = document.createDocumentFragment();
         currentCommands.forEach((c, idx) => {
-          const isSelected = targetSelected ? (c.timestamp === targetSelected.timestamp && c.cmd === targetSelected.cmd) : idx === 0;
+          const isSelected = targetSelected ? (getCmdKey(c) === getCmdKey(targetSelected)) : idx === 0;
           const row = createCommandRow(c, isSelected);
           if (isSelected) activeActionRowEl = row;
           fragment.appendChild(row);
@@ -1827,20 +1842,27 @@
       }
 
       // INCREMENTAL PATCHING:
-      // Map current DOM elements by data-cmd-key
+      const incomingKeys = new Set(currentCommands.map(getCmdKey));
+
+      // Map current DOM elements by data-cmd-key and PRUNE stale elements
       const existingRows = container.querySelectorAll('.action-row');
       const domMap = new Map();
       existingRows.forEach(row => {
         const key = row.getAttribute('data-cmd-key');
-        if (key) domMap.set(key, row);
+        if (!key || !incomingKeys.has(key)) {
+          if (activeActionRowEl === row) activeActionRowEl = null;
+          row.remove();
+        } else {
+          domMap.set(key, row);
+        }
       });
 
       // Find new commands (that aren't in domMap yet)
       const newCommandsToInsert = [];
       currentCommands.forEach((c) => {
-        const key = `${c.timestamp}_${c.cmd}`;
+        const key = getCmdKey(c);
         if (!domMap.has(key)) {
-          const isSelected = targetSelected ? (c.timestamp === targetSelected.timestamp && c.cmd === targetSelected.cmd) : false;
+          const isSelected = targetSelected ? (getCmdKey(c) === getCmdKey(targetSelected)) : false;
           const row = createCommandRow(c, isSelected);
           row.classList.add('animate-slide-down');
           newCommandsToInsert.push({ row, c });
@@ -1858,7 +1880,23 @@
             statusEl.innerText = isSuccess ? 'OK' : 'ERR ' + c.exit_code;
             statusEl.style.color = isSuccess ? 'var(--mint)' : '#ff6b61';
           }
-          if (targetSelected && c.timestamp === targetSelected.timestamp && c.cmd === targetSelected.cmd) {
+          const cmdEl = row.querySelector('.cmd-text');
+          if (cmdEl && cmdEl.innerText !== (c.cmd || '')) {
+            cmdEl.innerText = c.cmd || '';
+          }
+          const hasIntent = c.intent && c.intent.trim().length > 0 && c.intent !== c.cmd;
+          const intentContainer = row.querySelector('.intent-container');
+          const intentEl = row.querySelector('.intent-text');
+          if (intentContainer && intentEl) {
+            if (hasIntent) {
+              intentEl.innerText = c.intent;
+              intentContainer.classList.remove('hidden');
+            } else {
+              intentContainer.classList.add('hidden');
+            }
+          }
+
+          if (targetSelected && getCmdKey(c) === getCmdKey(targetSelected)) {
             if (activeActionRowEl && activeActionRowEl !== row) {
               activeActionRowEl.style.backgroundColor = 'var(--bg-header)';
               activeActionRowEl.style.borderColor = 'var(--border)';
@@ -1877,7 +1915,7 @@
         for (let i = newCommandsToInsert.length - 1; i >= 0; i--) {
           const item = newCommandsToInsert[i];
           container.insertBefore(item.row, container.firstChild);
-          if (targetSelected && item.c.timestamp === targetSelected.timestamp && item.c.cmd === targetSelected.cmd) {
+          if (targetSelected && getCmdKey(item.c) === getCmdKey(targetSelected)) {
             if (activeActionRowEl && activeActionRowEl !== item.row) {
               activeActionRowEl.style.backgroundColor = 'var(--bg-header)';
               activeActionRowEl.style.borderColor = 'var(--border)';
@@ -1925,6 +1963,16 @@
       if (inspectSessionId) inspectSessionId.innerText = curSessId;
       if (inspectSessionIdCmd) inspectSessionIdCmd.innerText = curSessId;
       if (inspectCommand) inspectCommand.innerText = c.cmd || '(Trống)';
+      const inspectIntentCard = document.getElementById('inspectIntentCard');
+      const inspectIntent = document.getElementById('inspectIntent');
+      if (inspectIntentCard && inspectIntent) {
+        if (c.intent && c.intent.trim().length > 0 && c.intent !== c.cmd) {
+          inspectIntent.innerText = c.intent;
+          inspectIntentCard.classList.remove('hidden');
+        } else {
+          inspectIntentCard.classList.add('hidden');
+        }
+      }
       if (inspectCwd) inspectCwd.innerText = c.cwd || '(Không xác định)';
 
       // Tab 3: STDERR
@@ -1970,6 +2018,8 @@
       if (inspectExit) inspectExit.innerText = 'N/A';
       if (inspectOutput) inspectOutput.innerText = '(Không có dữ liệu)';
       if (inspectCommand) inspectCommand.innerText = '(Trống)';
+      const inspectIntentCard = document.getElementById('inspectIntentCard');
+      if (inspectIntentCard) inspectIntentCard.classList.add('hidden');
       if (inspectCwd) inspectCwd.innerText = '(Trống)';
       if (inspectStderr) inspectStderr.innerText = '(Trống)';
       if (inspectRawJson) inspectRawJson.innerText = '{}';
