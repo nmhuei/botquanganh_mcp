@@ -412,6 +412,48 @@
       transition-duration: 0.03s !important;
     }
 
+    /* ==================== WORKSPACE DRAG-AND-DROP REORDERING ==================== */
+    .session-item.is-dragging {
+      opacity: 0.4 !important;
+      border: 1px dashed var(--accent) !important;
+      background-color: var(--bg-selected) !important;
+      cursor: grabbing !important;
+    }
+    .session-item.drag-over-top {
+      border-top: 2px solid var(--accent) !important;
+      box-shadow: 0 -2px 6px var(--accent-soft);
+    }
+    .session-item.drag-over-bottom {
+      border-bottom: 2px solid var(--accent) !important;
+      box-shadow: 0 2px 6px var(--accent-soft);
+    }
+    .session-item.is-dragging,
+    .session-item.drag-over-top,
+    .session-item.drag-over-bottom {
+      transform: none !important;
+    }
+    .session-drag-handle {
+      user-select: none;
+      -webkit-user-select: none;
+      cursor: grab;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      line-height: 1;
+      width: 13px;
+      color: var(--text-dim);
+      transition: color 0.1s ease, opacity 0.1s ease;
+      opacity: 0.45;
+    }
+    .session-drag-handle:hover {
+      color: var(--accent);
+      opacity: 1;
+    }
+    .session-drag-handle:active {
+      cursor: grabbing;
+    }
+
     /* Command Action Row Hover & Click Feedback */
     .action-row {
       transition: transform 0.08s cubic-bezier(0.2, 0, 0, 1), background-color 0.1s ease, border-color 0.1s ease, box-shadow 0.1s ease !important;
@@ -699,8 +741,11 @@
           <span class="font-semibold uppercase tracking-wider text-[10px] whitespace-nowrap">Sessions</span>
           <span style="color: var(--text-dim);" class="text-[9.5px] font-sans truncate">• Đĩa</span>
         </div>
-        <!-- Action buttons on Sidebar Header: Reload -->
+        <!-- Action buttons on Sidebar Header: Reset Sort & Reload -->
         <div class="flex items-center space-x-1 shrink-0">
+          <button id="btnResetWorkspaceOrder" onclick="resetWorkspaceOrder()" style="color: var(--text-sub);" class="hover:text-white transition p-1 rounded hover:bg-slate-700/30 shrink-0 hidden" title="Khôi phục sắp xếp theo thời gian tạo (Mới nhất)">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"></path></svg>
+          </button>
           <button onclick="refreshSessionsFromDisk()" style="color: var(--text-sub);" class="hover:text-white transition p-1 rounded hover:bg-slate-700/30 shrink-0" title="Đọc lại từ workspace">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
           </button>
@@ -1262,6 +1307,13 @@
         // Ignored in opaque contexts
       }
     }
+    function safeRemoveStorage(key) {
+      try {
+        if (window.localStorage) window.localStorage.removeItem(key);
+      } catch (e) {
+        // Ignored in opaque contexts
+      }
+    }
 
     // ==================== THEME MANAGEMENT ====================
     function setTheme(theme) {
@@ -1766,19 +1818,95 @@
     let activeActionRowEl = null;
     let activeLogRowEl = null;
 
+    let draggedChatId = null;
+
+    function updateResetButtonVisibility() {
+      const btn = document.getElementById('btnResetWorkspaceOrder');
+      if (!btn) return;
+      const savedOrderRaw = safeGetStorage('bqa_workspace_order');
+      if (savedOrderRaw) {
+        btn.classList.remove('hidden');
+      } else {
+        btn.classList.add('hidden');
+      }
+    }
+
+    function resetWorkspaceOrder() {
+      safeRemoveStorage('bqa_workspace_order');
+      // Re-sort strictly by creation timestamp descending
+      currentWorkspaces.sort((a, b) => {
+        const timeDiff = (b.created_ts || 0) - (a.created_ts || 0);
+        if (timeDiff !== 0) return timeDiff;
+        return (b.mtime || 0) - (a.mtime || 0);
+      });
+      updateResetButtonVisibility();
+      renderSessionList();
+      showToast('✓ Đã khôi phục sắp xếp theo thời gian tạo');
+    }
+
     // ==================== WORKSPACE & SESSION RENDERING ====================
     window.__onWorkspacesLoaded = function(workspaces) {
       if (!Array.isArray(workspaces)) return;
-      
-      const jsonHash = workspaces.map(w => `${w.id || w.chat_id}:${w.ops_count || w.ops || 0}`).join('|');
-      const dataChanged = jsonHash !== lastWorkspacesHash;
-      lastWorkspacesHash = jsonHash;
+      if (draggedChatId) return; // Do not interrupt ongoing drag & drop gesture
 
-      currentWorkspaces = workspaces.map(w => ({
+      const rawWorkspaces = workspaces.map(w => ({
         ...w,
         chat_id: w.chat_id || w.id,
-        ops_count: w.ops_count !== undefined ? w.ops_count : (w.ops || 0)
+        ops_count: w.ops_count !== undefined ? w.ops_count : (w.ops || 0),
+        created_ts: w.created_ts || 0
       }));
+
+      // Check for user's custom drag-and-drop order
+      const savedOrderRaw = safeGetStorage('bqa_workspace_order');
+      let savedOrder = null;
+      if (savedOrderRaw) {
+        try {
+          const parsed = JSON.parse(savedOrderRaw);
+          if (Array.isArray(parsed)) savedOrder = parsed;
+        } catch (e) {
+          savedOrder = null;
+        }
+      }
+
+      if (savedOrder && savedOrder.length > 0) {
+        const map = new Map();
+        rawWorkspaces.forEach(w => map.set(w.chat_id, w));
+
+        const ordered = [];
+        const seen = new Set();
+
+        // 1. Any newly created workspaces not in saved order go to the top, sorted by created_ts desc
+        const newItems = rawWorkspaces.filter(w => !savedOrder.includes(w.chat_id));
+        newItems.sort((a, b) => ((b.created_ts || 0) - (a.created_ts || 0)) || ((b.mtime || 0) - (a.mtime || 0)));
+        newItems.forEach(w => {
+          ordered.push(w);
+          seen.add(w.chat_id);
+        });
+
+        // 2. Add workspaces according to user's saved manual order
+        savedOrder.forEach(id => {
+          if (map.has(id) && !seen.has(id)) {
+            ordered.push(map.get(id));
+            seen.add(id);
+          }
+        });
+
+        currentWorkspaces = ordered;
+      } else {
+        // Strictly sort by creation timestamp descending (newest first)
+        rawWorkspaces.sort((a, b) => {
+          const timeDiff = (b.created_ts || 0) - (a.created_ts || 0);
+          if (timeDiff !== 0) return timeDiff;
+          return (b.mtime || 0) - (a.mtime || 0);
+        });
+        currentWorkspaces = rawWorkspaces;
+      }
+
+      updateResetButtonVisibility();
+
+      const currentListHash = currentWorkspaces.map(w => `${w.chat_id}:${w.ops_count}:${w.created_ts}`).join('|');
+      const dataChanged = currentListHash !== lastWorkspacesHash;
+      lastWorkspacesHash = currentListHash;
 
       // Update Telemetry Metrics
       const metricSessions = document.getElementById('metricSessions');
@@ -1894,6 +2022,19 @@
 
     window.__onWorkspaceDeleted = function(success, chatId, message) {
       showToast(success ? `✓ ${message}` : `⚠️ ${message}`);
+      if (success) {
+        // Clean up from saved custom order if present
+        const savedOrderRaw = safeGetStorage('bqa_workspace_order');
+        if (savedOrderRaw) {
+          try {
+            let saved = JSON.parse(savedOrderRaw);
+            if (Array.isArray(saved)) {
+              saved = saved.filter(id => id !== chatId);
+              safeSetStorage('bqa_workspace_order', JSON.stringify(saved));
+            }
+          } catch (e) {}
+        }
+      }
       if (success && activeChatId === chatId) {
         activeChatId = null;
         currentRenderedChatId = null;
@@ -1932,15 +2073,30 @@
         const isActive = w.chat_id === activeChatId;
         const item = document.createElement('div');
         item.setAttribute('data-chat-id', w.chat_id);
-        item.className = `session-item ${isActive ? 'active' : ''} p-2 rounded-lg cursor-pointer flex items-center justify-between gap-1.5 font-mono text-xs min-w-0 overflow-hidden`;
+        item.setAttribute('draggable', 'true');
+        item.className = `session-item ${isActive ? 'active' : ''} p-2 rounded-lg cursor-pointer flex items-center justify-between gap-1.5 font-mono text-xs min-w-0 overflow-hidden select-none`;
         item.style.backgroundColor = isActive ? 'var(--bg-selected)' : 'transparent';
         item.style.borderColor = isActive ? 'var(--border)' : 'transparent';
         item.style.color = isActive ? 'var(--text-main)' : 'var(--text-sub)';
         if (isActive) item.classList.add('border', 'shadow-xs', 'font-medium');
 
+        // Drag handle indicator
+        const dragHandle = document.createElement('span');
+        dragHandle.className = 'session-drag-handle';
+        dragHandle.title = 'Kéo thả để sắp xếp lại vị trí workspace';
+        dragHandle.innerHTML = '⋮⋮';
+
+        // Workspace Label & Tooltip with Creation Time
         const labelSpan = document.createElement('span');
-        labelSpan.className = 'truncate min-w-0 flex-1';
-        labelSpan.title = w.chat_id || '';
+        labelSpan.className = 'truncate min-w-0 flex-1 select-none';
+        let tooltip = w.chat_id || '';
+        if (w.created_at) {
+          tooltip += `\n• Thời gian tạo: ${formatLocalTime(w.created_at, 'full')}`;
+        } else if (w.created_ts) {
+          tooltip += `\n• Thời gian tạo: ${new Date(w.created_ts * 1000).toLocaleString()}`;
+        }
+        tooltip += '\n• Kéo thả để thay đổi vị trí sắp xếp';
+        labelSpan.title = tooltip;
         labelSpan.textContent = w.label || w.chat_id || '';
 
         const rightDiv = document.createElement('div');
@@ -1952,6 +2108,7 @@
         opsBadge.textContent = `${w.ops_count || 0} ops`;
 
         const delBtn = document.createElement('button');
+        delBtn.setAttribute('draggable', 'false');
         delBtn.className = 'p-1 rounded opacity-60 hover:opacity-100 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition shrink-0';
         delBtn.title = `Xóa vĩnh viễn workspace: ${w.chat_id}`;
         delBtn.innerHTML = '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>';
@@ -1963,12 +2120,77 @@
         rightDiv.appendChild(opsBadge);
         rightDiv.appendChild(delBtn);
 
+        item.appendChild(dragHandle);
         item.appendChild(labelSpan);
         item.appendChild(rightDiv);
 
-        item.onclick = () => {
+        item.onclick = (e) => {
+          if (e.target.closest('button')) return;
           selectSession(w.chat_id);
         };
+
+        // Drag and drop event handlers
+        item.addEventListener('dragstart', (e) => {
+          draggedChatId = w.chat_id;
+          e.dataTransfer.setData('text/plain', w.chat_id);
+          e.dataTransfer.effectAllowed = 'move';
+          item.classList.add('is-dragging');
+        });
+
+        item.addEventListener('dragend', () => {
+          draggedChatId = null;
+          item.classList.remove('is-dragging');
+          document.querySelectorAll('.session-item').forEach(el => {
+            el.classList.remove('drag-over-top', 'drag-over-bottom', 'is-dragging');
+          });
+        });
+
+        item.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          if (!draggedChatId || draggedChatId === w.chat_id) return;
+
+          const rect = item.getBoundingClientRect();
+          const isTop = e.clientY < (rect.top + rect.height / 2);
+          item.classList.toggle('drag-over-top', isTop);
+          item.classList.toggle('drag-over-bottom', !isTop);
+        });
+
+        item.addEventListener('dragleave', () => {
+          item.classList.remove('drag-over-top', 'drag-over-bottom');
+        });
+
+        item.addEventListener('drop', (e) => {
+          e.preventDefault();
+          item.classList.remove('drag-over-top', 'drag-over-bottom');
+          const srcChatId = e.dataTransfer.getData('text/plain') || draggedChatId;
+          const targetChatId = w.chat_id;
+
+          if (!srcChatId || srcChatId === targetChatId) return;
+
+          const rect = item.getBoundingClientRect();
+          const isDropBefore = e.clientY < (rect.top + rect.height / 2);
+
+          const srcIdx = currentWorkspaces.findIndex(x => x.chat_id === srcChatId);
+          if (srcIdx === -1) return;
+
+          const [draggedItem] = currentWorkspaces.splice(srcIdx, 1);
+          let targetIdx = currentWorkspaces.findIndex(x => x.chat_id === targetChatId);
+          if (targetIdx === -1) {
+            currentWorkspaces.push(draggedItem);
+          } else {
+            if (!isDropBefore) {
+              targetIdx += 1;
+            }
+            currentWorkspaces.splice(targetIdx, 0, draggedItem);
+          }
+
+          // Save custom ordering
+          safeSetStorage('bqa_workspace_order', JSON.stringify(currentWorkspaces.map(x => x.chat_id)));
+          updateResetButtonVisibility();
+          renderSessionList();
+          showToast(`✓ Đã đổi vị trí workspace "${draggedItem.label || draggedItem.chat_id}"`);
+        });
 
         container.appendChild(item);
       });

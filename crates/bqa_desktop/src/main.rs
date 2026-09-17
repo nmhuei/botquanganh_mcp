@@ -35,6 +35,8 @@ struct SessionItem {
     ops: usize,
     ops_count: usize,
     created_at: String,
+    #[serde(default)]
+    created_ts: u64,
     active: bool,
 }
 
@@ -263,6 +265,7 @@ fn scan_workspaces(root: &Path) -> Vec<SessionItem> {
 
     struct Scanned {
         item: SessionItem,
+        created_ts: u64,
         mtime: u64,
     }
     let mut scanned_list = Vec::new();
@@ -319,6 +322,45 @@ fn scan_workspaces(root: &Path) -> Vec<SessionItem> {
                             }
                         }
 
+                        // Determine creation timestamp (created_ts)
+                        let mut created_ts = 0u64;
+                        if !created_at.is_empty() {
+                            if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&created_at) {
+                                created_ts = dt.timestamp().max(0) as u64;
+                            }
+                        }
+                        if created_ts == 0 {
+                            if let Ok(meta) = entry.metadata() {
+                                if let Ok(created) = meta.created() {
+                                    if let Ok(dur) = created.duration_since(std::time::UNIX_EPOCH) {
+                                        created_ts = dur.as_secs();
+                                    }
+                                }
+                            }
+                        }
+                        if created_ts == 0 {
+                            let digits: String = name.chars().filter(|c| c.is_ascii_digit()).collect();
+                            if digits.len() >= 8 {
+                                if let (Ok(year), Ok(month), Ok(day)) = (
+                                    digits[0..4].parse::<i32>(),
+                                    digits[4..6].parse::<u32>(),
+                                    digits[6..8].parse::<u32>(),
+                                ) {
+                                    if let Some(date) = chrono::NaiveDate::from_ymd_opt(year, month, day) {
+                                        let hour = if digits.len() >= 10 { digits[8..10].parse::<u32>().unwrap_or(0) } else { 0 };
+                                        let min = if digits.len() >= 12 { digits[10..12].parse::<u32>().unwrap_or(0) } else { 0 };
+                                        let sec = if digits.len() >= 14 { digits[12..14].parse::<u32>().unwrap_or(0) } else { 0 };
+                                        if let Some(dt) = date.and_hms_opt(hour, min, sec) {
+                                            created_ts = dt.and_utc().timestamp().max(0) as u64;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if created_ts == 0 {
+                            created_ts = mtime;
+                        }
+
                         scanned_list.push(Scanned {
                             item: SessionItem {
                                 id: name.clone(),
@@ -327,8 +369,10 @@ fn scan_workspaces(root: &Path) -> Vec<SessionItem> {
                                 ops,
                                 ops_count: ops,
                                 created_at,
+                                created_ts,
                                 active: false,
                             },
+                            created_ts,
                             mtime,
                         });
                     }
@@ -337,7 +381,12 @@ fn scan_workspaces(root: &Path) -> Vec<SessionItem> {
         }
     }
 
-    scanned_list.sort_by_key(|b| std::cmp::Reverse(b.mtime));
+    // Sort strictly by creation time descending (newest created workspace first)
+    scanned_list.sort_by(|a, b| {
+        b.created_ts.cmp(&a.created_ts)
+            .then_with(|| b.mtime.cmp(&a.mtime))
+            .then_with(|| a.item.chat_id.cmp(&b.item.chat_id))
+    });
 
     let mut sessions = Vec::with_capacity(scanned_list.len());
     for (idx, mut sc) in scanned_list.into_iter().enumerate() {
@@ -1369,22 +1418,56 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_read_pwnbox_session() {
+    fn test_read_session_commands_and_intent() {
+        let temp_dir = std::env::temp_dir().join(format!("bqa_test_read_cmds_{}", std::process::id()));
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let ws_name = "cw-20260917-test-session";
+        let target_ws = temp_dir.join("workspaces").join(ws_name);
+        fs::create_dir_all(&target_ws).unwrap();
+
+        let journal_data = r#"{"op":"op-67782c99","type":"op_started","tool":"host_run_command","payload":{"command":"for u in supervisor; do echo $u; done","intent":"Test the enumerated usernames"}}
+{"op":"op-67782c99","type":"op_result","ok":true,"payload":{"exit_code":0,"stdout":"supervisor\n"}}
+"#;
+        fs::write(target_ws.join("journal.jsonl"), journal_data).unwrap();
+
         let mut paths = AppPaths::new();
-        paths.repo_root = PathBuf::from("/home/light/GitHub/botquanganh_mcp");
-        println!("REPO ROOT: {:?}", paths.repo_root);
-        println!("MCP LOG EXISTS: {:?}", paths.repo_root.join("logs/mcp_command_activity.jsonl").exists());
-        let cmds = read_session_commands(&paths, "cw-20260917-pwnbox-breeze-web-ctf-d3b20f57");
-        println!("Loaded {} commands", cmds.len());
-        for (i, c) in cmds.iter().enumerate().take(5) {
-            println!("[{}] id={} ts={} tool={} cmd={} intent={:?}", i, c.id, c.timestamp, c.tool, c.cmd, c.intent);
-        }
-        assert!(!cmds.is_empty());
-        let target = cmds.iter().find(|c| c.id == "op-67782c99");
-        assert!(target.is_some(), "op-67782c99 should exist");
-        let item = target.unwrap();
-        assert!(item.cmd.contains("for u in supervisor"), "cmd should be actual bash loop, got: {}", item.cmd);
-        assert!(item.intent.as_ref().map(|s| s.contains("Test the enumerated usernames")).unwrap_or(false), "intent should contain note, got: {:?}", item.intent);
+        paths.repo_root = temp_dir.clone();
+        paths.workspace_root = temp_dir.join("workspaces");
+
+        let cmds = read_session_commands(&paths, ws_name);
+        assert_eq!(cmds.len(), 1);
+        let item = &cmds[0];
+        assert_eq!(item.id, "op-67782c99");
+        assert!(item.cmd.contains("for u in supervisor"));
+        assert_eq!(item.intent.as_deref(), Some("Test the enumerated usernames"));
+        assert_eq!(item.exit_code, 0);
+        assert_eq!(item.status, "success");
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_workspace_creation_time_sorting() {
+        let temp_dir = std::env::temp_dir().join(format!("bqa_test_ws_sort_{}", std::process::id()));
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let ws_old = temp_dir.join("cw-20260915-older-ws");
+        let ws_new = temp_dir.join("cw-20260917-newer-ws");
+        fs::create_dir_all(&ws_old).unwrap();
+        fs::create_dir_all(&ws_new).unwrap();
+
+        fs::write(ws_old.join("meta.json"), r#"{"created_at": "2026-09-15T10:00:00+00:00"}"#).unwrap();
+        fs::write(ws_new.join("meta.json"), r#"{"created_at": "2026-09-17T12:00:00+00:00"}"#).unwrap();
+
+        let scanned = scan_workspaces(&temp_dir);
+        assert_eq!(scanned.len(), 2);
+        // Newest created workspace should be first
+        assert_eq!(scanned[0].chat_id, "cw-20260917-newer-ws");
+        assert_eq!(scanned[1].chat_id, "cw-20260915-older-ws");
+        assert!(scanned[0].created_ts > scanned[1].created_ts);
+
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 
     #[test]
