@@ -36,7 +36,7 @@ class GroupedHelpFormatter(argparse.RawDescriptionHelpFormatter):
     COMMAND_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ("Lifecycle", ("start", "stop", "restart", "server", "url")),
         ("Interface", ("ui", "tui")),
-        ("Inspection", ("status", "health", "capabilities", "knowledge", "logs", "chats")),
+        ("Inspection", ("status", "health", "capabilities", "knowledge", "logs", "chats", "session")),
         ("Files & commands", ("fs", "cmd")),
         ("Diagnostics", ("doctor",)),
         ("Config & help", ("config", "completion", "version", "help")),
