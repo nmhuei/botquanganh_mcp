@@ -6,6 +6,7 @@ from pathlib import Path
 def _helper_command(repo_root: Path, body: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["bash", "-c", f"source scripts/process_helpers.sh\n{body}"],
+        check=False,
         cwd=repo_root,
         capture_output=True,
         text=True,
@@ -131,7 +132,9 @@ source {repo_root / 'scripts/process_helpers.sh'}
 quick_tunnel_url_from_log_since {log} {offset}
 cloudflared_registered_since {log} {offset}
 """
-    result = subprocess.run(["bash", "-c", command], capture_output=True, text=True)
+    result = subprocess.run(
+        ["bash", "-c", command], capture_output=True, text=True, check=False
+    )
     assert result.returncode == 0
     assert result.stdout.strip() == "https://new.trycloudflare.com"
 

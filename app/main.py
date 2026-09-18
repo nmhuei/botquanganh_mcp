@@ -8,17 +8,26 @@ from app.mcp_server import mcp
 
 # Tool registration is intentionally explicit and host-only.
 import app.tools.ctf_http  # noqa: E402,F401
+import app.tools.ctf_suite  # noqa: E402,F401
 import app.tools.health  # noqa: E402,F401
 import app.tools.host  # noqa: E402,F401
 import app.tools.host_knowledge  # noqa: E402,F401
+import app.tools.workspace_tools  # noqa: E402,F401
 
 
 @atexit.register
 def _shutdown_log() -> None:
     try:
         log_audit_event("SERVER_SHUTDOWN", {"pid": os.getpid()})
-    except Exception:  # nosec B110
-        pass
+    except Exception as exc:  # shutdown logging must never block interpreter exit
+        # Keep the failure observable without recursively calling the audit logger.
+        try:
+            print(
+                f"Audit shutdown event unavailable: {type(exc).__name__}",
+                file=sys.stderr,
+            )
+        except (OSError, ValueError):
+            return
 
 
 is_stdio = not any(

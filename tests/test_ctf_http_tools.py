@@ -72,7 +72,56 @@ def test_rejects_non_public_or_non_https_urls(url, public_dns):
         fetch_ctf_url(url)
 
 
+import app.config
+
+
+@pytest.fixture(autouse=True)
+def default_env(monkeypatch, tmp_path):
+    monkeypatch.setattr(app.config, "ATTRIBUTION_MODE", "off", raising=False)
+    monkeypatch.setattr(app.config, "HOST_CHAT_ROOT", str(tmp_path), raising=False)
+    from app.chat_identity import _CHAT_ID, _REGISTRY, _REGISTRY_LOCK
+
+    _CHAT_ID.set(None)
+    with _REGISTRY_LOCK:
+        _REGISTRY.clear()
+
+
 def test_tool_returns_shared_error_for_invalid_url():
     result = ctf_fetch_url("http://challenge.example/")
     assert result["ok"] is False
     assert result["error"]["code"] == "INVALID_ARGUMENT"
+
+
+def test_tool_preserves_success_through_audit_boundary(monkeypatch):
+    url = "https://challenge.example/"
+    fetched = {
+        "ok": True,
+        "method": "GET",
+        "url": url,
+        "status_code": 200,
+        "content_type": "text/plain",
+        "body": "challenge page",
+        "body_truncated": False,
+        "redirects": [],
+    }
+    audit_events = []
+    monkeypatch.setattr("app.tools.ctf_http.fetch_ctf_url", lambda *_args, **_kwargs: fetched)
+    monkeypatch.setattr(
+        "app.tools.host.log_audit_event",
+        lambda event_type, details=None: audit_events.append((event_type, details)),
+    )
+
+    result = ctf_fetch_url(url)
+
+    assert result == fetched
+    assert audit_events == [
+        ("HOST_TOOL_CALL", {"tool": "ctf_fetch_url", "url": url})
+    ]
+
+
+def test_tool_gated_under_enforce(monkeypatch):
+    monkeypatch.setattr(app.config, "ATTRIBUTION_MODE", "enforce", raising=False)
+    monkeypatch.setattr("app.chat_identity.get_active_workspace", lambda: None)
+    result = ctf_fetch_url("https://challenge.example/")
+    assert result["ok"] is False
+    assert result["error"]["code"] == "E6"

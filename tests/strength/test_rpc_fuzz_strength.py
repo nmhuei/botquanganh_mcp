@@ -83,6 +83,7 @@ def test_rpc_fuzz_corpus_never_crashes_the_server():
     }
     proc = subprocess.run(  # noqa: S603
         [sys.executable, "-c", CORPUS_CODE],
+        check=False,
         env=env,
         capture_output=True,
         text=True,

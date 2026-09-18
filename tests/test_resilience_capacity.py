@@ -70,7 +70,7 @@ def test_command_capacity_releases_after_validation_error(tmp_path, monkeypatch)
     monkeypatch.setattr(executor, "command_capacity", capacity)
 
     with pytest.raises(ValueError):
-        executor.execute_host_command("printf x", timeout_seconds=0)
+        executor.execute_host_command("printf x", timeout_seconds=-1)
     assert capacity.get_stats()["active"] == 0
 
 

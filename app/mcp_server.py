@@ -11,7 +11,6 @@ from starlette.routing import Route
 from app.config import (
     MCP_JSON_RESPONSE,
     MCP_STATELESS_HTTP,
-    TRUST_PROXY_HEADERS,
     VERSION,
     HOST_WORKSPACE_DIR,
     HOST_DEFAULT_DIR,
@@ -27,7 +26,7 @@ from app.request_context import (
 )
 
 logger = logging.getLogger("botquanganh_host_mcp")
-FASTMCP_COMPAT_VERSION = "3.4.0"
+FASTMCP_COMPAT_VERSION = "3.4.7"
 
 if getattr(fastmcp, "__version__", "") != FASTMCP_COMPAT_VERSION:
     logger.warning(
@@ -38,10 +37,43 @@ if getattr(fastmcp, "__version__", "") != FASTMCP_COMPAT_VERSION:
 
 
 class TokenAuthMiddleware:
-    """Apply gateway-token authentication."""
+    """Apply gateway-token authentication and origin validation."""
 
     def __init__(self, app):
         self.app = app
+
+    @staticmethod
+    def _is_allowed_origin(origin: str, host: str) -> bool:
+        from app.config import ALLOWED_ORIGINS
+
+        if not origin:
+            return True
+        origin_clean = origin.strip().lower()
+        if ALLOWED_ORIGINS:
+            return any(
+                origin_clean == allowed.lower()
+                or origin_clean.endswith("." + allowed.lower())
+                for allowed in ALLOWED_ORIGINS
+            )
+        # Default allow list: loopback, trycloudflare.com, chatgpt.com, openai.com, or matching Host
+        if (
+            origin_clean.startswith("http://localhost:")
+            or origin_clean.startswith("https://localhost:")
+            or origin_clean.startswith("http://127.0.0.1:")
+            or origin_clean.startswith("https://127.0.0.1:")
+            or origin_clean in {"http://localhost", "https://localhost", "http://127.0.0.1", "https://127.0.0.1"}
+            or origin_clean.endswith(".trycloudflare.com")
+            or origin_clean in {"https://chatgpt.com", "https://chat.openai.com"}
+            or origin_clean.endswith(".chatgpt.com")
+            or origin_clean.endswith(".openai.com")
+        ):
+            return True
+        if host and (
+            origin_clean == f"http://{host.lower()}"
+            or origin_clean == f"https://{host.lower()}"
+        ):
+            return True
+        return False
 
     async def __call__(self, scope, receive, send):
         path = scope.get("path", "")
@@ -50,11 +82,23 @@ class TokenAuthMiddleware:
             return
 
         if scope.get("type") in {"http", "websocket"}:
-
             headers = {
                 key.decode("latin-1").lower(): value.decode("latin-1")
                 for key, value in scope.get("headers", [])
             }
+            origin = headers.get("origin", "")
+            host = headers.get("host", "")
+            if origin and not self._is_allowed_origin(origin, host):
+                response = JSONResponse(
+                    format_error_code(
+                        "FORBIDDEN_ORIGIN",
+                        message=f"Origin '{origin}' is not authorized.",
+                    ),
+                    status_code=403,
+                )
+                await response(scope, receive, send)
+                return
+
             auth_header = headers.get("authorization", "")
             token = (
                 auth_header[7:]
@@ -297,7 +341,10 @@ class MetricsMiddleware:
             finish_once()
 
 
-_original_http_app = FastMCP.http_app
+if not hasattr(FastMCP, "_bqa_original_http_app"):
+    FastMCP._bqa_original_http_app = FastMCP.http_app
+
+_original_http_app = FastMCP._bqa_original_http_app
 
 
 def _chatgpt_http_app(self, *args, **kwargs):
@@ -350,8 +397,15 @@ mcp = FastMCP(
     "BotQuangAnh Host MCP",
     version=VERSION,
     instructions=(
-        "Host-only MCP server. Use host_knowledge before unfamiliar host work, "
-        "then use the host filesystem and command tools. "
+        "Host-only MCP server. "
+        "MANDATORY PRE-FLIGHT REQUIREMENT: Before executing any commands or accessing files, "
+        "you MUST check whether to resume a previous workspace or start a new workspace. "
+        "Step 1: Call 'host_workspace_list()' to check existing workspaces. "
+        "Step 2: If continuing past work, call 'host_workspace_bind(resume_id=\"latest\")' "
+        "(or 'host_workspace_bind(resume_id=...)'). If starting fresh, call "
+        "'host_workspace_bind()' (or 'host_workspace_bind(label=\"optional_name\")'). "
+        "Step 3: Only after binding or creating a workspace may you use host_run_command and file tools. "
+        "Use host_knowledge before unfamiliar host work, then use the host filesystem and command tools. "
         f"By default, all operations (files, directories, command executions) "
         f"MUST be relative to or run within the default directory: '{HOST_DEFAULT_DIR}'. "
         f"Operations are allowed and restricted to the workspace boundary: '{HOST_WORKSPACE_DIR}'. "
@@ -359,7 +413,14 @@ mcp = FastMCP(
         "fetch, use ctf_fetch_url for one read-only GET. Do not scan, fuzz, crawl, or "
         "enumerate unless the user provides explicit scope and limits. After a successful "
         "ctf_fetch_url, use ctf_render_fetch_result with its complete result when an inline "
-        "result card would help the user inspect the response."
+        "result card would help the user inspect the response. "
+        "ALWAYS call ctf_triage_artifact FIRST when you need to identify a file or binary, "
+        "or check its header, format, architecture, or security mitigations. It returns "
+        "magic/format, architecture, checksec (NX, PIE, Canary, RELRO, Stripped), Shannon "
+        "entropy, and suspicious strings in a single read-only call. Do NOT run file, "
+        "checksec, strings, readelf, objdump, or binwalk via host_run_command just to "
+        "identify a file; use ctf_triage_artifact and only fall back to those commands for "
+        "details it does not cover."
     ),
 )
 mcp.add_middleware(MCPForensicsMiddleware())

@@ -69,6 +69,22 @@ def test_stdout_and_stderr_are_bounded_while_draining(command_workspace, monkeyp
     assert len(result["stderr"].encode()) < 1200
 
 
+def test_zero_output_limit_keeps_complete_streams(command_workspace, monkeypatch):
+    """The documented zero setting means unlimited capture, not no capture."""
+    monkeypatch.setattr(app.config, "MAX_OUTPUT_BYTES", 0)
+
+    result = execute_host_command(
+        "python3 -c \"import sys; print('release stdout'); print('release stderr', file=sys.stderr)\"",
+        timeout_seconds=5,
+    )
+
+    assert result["ok"] is True
+    assert result["stdout"] == "release stdout\n"
+    assert result["stderr"] == "release stderr\n"
+    assert result["stdout_truncated"] is False
+    assert result["stderr_truncated"] is False
+
+
 def test_timeout_terminates_background_child_group(command_workspace):
     command = (
         "python3 -c \"import subprocess,time; "

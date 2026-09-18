@@ -80,13 +80,16 @@ VENV_PYTHON="$ROOT_DIR/.venv/bin/python"
 [ -x "$VENV_PYTHON" ] \
     || fail "virtual environment Python at $VENV_PYTHON is missing or not executable."
 
-if [ -f requirements.txt ]; then
-    echo "[*] Installing runtime dependencies..."
+if [ -f uv.lock ]; then
+    echo "[*] Installing the locked BotQuangAnh MCP environment..."
+    "$UV_BIN" sync --frozen --extra test --quiet
+elif [ -f requirements.txt ]; then
+    echo "[*] Installing runtime dependencies (uv.lock is unavailable)..."
     "$UV_BIN" pip install -r requirements.txt --python "$VENV_PYTHON" --quiet
+    "$UV_BIN" pip install -e . --no-deps --python "$VENV_PYTHON" --quiet
+else
+    fail "Neither uv.lock nor requirements.txt is available."
 fi
-
-echo "[*] Installing bqa CLI package..."
-"$UV_BIN" pip install -e . --no-deps --python "$VENV_PYTHON" --quiet
 
 if [ ! -f .env ] && [ -f .env.example ]; then
     cp .env.example .env

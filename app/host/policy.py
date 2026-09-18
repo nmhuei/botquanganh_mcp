@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import app.config
-from app.host.paths import host_default_dir, host_workspace_dir
+from app.host.paths import host_default_dir, host_workspace_dir, host_write_scope
 
 
 # These rules are intentionally small and explicit.  They prevent obvious
@@ -168,8 +168,20 @@ def _flag_is_recursive(flag: str) -> bool:
 
 
 def _inspect_recursive_rm(command: str) -> dict[str, Any] | None:
-    """Reject recursive removal of absolute paths outside the host workspace."""
+    """Reject recursive removal of absolute paths outside the write scope.
+
+    Recursive deletion destroys content, so targets are validated against
+    HOST_WRITE_SCOPE (which falls back to HOST_WORKSPACE_DIR when the operator
+    has not opted into scoped permissions).
+    """
     workspace = host_workspace_dir()
+    write_root = host_write_scope()
+    if write_root == workspace:
+        scope_label = "HOST_WORKSPACE_DIR"
+        message = "Recursive removal outside HOST_WORKSPACE_DIR is blocked."
+    else:
+        scope_label = "HOST_WRITE_SCOPE"
+        message = f"Recursive removal outside {scope_label} ('{write_root}') is blocked."
     for segment in _split_shell_chain(command):
         try:
             words = shlex.split(segment, posix=True)
@@ -192,14 +204,14 @@ def _inspect_recursive_rm(command: str) -> dict[str, Any] | None:
                 candidate = host_default_dir() / candidate
             resolved = candidate.resolve(strict=False)
             try:
-                resolved.relative_to(workspace)
+                resolved.relative_to(write_root)
             except ValueError:
                 return {
                     "allowed": False,
                     "severity": "forbidden",
                     "rule": "recursive_remove_outside_workspace",
                     "matched_fragment": word,
-                    "message": "Recursive removal outside HOST_WORKSPACE_DIR is blocked.",
+                    "message": message,
                 }
     return None
 

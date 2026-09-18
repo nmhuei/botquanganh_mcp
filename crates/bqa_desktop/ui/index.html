@@ -1,0 +1,3220 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="rosepine">
+<head>
+  <meta charset="UTF-8">
+  <script>
+    function sendToRust(action, payload = {}) {
+      return new Promise((resolve) => {
+        if (window.ipc) {
+          window.ipc.postMessage(JSON.stringify({ action, payload }));
+        }
+        resolve(true);
+      });
+    }
+
+    window.onerror = function(msg, url, line, col, error) {
+      sendToRust("console_error", { msg: String(msg) + " at " + String(url) + ":" + line + ":" + col + (error ? " " + String(error) : "") });
+      try {
+        const screen = document.getElementById('bootScreen');
+        if (screen) screen.style.display = 'none';
+      } catch (_) {}
+      return false;
+    };
+    window.onunhandledrejection = function(event) {
+      sendToRust("console_error", { msg: "Unhandled rejection: " + String(event.reason) });
+    };
+
+    // Absolute failsafe watchdog: ensure boot screen is NEVER stuck
+    setTimeout(() => {
+      try {
+        const screen = document.getElementById('bootScreen');
+        if (screen && screen.style.display !== 'none') {
+          console.log("HEAD WATCHDOG: Auto-dismissing boot screen");
+          screen.style.opacity = '0';
+          setTimeout(() => { screen.style.display = 'none'; }, 250);
+        }
+      } catch (_) {}
+    }, 2200);
+    console.log = (function(oldLog) {
+      return function(...args) {
+        if (oldLog) oldLog.apply(console, args);
+        sendToRust("console_log", { msg: args.map(String).join(' ') });
+      };
+    })(console.log);
+    console.error = (function(oldErr) {
+      return function(...args) {
+        if (oldErr) oldErr.apply(console, args);
+        sendToRust("console_error", { msg: args.map(String).join(' ') });
+      };
+    })(console.error);
+
+    console.log("STEP 1: HEAD SCRIPT LOADED");
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    console.log("STEP 2: TAILWIND LOADED");
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* ==================== 13 WORLD-CLASS DEVELOPER THEMES ==================== */
+    :root, html[data-theme="exodia"] {
+      --bg-base: #06080e; --bg-header: #0a0d16; --bg-surface: #0e1320; --bg-card: #131a2c;
+      --bg-selected: #1b2640; --bg-console: #030407; --border: #1e2a42; --border-hover: #00f0ff;
+      --accent: #00f0ff; --accent-soft: rgba(0, 240, 255, 0.2);
+      --text-main: #f8fafc; --text-sub: #94a3b8; --text-dim: #64748b;
+      --mint: #00ff88; --sky: #38bdf8;
+    }
+    html[data-theme="linear"] {
+      --bg-base: #0d0f14; --bg-header: #12151d; --bg-surface: #171b26; --bg-card: #1c2230;
+      --bg-selected: #242c3f; --bg-console: #090b0f; --border: #23293a; --border-hover: #343e57;
+      --accent: #5e6ad2; --accent-soft: rgba(94, 106, 210, 0.15);
+      --text-main: #f3f4f6; --text-sub: #9ca3af; --text-dim: #6b7280;
+      --mint: #34d399; --sky: #38bdf8;
+    }
+    html[data-theme="github"] {
+      --bg-base: #1c2128; --bg-header: #22272e; --bg-surface: #22272e; --bg-card: #2d333b;
+      --bg-selected: #373e47; --bg-console: #181c22; --border: #373e47; --border-hover: #444c56;
+      --accent: #539bf5; --accent-soft: rgba(83, 155, 245, 0.15);
+      --text-main: #adbac7; --text-sub: #768390; --text-dim: #545d68;
+      --mint: #57ab5a; --sky: #6cb6ff;
+    }
+    html[data-theme="vercel"] {
+      --bg-base: #000000; --bg-header: #0a0a0a; --bg-surface: #0f0f0f; --bg-card: #171717;
+      --bg-selected: #262626; --bg-console: #050505; --border: #262626; --border-hover: #404040;
+      --accent: #ffffff; --accent-soft: rgba(255, 255, 255, 0.1);
+      --text-main: #ededed; --text-sub: #888888; --text-dim: #525252;
+      --mint: #ededed; --sky: #a1a1a1;
+    }
+    html[data-theme="dracula"] {
+      --bg-base: #21222c; --bg-header: #282a36; --bg-surface: #282a36; --bg-card: #343746;
+      --bg-selected: #44475a; --bg-console: #191a21; --border: #44475a; --border-hover: #6272a4;
+      --accent: #bd93f9; --accent-soft: rgba(189, 147, 249, 0.15);
+      --text-main: #f8f8f2; --text-sub: #bfbfbf; --text-dim: #6272a4;
+      --mint: #50fa7b; --sky: #8be9fd;
+    }
+    html[data-theme="nord"] {
+      --bg-base: #242933; --bg-header: #2e3440; --bg-surface: #2e3440; --bg-card: #3b4252;
+      --bg-selected: #434c5e; --bg-console: #1d212a; --border: #3b4252; --border-hover: #4c566a;
+      --accent: #88c0d0; --accent-soft: rgba(136, 192, 208, 0.15);
+      --text-main: #eceff4; --text-sub: #d8dee9; --text-dim: #7b88a1;
+      --mint: #a3be8c; --sky: #81a1c1;
+    }
+    html[data-theme="tokyo"] {
+      --bg-base: #16161e; --bg-header: #1f2335; --bg-surface: #1f2335; --bg-card: #292e42;
+      --bg-selected: #3b4261; --bg-console: #13141c; --border: #292e42; --border-hover: #414868;
+      --accent: #7aa2f7; --accent-soft: rgba(122, 162, 247, 0.15);
+      --text-main: #c0caf5; --text-sub: #9aa5ce; --text-dim: #565f89;
+      --mint: #9ece6a; --sky: #7dcfff;
+    }
+    html[data-theme="gruvbox"] {
+      --bg-base: #1d2021; --bg-header: #282828; --bg-surface: #282828; --bg-card: #32302f;
+      --bg-selected: #3c3836; --bg-console: #141617; --border: #3c3836; --border-hover: #504945;
+      --accent: #fabd2f; --accent-soft: rgba(250, 189, 47, 0.15);
+      --text-main: #ebdbb2; --text-sub: #a89984; --text-dim: #7c6f64;
+      --mint: #b8bb26; --sky: #83a598;
+    }
+    html[data-theme="catppuccin"] {
+      --bg-base: #181825; --bg-header: #1e1e2e; --bg-surface: #1e1e2e; --bg-card: #313244;
+      --bg-selected: #45475a; --bg-console: #11111b; --border: #313244; --border-hover: #585b70;
+      --accent: #cba6f7; --accent-soft: rgba(203, 166, 247, 0.15);
+      --text-main: #cdd6f4; --text-sub: #a6adc8; --text-dim: #6c7086;
+      --mint: #a6e3a1; --sky: #89dceb;
+    }
+    html[data-theme="monokai"] {
+      --bg-base: #19181a; --bg-header: #221f22; --bg-surface: #221f22; --bg-card: #2d2a2e;
+      --bg-selected: #403e41; --bg-console: #121113; --border: #2d2a2e; --border-hover: #4d494e;
+      --accent: #ffd866; --accent-soft: rgba(255, 216, 102, 0.15);
+      --text-main: #fcfcfa; --text-sub: #939293; --text-dim: #727072;
+      --mint: #a9dc76; --sky: #78dce8;
+    }
+    html[data-theme="rosepine"] {
+      --bg-base: #191724; --bg-header: #232136; --bg-surface: #232136; --bg-card: #2a273f;
+      --bg-selected: #393552; --bg-console: #14121e; --border: #2a273f; --border-hover: #44415a;
+      --accent: #ea9a97; --accent-soft: rgba(234, 154, 151, 0.15);
+      --text-main: #e0def4; --text-sub: #908caa; --text-dim: #6e6a86;
+      --mint: #9ccfd8; --sky: #c4a7e7;
+    }
+    html[data-theme="solarized"] {
+      --bg-base: #00212b; --bg-header: #002b36; --bg-surface: #002b36; --bg-card: #073642;
+      --bg-selected: #0e4c5b; --bg-console: #00171e; --border: #073642; --border-hover: #586e75;
+      --accent: #268bd2; --accent-soft: rgba(38, 139, 210, 0.15);
+      --text-main: #93a1a1; --text-sub: #657b83; --text-dim: #586e75;
+      --mint: #859900; --sky: #2aa198;
+    }
+    html[data-theme="light"] {
+      --bg-base: #f8fafc; --bg-header: #ffffff; --bg-surface: #ffffff; --bg-card: #f1f5f9;
+      --bg-selected: #e2e8f0; --bg-console: #0f172a; --border: #e2e8f0; --border-hover: #cbd5e1;
+      --accent: #4f46e5; --accent-soft: rgba(79, 70, 229, 0.1);
+      --text-main: #0f172a; --text-sub: #64748b; --text-dim: #94a3b8;
+      --mint: #10b981; --sky: #0284c7;
+    }
+
+    /* ===== VJP-PRO SUITE THEMES ===== */
+    html[data-theme="vjp-terminal"] {
+      --bg-base: #090d0c; --bg-header: #101615; --bg-surface: #121918; --bg-card: #17211f;
+      --bg-selected: #202b28; --bg-console: #060908; --border: #2a3632; --border-hover: #a3ff12;
+      --accent: #a3ff12; --accent-soft: rgba(163, 255, 18, 0.2);
+      --text-main: #f2f5f2; --text-sub: #a9b5af; --text-dim: #81908a;
+      --mint: #a3ff12; --sky: #42d5ad;
+    }
+    html[data-theme="vjp-command"] {
+      --bg-base: #0c1211; --bg-header: #101615; --bg-surface: #151e1b; --bg-card: #1b2522;
+      --bg-selected: #24332e; --bg-console: #080c0b; --border: #273631; --border-hover: #42d5ad;
+      --accent: #42d5ad; --accent-soft: rgba(66, 213, 173, 0.2);
+      --text-main: #f2f5f2; --text-sub: #a9b5af; --text-dim: #73827c;
+      --mint: #42d5ad; --sky: #38bdf8;
+    }
+    html[data-theme="vjp-light"] {
+      --bg-base: #f4f6f5; --bg-header: #ffffff; --bg-surface: #ffffff; --bg-card: #eef2f0;
+      --bg-selected: #dde5e1; --bg-console: #090d0c; --border: #d4ded9; --border-hover: #2e8b57;
+      --accent: #2e8b57; --accent-soft: rgba(46, 139, 87, 0.15);
+      --text-main: #0c1211; --text-sub: #4a5c55; --text-dim: #7a8f87;
+      --mint: #10b981; --sky: #0284c7;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      letter-spacing: -0.01em;
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      transition: background-color 0.15s ease, color 0.15s ease;
+    }
+
+    .font-mono, pre, code {
+      font-family: 'JetBrains Mono', 'Fira Code', 'Geist Mono', 'Cascadia Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+      letter-spacing: -0.015em;
+    }
+
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(148, 163, 184, 0.2) transparent;
+    }
+    *::-webkit-scrollbar { width: 4px; height: 4px; }
+    *::-webkit-scrollbar-track { background: transparent; }
+    *::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.2); border-radius: 999px; }
+
+    .resizer {
+      width: 7px;
+      margin: 0 -3.5px;
+      cursor: col-resize;
+      background: transparent;
+      position: relative;
+      z-index: 30;
+      flex-shrink: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+    }
+    .resizer::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: -4px;
+      right: -4px;
+      background: transparent;
+      z-index: 1;
+    }
+    .resizer::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 3px;
+      width: 1px;
+      background: var(--border);
+      transition: background 0.15s ease, width 0.15s ease, left 0.15s ease, box-shadow 0.15s ease;
+      z-index: 2;
+    }
+    .resizer:hover::after,
+    .resizer.dragging::after {
+      left: 2px;
+      width: 3px;
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+    }
+    .resizer.hidden { display: none !important; }
+    .resizer.resizer-collapsed {
+      opacity: 0 !important;
+      pointer-events: none !important;
+      width: 0px !important;
+      margin: 0 !important;
+    }
+
+    /* While dragging a splitter: instantly disable all pane transitions, prevent text selection, and force col-resize cursor */
+    body.is-resizing {
+      user-select: none !important;
+      -webkit-user-select: none !important;
+      cursor: col-resize !important;
+    }
+    body.is-resizing * {
+      user-select: none !important;
+      -webkit-user-select: none !important;
+      cursor: col-resize !important;
+      pointer-events: none !important;
+    }
+    body.is-resizing .resizer {
+      pointer-events: auto !important;
+    }
+    body.is-resizing #paneSidebar,
+    body.is-resizing #paneStream,
+    body.is-resizing #paneInspector,
+    body.is-resizing #paneLogStream,
+    body.is-resizing #paneLogInspector {
+      transition: none !important;
+      will-change: width;
+    }
+
+    /* Custom Form & Select Controls (Prevent WebKit white glitch) */
+    select, input[type="text"], input[type="number"] {
+      background-color: var(--bg-base) !important;
+      color: var(--text-main) !important;
+      border: 1px solid var(--border) !important;
+      outline: none !important;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    select {
+      appearance: none !important;
+      -webkit-appearance: none !important;
+      background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%239ca3af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e") !important;
+      background-position: right 0.5rem center !important;
+      background-repeat: no-repeat !important;
+      background-size: 1.2em 1.2em !important;
+      padding-right: 1.75rem !important;
+    }
+    select option {
+      background-color: var(--bg-card) !important;
+      color: var(--text-main) !important;
+      padding: 6px 10px;
+    }
+    select:focus, input[type="text"]:focus, input[type="number"]:focus {
+      border-color: var(--accent) !important;
+      box-shadow: 0 0 0 1.5px var(--accent) !important;
+    }
+
+    /* ==================== SMOOTH SLIDE & TRANSITION ANIMATIONS ==================== */
+    .page-view {
+      animation: pageEntrance 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    @keyframes pageEntrance {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes slideDownCommand {
+      from {
+        opacity: 0;
+        transform: translateY(-8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    .animate-slide-down {
+      animation: slideDownCommand 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    #paneSidebar {
+      transition: width 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+                  opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+                  transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+      will-change: width, opacity, transform;
+    }
+    #paneSidebar.pane-collapsed {
+      width: 0px !important;
+      min-width: 0px !important;
+      border-right-width: 0px !important;
+      opacity: 0 !important;
+      transform: translateX(-16px);
+      pointer-events: none !important;
+      overflow: hidden !important;
+    }
+
+    #paneInspector {
+      transition: width 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+                  opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+                  transform 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+                  border-width 0.28s ease;
+      will-change: width, opacity, transform;
+      overflow: hidden !important;
+    }
+    #paneInspector.pane-collapsed {
+      width: 0px !important;
+      min-width: 0px !important;
+      max-width: 0px !important;
+      border-left-width: 0px !important;
+      opacity: 0 !important;
+      transform: translateX(16px);
+      pointer-events: none !important;
+      overflow: hidden !important;
+    }
+
+    #paneLogInspector {
+      transition: width 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+                  opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+                  transform 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+                  border-width 0.28s ease;
+      will-change: width, opacity, transform;
+      overflow: hidden !important;
+    }
+    #paneLogInspector.pane-collapsed {
+      width: 0px !important;
+      min-width: 0px !important;
+      max-width: 0px !important;
+      border-left-width: 0px !important;
+      opacity: 0 !important;
+      transform: translateX(16px);
+      pointer-events: none !important;
+      overflow: hidden !important;
+    }
+
+    #paneStream {
+      transition: width 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+      will-change: width;
+    }
+
+    /* Enforce strict single-line text layout without line breaks */
+    .session-item, .session-item * {
+      white-space: nowrap !important;
+    }
+    .action-row, .action-row * {
+      white-space: nowrap !important;
+    }
+    .log-row, .log-row * {
+      white-space: nowrap !important;
+    }
+
+    /* ==================== HIGH-PERFORMANCE INTERACTION & BUTTON SYSTEM ==================== */
+    button, [role="button"], .cursor-pointer, .nav-tab, .session-item, .action-row, .log-row, .insp-tab, .log-filter-chip {
+      cursor: pointer !important;
+      -webkit-font-smoothing: antialiased;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+      transform: translateZ(0);
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    /* Universal Button Click Feedback - snappy, crisp, zero-stutter */
+    button {
+      transition: transform 0.08s cubic-bezier(0.2, 0, 0, 1), opacity 0.08s ease, background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+      will-change: transform;
+    }
+    button:hover {
+      opacity: 0.92;
+    }
+    button:active {
+      transform: scale(0.96) translateZ(0) !important;
+      opacity: 0.8 !important;
+      transition-duration: 0.03s !important;
+    }
+
+    /* Session Item Hover & Click Feedback */
+    .session-item {
+      transition: transform 0.08s cubic-bezier(0.2, 0, 0, 1), background-color 0.1s ease, border-color 0.1s ease, box-shadow 0.1s ease !important;
+      will-change: transform;
+      position: relative;
+    }
+    .session-item:hover:not(.active) {
+      background-color: var(--bg-surface) !important;
+      border-color: var(--border) !important;
+      transform: translateX(2px) translateZ(0);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+    .session-item:active {
+      transform: scale(0.98) translateZ(0) !important;
+      transition-duration: 0.03s !important;
+    }
+
+    /* ==================== WORKSPACE DRAG-AND-DROP REORDERING ==================== */
+    .session-item.is-dragging {
+      opacity: 0.4 !important;
+      border: 1px dashed var(--accent) !important;
+      background-color: var(--bg-selected) !important;
+      cursor: grabbing !important;
+    }
+    .session-item.drag-over-top {
+      border-top: 2px solid var(--accent) !important;
+      box-shadow: 0 -2px 6px var(--accent-soft);
+    }
+    .session-item.drag-over-bottom {
+      border-bottom: 2px solid var(--accent) !important;
+      box-shadow: 0 2px 6px var(--accent-soft);
+    }
+    .session-item.is-dragging,
+    .session-item.drag-over-top,
+    .session-item.drag-over-bottom {
+      transform: none !important;
+    }
+    .session-drag-handle {
+      user-select: none;
+      -webkit-user-select: none;
+      cursor: grab;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      line-height: 1;
+      width: 13px;
+      color: var(--text-dim);
+      transition: color 0.1s ease, opacity 0.1s ease;
+      opacity: 0.45;
+    }
+    .session-drag-handle:hover {
+      color: var(--accent);
+      opacity: 1;
+    }
+    .session-drag-handle:active {
+      cursor: grabbing;
+    }
+
+    /* Command Action Row Hover & Click Feedback */
+    .action-row {
+      transition: transform 0.08s cubic-bezier(0.2, 0, 0, 1), background-color 0.1s ease, border-color 0.1s ease, box-shadow 0.1s ease !important;
+      will-change: transform;
+      position: relative;
+    }
+    .action-row:hover:not(.selected) {
+      background-color: var(--bg-surface) !important;
+      border-color: var(--accent-soft) !important;
+      transform: translateX(2px) translateZ(0);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+    }
+    .action-row:hover:not(.selected)::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 15%;
+      bottom: 15%;
+      width: 3px;
+      border-radius: 99px;
+      background: var(--accent);
+    }
+    .action-row:active {
+      transform: scale(0.985) translateZ(0) !important;
+      transition-duration: 0.03s !important;
+    }
+
+    /* Log Stream Row Hover & Click Feedback */
+    .log-row {
+      transition: transform 0.08s cubic-bezier(0.2, 0, 0, 1), background-color 0.1s ease, border-color 0.1s ease, box-shadow 0.1s ease !important;
+      will-change: transform;
+      position: relative;
+    }
+    .log-row:hover:not(.selected) {
+      background-color: var(--bg-surface) !important;
+      border-color: var(--accent-soft) !important;
+      transform: translateX(2px) translateZ(0);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+    }
+    .log-row:hover:not(.selected)::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 15%;
+      bottom: 15%;
+      width: 3px;
+      border-radius: 99px;
+      background: var(--mint);
+    }
+    .log-row:active {
+      transform: scale(0.985) translateZ(0) !important;
+      transition-duration: 0.03s !important;
+    }
+
+    /* Navigation Tab Feedback */
+    .nav-tab {
+      transition: transform 0.08s cubic-bezier(0.2, 0, 0, 1), background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease !important;
+      will-change: transform;
+    }
+    .nav-tab:hover {
+      background-color: var(--bg-surface) !important;
+      color: var(--text-main) !important;
+    }
+    .nav-tab:active {
+      transform: scale(0.95) translateZ(0) !important;
+      transition-duration: 0.03s !important;
+    }
+
+    /* Inspector & Filter Tab Feedback */
+    .insp-tab, .log-filter-chip {
+      transition: transform 0.08s ease, background-color 0.1s ease, color 0.1s ease !important;
+      will-change: transform;
+    }
+    .insp-tab:active, .log-filter-chip:active {
+      transform: scale(0.95) translateZ(0) !important;
+      transition-duration: 0.03s !important;
+    }
+
+    /* Theme Card Feedback */
+    .theme-card {
+      transition: transform 0.08s cubic-bezier(0.2, 0, 0, 1), border-color 0.12s ease, box-shadow 0.12s ease !important;
+      will-change: transform;
+    }
+    .theme-card:hover {
+      border-color: var(--accent) !important;
+      transform: translateY(-1px) scale(1.01) translateZ(0);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+    .theme-card:active {
+      transform: scale(0.97) translateZ(0) !important;
+      transition-duration: 0.03s !important;
+    }
+
+    /* List performance & smooth scroll */
+    #sessionListContainer, #commandStreamContainer, #logStreamContainer {
+      scroll-behavior: smooth;
+      contain: layout style;
+    }
+  </style>
+</head>
+<body class="antialiased h-screen flex flex-col overflow-hidden select-none font-sans relative">
+
+  <!-- ==================== BOOT SCREEN OVERLAY ==================== -->
+  <div id="bootScreen" class="fixed inset-0 z-[9999] flex flex-col items-center justify-center transition-opacity duration-500 bg-[#090d0c] text-[#f2f5f2] select-none font-mono">
+    <!-- Matrix/Terminal Glow Backdrop -->
+    <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(163,255,18,0.08)_0%,transparent_70%)] pointer-events-none"></div>
+    <div class="relative z-10 flex flex-col items-center max-w-md w-full px-6 space-y-6">
+      <!-- Emblem & Title -->
+      <div class="flex items-center gap-3">
+        <div class="w-11 h-11 rounded-xl bg-[#121918] border border-[#2a3632] flex items-center justify-center shadow-[0_0_20px_rgba(163,255,18,0.25)]">
+          <svg class="w-6 h-6 text-[#a3ff12]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-sm font-bold tracking-widest text-[#f2f5f2]">UCS // SECRET AGENT</span>
+          <span class="text-[10px] tracking-wider text-[#a9b5af]">BOTQUANGANH RUST STUDIO</span>
+        </div>
+      </div>
+
+      <!-- Phase Progress Box -->
+      <div class="w-full bg-[#121918] border border-[#2a3632] rounded-xl p-4 shadow-2xl space-y-3">
+        <div class="flex items-center justify-between text-xs">
+          <span id="bootPhaseText" class="text-[#a3ff12] font-semibold tracking-wider">INITIALIZING INTERFACE</span>
+          <span id="bootPercent" class="text-[#a9b5af] font-mono">0%</span>
+        </div>
+        <div class="w-full bg-[#090d0c] h-2 rounded-full overflow-hidden border border-[#202b28]">
+          <div id="bootProgressBar" class="h-full bg-gradient-to-r from-[#42d5ad] via-[#a3ff12] to-[#00f0ff] transition-all duration-300 shadow-[0_0_10px_#a3ff12]" style="width: 0%;"></div>
+        </div>
+        <div class="flex items-center justify-between text-[10px] text-[#81908a]">
+          <span id="bootStepSubtext" class="truncate">Calibrating workspace subsystems...</span>
+          <button type="button" class="cursor-pointer hover:text-[#f2f5f2] transition px-1.5 py-0.5 rounded bg-[#17211f] border border-[#202b28]" onclick="dismissBootScreen()">[ESC] Bỏ qua</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== TOP NAVIGATION BAR ==================== -->
+  <header style="background-color: var(--bg-header); border-color: var(--border);" class="h-11 border-b px-4 flex items-center justify-between shrink-0 z-20">
+    <!-- Left: Brand + 3 Page Navigation -->
+    <div class="flex items-center space-x-4">
+      <div class="flex items-center gap-2 text-xs font-bold">
+        <span style="background-color: var(--accent);" class="w-2 h-2 rounded-full shadow-xs"></span>
+        <span class="tracking-wide font-mono">BQA Center</span>
+        <span style="color: var(--accent); background-color: var(--accent-soft);" class="text-[9px] px-1 py-0.2 rounded font-mono">Rust Native</span>
+      </div>
+
+      <!-- 3 Navigation Tabs -->
+      <nav style="background-color: var(--bg-base); border-color: var(--border);" class="flex items-center space-x-1 p-0.5 rounded-lg border text-xs">
+        <button id="tabOverview" onclick="switchPage('overview')" style="color: var(--text-sub);" class="nav-tab px-3 py-1 rounded-md transition hover:text-white flex items-center gap-1.5">
+          <span>Tổng quan</span>
+        </button>
+        <button id="tabActivity" onclick="switchPage('activity')" style="background-color: var(--bg-card); border-color: var(--border); color: var(--text-main);" class="nav-tab px-3 py-1 border rounded-md font-medium shadow-xs transition flex items-center gap-1.5">
+          <span>Hoạt động</span>
+        </button>
+        <button id="tabLogs" onclick="switchPage('logs')" style="color: var(--text-sub);" class="nav-tab px-3 py-1 rounded-md transition hover:text-white flex items-center gap-1.5">
+          <span>Nhật ký</span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- Right: Status Beacon & Actions -->
+    <div style="color: var(--text-sub);" class="flex items-center space-x-2.5 text-xs">
+      <div style="background-color: var(--bg-base); border-color: var(--border);" class="flex items-center justify-center gap-2 border px-2.5 py-1 rounded-md text-[11px] font-mono min-w-[170px] shrink-0">
+        <span id="topbarStatusDot" style="background-color: var(--mint);" class="w-1.5 h-1.5 rounded-full shrink-0"></span>
+        <span id="topbarStatusText" style="color: var(--text-main);" class="truncate">0.0.0.0:18427</span>
+      </div>
+
+      <!-- Restart Button with auto-switch to Overview -->
+      <button id="btnRestart" onclick="handleRestartServer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="w-[88px] h-[28px] px-2.5 py-1 border hover:border-[#37425c] rounded-md text-[11px] font-medium font-sans transition flex items-center justify-center gap-1.5 active:scale-95 shadow-xs shrink-0 select-none whitespace-nowrap" title="Restart Bridge Server">
+        <svg id="restartIcon" class="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+        <span id="restartLabel" class="whitespace-nowrap">Restart</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ==================== PAGE 1: TỔNG QUAN (OVERVIEW) ==================== -->
+  <div id="pageOverview" class="flex-1 overflow-y-auto p-6 hidden">
+    <div class="max-w-4xl mx-auto space-y-5">
+      <!-- Header Banner -->
+      <div style="border-color: var(--border);" class="border-b pb-3 flex items-center justify-between">
+        <div>
+          <h1 style="color: var(--text-main);" class="text-base font-semibold">Tổng quan Hệ thống</h1>
+          <p style="color: var(--text-sub);" class="text-xs mt-0.5">Quản lý kết nối MCP Cloudflare Tunnel và tài nguyên lưu trữ</p>
+        </div>
+        <!-- Bridge Lifecycle Control Box (Start / Restart / Stop) -->
+        <div style="background-color: var(--bg-header); border-color: var(--border);" class="flex items-center gap-2.5 border px-3 py-1.5 rounded-lg shadow-xs">
+          <span id="bridgeStateText" style="color: var(--mint);" class="text-xs font-medium flex items-center gap-1.5 mr-1 font-mono">
+            <span id="bridgeDot" style="background-color: var(--mint);" class="w-2 h-2 rounded-full"></span>
+            <span>Running</span>
+          </span>
+
+          <!-- Actions container -->
+          <div id="bridgeActionsRunning" class="flex items-center gap-1.5">
+            <button onclick="promptRestartServer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="w-[84px] h-[28px] px-2.5 py-1 border hover:border-[#37425c] rounded-md text-[11px] font-medium transition flex items-center justify-center gap-1 active:scale-95 shadow-xs shrink-0" title="Khởi động lại Bridge">
+              <svg id="restartIcon" class="w-3 h-3 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+              <span id="restartLabel">Restart</span>
+            </button>
+            <button onclick="promptStopServer()" class="w-[68px] h-[28px] px-2.5 py-1 bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 rounded-md text-[11px] font-medium transition flex items-center justify-center gap-1 active:scale-95 shadow-xs shrink-0" title="Dừng Bridge Server">
+              <span class="w-2 h-2 rounded-xs bg-rose-400 shrink-0"></span>
+              <span>Stop</span>
+            </button>
+          </div>
+
+          <!-- Stopped State Action (Hidden when running) -->
+          <div id="bridgeActionsStopped" class="hidden items-center gap-1.5">
+            <button onclick="startBridgeServer()" class="w-[74px] h-[28px] px-3 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-md text-[11px] font-medium transition flex items-center justify-center gap-1 active:scale-95 shadow-xs shrink-0" title="Khởi chạy Bridge Server">
+              <svg class="w-3 h-3 text-emerald-400 shrink-0" fill="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+              <span>Start</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- MCP Tunnel Box -->
+      <div style="background-color: var(--bg-header); border-color: var(--border);" class="border rounded-xl p-4 space-y-3 font-mono text-xs">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span style="color: var(--text-sub);" class="text-[11px] uppercase tracking-wider font-sans font-semibold">MCP Cloudflare Tunnel Endpoint</span>
+            <span id="tunnelStatusBadge" style="color: var(--mint); background-color: var(--accent-soft); border-color: var(--border);" class="text-[10px] border px-2 py-0.5 rounded font-sans inline-flex items-center justify-center min-w-[110px] text-center shrink-0">Edge Connected</span>
+          </div>
+          <div class="flex items-center gap-2 font-sans">
+            <button id="btnCopyTunnelUrl" onclick="copyBridgeUrl()" style="background-color: var(--accent-soft); border: 1px solid var(--accent); color: var(--accent);" class="w-[145px] h-[28px] px-3 py-1 rounded-md text-[11px] font-medium font-sans hover:brightness-125 transition flex items-center justify-center gap-1.5 shadow-xs shrink-0 select-none whitespace-nowrap">
+              <svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" stroke-width="2"></rect><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke-width="2"></path></svg>
+              <span id="copyUrlLabel" class="whitespace-nowrap text-center">Copy Tunnel URL</span>
+            </button>
+            <button onclick="openSettingsDrawer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-2.5 py-1 border rounded-md text-[11px] transition shrink-0">
+              Cài đặt Server
+            </button>
+          </div>
+        </div>
+
+        <div style="background-color: var(--bg-base); border-color: var(--border);" class="border px-3.5 py-2.5 rounded-lg flex items-center justify-between text-xs">
+          <div class="flex items-center gap-2 truncate">
+            <span style="color: var(--accent);" class="font-bold">TUNNEL ›</span>
+            <span id="bridgeUrlDisplay" style="color: var(--mint);" class="select-text font-medium font-mono">Đang đồng bộ Cloudflare Edge...</span>
+          </div>
+          <span id="bridgeProtocolDisplay" style="color: var(--text-dim);" class="text-[11px] shrink-0 font-sans">Cloudflare Edge · MCP</span>
+        </div>
+      </div>
+
+      <!-- 4-Metric Grid -->
+      <div>
+        <span style="color: var(--text-sub);" class="text-[11px] font-semibold uppercase tracking-wider block mb-2 font-sans">Chỉ số Hoạt động (Telemetry)</span>
+        <div class="grid grid-cols-4 gap-3 font-mono text-xs">
+          <div style="background-color: var(--bg-header); border-color: var(--border);" class="border p-3.5 rounded-xl">
+            <span style="color: var(--text-sub);" class="text-[10px] block uppercase font-sans">Phiên đang mở</span>
+            <span id="metricSessions" style="color: var(--text-main);" class="text-xl font-bold mt-1 block">4 <span style="color: var(--text-dim);" class="text-xs font-normal font-sans">sessions</span></span>
+          </div>
+          <div style="background-color: var(--bg-header); border-color: var(--border);" class="border p-3.5 rounded-xl">
+            <span style="color: var(--text-sub);" class="text-[10px] block uppercase font-sans">Lệnh đã thực thi</span>
+            <span id="metricCommands" style="color: var(--text-main);" class="text-xl font-bold mt-1 block">1,420 <span style="color: var(--mint);" class="text-xs font-normal font-sans">(100% OK)</span></span>
+          </div>
+          <div style="background-color: var(--bg-header); border-color: var(--border);" class="border p-3.5 rounded-xl">
+            <span style="color: var(--text-sub);" class="text-[10px] block uppercase font-sans">Bộ nhớ lưu trữ</span>
+            <span id="metricStorage" style="color: var(--text-main);" class="text-xl font-bold mt-1 block">42.8 MB <span style="color: var(--text-dim);" class="text-xs font-normal font-sans">/ 2GB</span></span>
+          </div>
+          <div style="background-color: var(--bg-header); border-color: var(--border);" class="border p-3.5 rounded-xl">
+            <span style="color: var(--text-sub);" class="text-[10px] block uppercase font-sans">Độ trễ phản hồi</span>
+            <span id="metricLatency" style="color: var(--mint);" class="text-xl font-bold mt-1 block">0.4 ms</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Action Buttons -->
+      <div class="pt-2 flex gap-2.5 font-sans">
+        <button onclick="switchPage('activity')" style="background-color: var(--accent-soft); border: 1px solid var(--accent); color: var(--accent);" class="px-4 py-2 text-xs font-medium rounded-lg hover:brightness-125 transition shadow-xs flex items-center gap-1.5">
+          <span>Xem Hoạt động lệnh</span>
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+        </button>
+        <button onclick="switchPage('logs')" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-4 py-2 text-xs font-medium rounded-lg border transition">
+          Xem Nhật ký sự kiện
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== PAGE 2: HOẠT ĐỘNG (ACTIVITY - 3 PANES RESIZABLE) ==================== -->
+  <div id="pageActivity" class="flex-1 flex overflow-hidden relative">
+
+    <!-- CỘT 1: SESSIONS (CÓ NÚT THU GỌN INLINE « TRỰC TIẾP TRÊN HEADER) -->
+    <aside id="paneSidebar" style="background-color: var(--bg-header); border-color: var(--border);" class="w-56 min-w-[160px] max-w-[450px] border-r flex flex-col shrink-0">
+      <div style="border-color: var(--border); color: var(--text-sub);" class="px-3 py-2 border-b flex items-center justify-between gap-1.5 text-xs shrink-0 min-w-0 overflow-hidden">
+        <div class="flex items-center gap-1 min-w-0 truncate">
+          <span class="font-semibold uppercase tracking-wider text-[10px] whitespace-nowrap">Sessions</span>
+          <span style="color: var(--text-dim);" class="text-[9.5px] font-sans truncate">• Đĩa</span>
+        </div>
+        <!-- Action buttons on Sidebar Header: Reset Sort & Reload -->
+        <div class="flex items-center space-x-1 shrink-0">
+          <button id="btnResetWorkspaceOrder" onclick="resetWorkspaceOrder()" style="color: var(--text-sub);" class="hover:text-white transition p-1 rounded hover:bg-slate-700/30 shrink-0 hidden" title="Khôi phục sắp xếp theo thời gian tạo (Mới nhất)">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"></path></svg>
+          </button>
+          <button onclick="refreshSessionsFromDisk()" style="color: var(--text-sub);" class="hover:text-white transition p-1 rounded hover:bg-slate-700/30 shrink-0" title="Đọc lại từ workspace">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+          </button>
+        </div>
+      </div>
+
+      <div id="sessionListContainer" class="flex-1 overflow-y-auto p-1.5 space-y-1 font-mono text-xs">
+        <!-- Dynamically injected from Rust IPC -->
+      </div>
+    </aside>
+
+    <!-- Splitter 1 -->
+    <div id="resizerLeft" class="resizer"></div>
+
+    <!-- CỘT 2: TÓM TẮT LỆNH (CÓ NÚT BẬT/TẮT SIDEBAR TRỰC TIẾP TRÊN HEADER) -->
+    <section id="paneStream" style="background-color: var(--bg-base); border-color: var(--border);" class="w-72 min-w-[220px] max-w-[950px] flex flex-col shrink-0 overflow-hidden border-r">
+      <div style="border-color: var(--border); color: var(--text-sub);" class="px-3 py-2 border-b text-xs shrink-0 flex items-center justify-between gap-2 min-w-0 overflow-hidden">
+        <div class="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
+          <button id="btnToggleSidebar" onclick="toggleSidebar()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white hover:bg-slate-700/30 transition shrink-0" title="Ẩn/Hiện danh sách Sessions (Sidebar)">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" stroke-width="2"></rect><path d="M9 4v16" stroke-width="2"></path></svg>
+          </button>
+          <span id="streamTitle" style="color: var(--text-main);" class="font-mono font-semibold truncate text-[11.5px] min-w-0" title="Active Session ID">Đang tải...</span>
+          <div class="flex items-center gap-1 shrink-0 ml-auto">
+            <button id="btnCopyActiveSession" onclick="copySessionBind(activeChatId, this)" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--accent);" class="w-[74px] h-[24px] px-2 py-0.5 border rounded text-[11px] font-sans whitespace-nowrap flex items-center justify-center gap-1 transition hover:brightness-125 hover:border-indigo-400 shrink-0 select-none leading-none" title="Copy Session ID">
+              <svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+              <span class="btn-copy-text whitespace-nowrap">Copy</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-1 shrink-0 whitespace-nowrap">
+          <span style="color: var(--text-dim);" class="text-[10px] font-sans">Mới nhất ↓</span>
+          <button id="btnToggleInspector" onclick="toggleInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white hover:bg-slate-700/30 transition shrink-0" title="Ẩn/Hiện Khung Chi Tiết Inspector">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" stroke-width="2"></rect><path d="M15 4v16" stroke-width="2"></path></svg>
+          </button>
+        </div>
+      </div>
+
+      <div id="commandStreamContainer" class="flex-1 overflow-y-auto p-2 space-y-1.5 font-mono text-xs">
+        <!-- Dynamically injected from Rust IPC -->
+      </div>
+    </section>
+
+    <!-- Splitter 2 -->
+    <div id="resizerRight" class="resizer"></div>
+
+    <!-- CỘT 3: KHUNG CHI TIẾT (HERO ELEMENT) -->
+    <aside id="paneInspector" style="background-color: var(--bg-header);" class="flex-1 flex flex-col overflow-hidden">
+      <div class="flex-1 flex flex-col min-w-[320px] h-full overflow-hidden">
+        <div style="border-color: var(--border); color: var(--text-sub);" class="px-4 py-2 border-b flex items-center justify-between gap-2 text-xs shrink-0 min-w-0 overflow-hidden">
+          <span style="color: var(--text-main);" class="font-semibold whitespace-nowrap truncate min-w-0">Chi tiết Thực thi (Inspector)</span>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button id="btnCopyDetails" onclick="copyDetails()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="w-[78px] h-[28px] px-2.5 py-1 border rounded-md text-[11px] font-sans transition whitespace-nowrap flex items-center justify-center shrink-0 select-none" title="Copy command details">
+              <span id="copyBtnLabel" class="whitespace-nowrap text-center">Copy</span>
+            </button>
+            <button id="btnCloseInspector" onclick="toggleInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white hover:bg-slate-700/30 transition shrink-0" title="Ẩn khung chi tiết (Close Inspector)">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+          </div>
+        </div>
+
+      <!-- 4 Inspector Tabs -->
+      <div style="background-color: var(--bg-surface); border-color: var(--border);" class="px-3 py-1.5 border-b flex items-center gap-1 shrink-0 text-[11px] font-sans">
+        <button id="tabInspOutput" onclick="switchInspectorTab('output')" class="insp-tab px-2.5 py-0.5 rounded font-medium transition" style="background-color: var(--accent); color: var(--bg-base);">Output (STDOUT)</button>
+        <button id="tabInspMeta" onclick="switchInspectorTab('meta')" class="insp-tab px-2.5 py-0.5 rounded font-medium transition" style="background-color: transparent; color: var(--text-sub);">Metadata</button>
+        <button id="tabInspStderr" onclick="switchInspectorTab('stderr')" class="insp-tab px-2.5 py-0.5 rounded font-medium transition" style="background-color: transparent; color: var(--text-sub);">STDERR</button>
+        <button id="tabInspRaw" onclick="switchInspectorTab('raw')" class="insp-tab px-2.5 py-0.5 rounded font-medium transition" style="background-color: transparent; color: var(--text-sub);">Raw JSON</button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-4 space-y-3.5 text-xs font-mono">
+        <!-- Section: Overview badges (always visible) -->
+        <div class="grid grid-cols-3 gap-2.5">
+          <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-2.5 rounded-lg min-w-0">
+            <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans whitespace-nowrap truncate">Tác vụ</span>
+            <span id="inspectTool" style="color: var(--accent);" class="font-semibold mt-0.5 block truncate">host_run_command</span>
+          </div>
+
+          <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-2.5 rounded-lg min-w-0">
+            <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans whitespace-nowrap truncate">Thời gian</span>
+            <span id="inspectTimestamp" style="color: var(--text-main);" class="font-semibold mt-0.5 block truncate">2026-09-01 20:26:15</span>
+          </div>
+
+          <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-2.5 rounded-lg min-w-0">
+            <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans whitespace-nowrap truncate">Kết quả & Thời lượng</span>
+            <span id="inspectExit" style="color: var(--mint);" class="font-semibold mt-0.5 block truncate">0 (Success) · 1.42s</span>
+          </div>
+        </div>
+
+        <!-- Section: Output Tab View -->
+        <div id="inspViewOutput" class="flex flex-col flex-1 min-h-[220px]">
+          <div style="color: var(--text-dim);" class="flex items-center justify-between text-[10px] uppercase font-sans mb-1 whitespace-nowrap">
+            <span>Terminal Console Output</span>
+            <span>UTF-8</span>
+          </div>
+          <pre id="inspectOutput" style="background-color: var(--bg-console); border-color: var(--border); color: var(--mint);" class="flex-1 border rounded-xl p-3.5 text-[11px] leading-relaxed overflow-auto select-text font-mono whitespace-pre-wrap"></pre>
+        </div>
+
+        <!-- Section: Metadata Tab View -->
+        <div id="inspViewMeta" class="space-y-2.5 hidden">
+          <!-- Session Bind Info Card -->
+          <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-3 rounded-lg min-w-0">
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <span style="color: var(--text-dim);" class="text-[10px] uppercase font-sans font-semibold whitespace-nowrap">Phiên làm việc (Session Bind)</span>
+              <div class="flex items-center gap-1.5 shrink-0">
+                <button onclick="copySessionBind(activeChatId, this)" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--accent);" class="w-[82px] h-[24px] px-2 py-0.5 border rounded text-[11px] font-sans whitespace-nowrap flex items-center justify-center gap-1 transition hover:brightness-125 shrink-0 select-none leading-none" title="Copy Session ID">
+                  <svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                  <span class="btn-copy-text whitespace-nowrap">Copy ID</span>
+                </button>
+                <button onclick="copySessionBind(activeChatId, this, 'cli')" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-sub);" class="w-[82px] h-[24px] px-2 py-0.5 border rounded text-[11px] font-sans whitespace-nowrap flex items-center justify-center gap-1 transition hover:text-white shrink-0 select-none leading-none" title="Copy: bqa session bind <session_id>">
+                  <span class="btn-copy-text whitespace-nowrap">Copy CLI</span>
+                </button>
+              </div>
+            </div>
+            <div id="inspectSessionId" style="color: var(--text-main);" class="select-text break-all font-mono text-xs mb-1">--</div>
+            <div style="color: var(--text-dim);" class="text-[10px] font-mono">Dùng lệnh: <code style="color: var(--mint);">bqa session bind <span id="inspectSessionIdCmd">--</span></code></div>
+          </div>
+
+          <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-3 rounded-lg min-w-0">
+            <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans mb-1 whitespace-nowrap">Lệnh đầy đủ</span>
+            <div id="inspectCommand" style="color: var(--text-main);" class="select-text break-all font-mono">uv run pytest tests/test_qml_backend.py</div>
+          </div>
+
+          <div id="inspectIntentCard" style="background-color: var(--bg-base); border-color: var(--border);" class="border p-3 rounded-lg min-w-0 hidden">
+            <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans mb-1 whitespace-nowrap">Ý định / Ghi chú (Intent)</span>
+            <div id="inspectIntent" style="color: var(--accent);" class="select-text break-all text-xs"></div>
+          </div>
+
+          <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-3 rounded-lg min-w-0">
+            <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans mb-1 whitespace-nowrap">Thư mục (CWD)</span>
+            <div id="inspectCwd" style="color: var(--text-sub);" class="select-text break-all font-mono">/home/light/GitHub/botquanganh_mcp</div>
+          </div>
+        </div>
+
+        <!-- Section: Stderr Tab View -->
+        <div id="inspViewStderr" class="flex flex-col flex-1 min-h-[220px] hidden">
+          <div style="color: var(--text-dim);" class="flex items-center justify-between text-[10px] uppercase font-sans mb-1 whitespace-nowrap">
+            <span>Standard Error (STDERR)</span>
+            <span id="inspectStderrBadge" style="color: var(--mint);">None</span>
+          </div>
+          <pre id="inspectStderr" style="background-color: var(--bg-console); border-color: var(--border); color: #ff6b61;" class="flex-1 border rounded-xl p-3.5 text-[11px] leading-relaxed overflow-auto select-text font-mono whitespace-pre-wrap">Không có lỗi phát sinh (Exit Code 0).</pre>
+        </div>
+
+        <!-- Section: Raw JSON Tab View -->
+        <div id="inspViewRaw" class="flex flex-col flex-1 min-h-[220px] hidden">
+          <div style="color: var(--text-dim);" class="flex items-center justify-between text-[10px] uppercase font-sans mb-1 whitespace-nowrap">
+            <span>Complete Event JSON Record</span>
+            <span>JSON</span>
+          </div>
+          <pre id="inspectRawJson" style="background-color: var(--bg-console); border-color: var(--border); color: var(--sky);" class="flex-1 border rounded-xl p-3.5 text-[11px] leading-relaxed overflow-auto select-text font-mono whitespace-pre-wrap">{}</pre>
+        </div>
+      </div>
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- ==================== PAGE 3: NHẬT KÝ (AUDIT LOGS - 2 PANES RESIZABLE) ==================== -->
+  <div id="pageLogs" class="flex-1 flex overflow-hidden hidden font-mono text-xs relative">
+    <div id="paneLogStream" style="background-color: var(--bg-base); border-color: var(--border);" class="flex-1 min-w-[260px] flex flex-col overflow-hidden border-r">
+      <div style="background-color: var(--bg-header); border-color: var(--border); color: var(--text-sub);" class="px-3 py-2 border-b flex items-center justify-between gap-2 shrink-0 text-xs min-w-0 overflow-hidden">
+        <div class="flex items-center gap-1.5 min-w-0 truncate">
+          <span style="color: var(--text-main);" class="font-semibold whitespace-nowrap truncate">System Audit Logs</span>
+          <span style="color: var(--text-dim);" class="text-[10px] font-sans truncate hidden sm:inline">• Sự kiện bảo mật (Mới nhất ↓)</span>
+        </div>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button onclick="refreshLogsFromDisk()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-2 py-0.5 border rounded-md text-[11px] font-sans transition whitespace-nowrap shrink-0">
+            Làm mới
+          </button>
+          <button id="btnToggleLogInspector" onclick="toggleInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white transition shrink-0" title="Ẩn/Hiện Chi tiết Log">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" stroke-width="2"></rect><path d="M15 4v16" stroke-width="2"></path></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Log Category Filter Chips -->
+      <div style="background-color: var(--bg-surface); border-color: var(--border);" class="px-3 py-1.5 border-b flex items-center gap-1.5 overflow-x-auto text-[11px] font-sans shrink-0">
+        <span style="color: var(--text-dim);" class="text-[10px] uppercase font-sans mr-1">Lọc:</span>
+        <button onclick="setLogCategoryFilter('all')" class="log-filter-chip px-2 py-0.5 rounded font-medium transition" data-chip="all" style="background-color: var(--accent); color: var(--bg-base);">Tất cả</button>
+        <button onclick="setLogCategoryFilter('error')" class="log-filter-chip px-2 py-0.5 rounded font-medium transition" data-chip="error" style="background-color: var(--bg-card); color: var(--text-sub); border: 1px solid var(--border);">Lỗi (Error)</button>
+        <button onclick="setLogCategoryFilter('process')" class="log-filter-chip px-2 py-0.5 rounded font-medium transition" data-chip="process" style="background-color: var(--bg-card); color: var(--text-sub); border: 1px solid var(--border);">Process</button>
+        <button onclick="setLogCategoryFilter('file')" class="log-filter-chip px-2 py-0.5 rounded font-medium transition" data-chip="file" style="background-color: var(--bg-card); color: var(--text-sub); border: 1px solid var(--border);">Tệp tin</button>
+        <button onclick="setLogCategoryFilter('session')" class="log-filter-chip px-2 py-0.5 rounded font-medium transition" data-chip="session" style="background-color: var(--bg-card); color: var(--text-sub); border: 1px solid var(--border);">Phiên làm việc</button>
+        <button onclick="setLogCategoryFilter('network')" class="log-filter-chip px-2 py-0.5 rounded font-medium transition" data-chip="network" style="background-color: var(--bg-card); color: var(--text-sub); border: 1px solid var(--border);">Mạng (HTTP)</button>
+      </div>
+
+      <div id="logStreamContainer" class="flex-1 overflow-y-auto p-2 space-y-1">
+        <!-- Dynamically injected from Rust IPC -->
+      </div>
+    </div>
+
+    <!-- Divider -->
+    <div id="resizerLog" class="resizer"></div>
+
+    <!-- CỘT 2: FORENSICS JSON -->
+    <aside id="paneLogInspector" style="background-color: var(--bg-header);" class="w-[420px] max-w-[950px] flex flex-col overflow-hidden shrink-0">
+      <div class="flex-1 flex flex-col min-w-[280px] h-full overflow-hidden">
+        <div style="border-color: var(--border); color: var(--text-sub);" class="px-4 py-2.5 border-b flex items-center justify-between text-xs shrink-0">
+          <span style="color: var(--text-main);" class="font-semibold">Log Event Forensics</span>
+          <div class="flex items-center gap-1.5">
+            <button id="btnCopyLogJson" onclick="copyLogJson()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="w-[96px] h-[28px] px-2.5 py-1 border rounded-md text-[11px] font-sans transition whitespace-nowrap flex items-center justify-center shrink-0 select-none" title="Copy JSON Forensics">
+              <span id="copyLogLabel" class="whitespace-nowrap text-center">Copy JSON</span>
+            </button>
+            <button id="btnCloseLogInspector" onclick="toggleInspector()" style="color: var(--text-sub);" class="p-1 rounded hover:text-white hover:bg-slate-700/30 transition shrink-0" title="Ẩn chi tiết log (Close Inspector)">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-4 space-y-3">
+          <div class="grid grid-cols-2 gap-2.5 text-xs">
+            <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-2.5 rounded-lg">
+              <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans">Event ID</span>
+              <span id="logInspectId" style="color: var(--text-main);" class="font-semibold mt-0.5 block">evt-init</span>
+            </div>
+            <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-2.5 rounded-lg">
+              <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans">Severity / Category</span>
+              <span id="logInspectCategory" style="color: var(--mint);" class="font-semibold mt-0.5 block">SYSTEM · network</span>
+            </div>
+          </div>
+
+          <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-2.5 rounded-lg text-xs">
+            <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans mb-1">Action & Session ID</span>
+            <div class="flex items-center justify-between">
+              <span id="logInspectAction" style="color: var(--accent);" class="font-semibold">bridge_init</span>
+              <span id="logInspectSession" style="color: var(--text-sub);">system</span>
+            </div>
+          </div>
+
+          <div class="flex flex-col flex-1 min-h-[240px]">
+            <span style="color: var(--text-dim);" class="text-[10px] uppercase font-sans mb-1">Raw JSON Metadata Payload</span>
+            <pre id="logInspectJson" style="background-color: var(--bg-console); border-color: var(--border); color: var(--sky);" class="flex-1 border rounded-xl p-3.5 text-[11px] leading-relaxed overflow-auto select-text whitespace-pre-wrap">{}</pre>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ==================== FLOATING SETTINGS TRIGGER BUTTON ==================== -->
+  <button id="btnSettingsTrigger" onclick="openSettingsDrawer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="fixed bottom-4 right-4 z-40 px-3.5 py-2 border rounded-full shadow-xl hover:border-[#6366f1] hover:shadow-indigo-500/20 transition flex items-center gap-2 text-xs font-medium group active:scale-95">
+    <svg class="w-4 h-4 group-hover:rotate-45 transition-transform duration-300 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+    <span>Cài đặt</span>
+  </button>
+
+  <!-- ==================== SLIDE-OUT SETTINGS DRAWER ==================== -->
+  <div id="settingsBackdrop" onclick="closeSettingsDrawer()" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs transition-opacity duration-300 opacity-0 pointer-events-none"></div>
+
+  <aside id="settingsDrawer" style="background-color: var(--bg-header); border-color: var(--border);" class="fixed top-0 right-0 bottom-0 w-[450px] max-w-full z-50 border-l shadow-2xl flex flex-col transform translate-x-full transition-transform duration-300 ease-out font-sans">
+    <div style="border-color: var(--border);" class="p-4 border-b flex items-center justify-between shrink-0">
+      <div class="flex items-center gap-2">
+        <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+        <div>
+          <h2 style="color: var(--text-main);" class="text-sm font-bold">Cấu Hình Máy Chủ & Môi Trường</h2>
+          <span style="color: var(--text-dim);" class="text-[10px] font-mono">Quản lý qua Rust Backend</span>
+        </div>
+      </div>
+      <button onclick="closeSettingsDrawer()" style="color: var(--text-sub);" class="hover:text-white p-1 rounded-md transition" title="Đóng">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+      </button>
+    </div>
+
+    <div class="flex-1 overflow-y-auto p-4 space-y-3 text-xs">
+      <!-- MỤC 1: WORKSPACES & ĐƯỜNG DẪN -->
+      <div style="background-color: var(--bg-surface); border-color: var(--border);" class="border rounded-xl overflow-hidden shadow-xs">
+        <button onclick="toggleSection('secPaths')" class="w-full p-3.5 flex items-center justify-between text-left hover:opacity-90 transition">
+          <div class="flex items-center gap-2.5">
+            <span class="text-sm">📂</span>
+            <div>
+              <div class="flex items-center gap-1.5">
+                <h3 style="color: var(--text-main);" class="font-semibold text-xs">1. Workspaces & Đường Dẫn</h3>
+                <span style="color: var(--mint); background-color: var(--accent-soft);" class="text-[9px] px-1 rounded font-mono font-medium">Hot Reload</span>
+              </div>
+              <p style="color: var(--text-dim);" class="text-[10px]">HOST_WORKSPACE_DIR & Thư mục Chat</p>
+            </div>
+          </div>
+          <svg id="arrow-secPaths" class="w-3.5 h-3.5 text-slate-400 transform transition-transform duration-200 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+        </button>
+
+        <div id="secPaths" class="p-3.5 pt-0 border-t space-y-2.5 font-mono" style="border-color: var(--border);">
+          <div class="pt-2">
+            <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">HOST_WORKSPACE_DIR (Gốc phân quyền)</label>
+            <input id="cfgWorkspaceDir" type="text" value="/home/light" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px] focus:outline-hidden">
+          </div>
+
+          <div>
+            <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">HOST_DEFAULT_DIR (Thư mục mặc định)</label>
+            <input id="cfgDefaultDir" type="text" value="/home/light/Downloads/bqa" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px]">
+          </div>
+
+          <div>
+            <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">HOST_CHAT_ROOT (Thư mục lưu phiên)</label>
+            <input id="cfgChatRoot" type="text" value="/home/light/Downloads/bqa-workspaces" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px]">
+          </div>
+        </div>
+      </div>
+
+      <!-- MỤC 2: CHÍNH SÁCH LỆNH & TIMEOUT -->
+      <div style="background-color: var(--bg-surface); border-color: var(--border);" class="border rounded-xl overflow-hidden shadow-xs">
+        <button onclick="toggleSection('secExecution')" class="w-full p-3.5 flex items-center justify-between text-left hover:opacity-90 transition">
+          <div class="flex items-center gap-2.5">
+            <span class="text-sm">⚡</span>
+            <div>
+              <div class="flex items-center gap-1.5">
+                <h3 style="color: var(--text-main);" class="font-semibold text-xs">2. Thực Thi & Giới Hạn (Policy)</h3>
+                <span style="color: var(--mint); background-color: var(--accent-soft);" class="text-[9px] px-1 rounded font-mono font-medium">Hot Reload</span>
+              </div>
+              <p style="color: var(--text-dim);" class="text-[10px]">Guarded policy, Timeouts & Limits</p>
+            </div>
+          </div>
+          <svg id="arrow-secExecution" class="w-3.5 h-3.5 text-slate-400 transform transition-transform duration-200 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+        </button>
+
+        <div id="secExecution" class="p-3.5 pt-0 border-t space-y-2.5 font-mono" style="border-color: var(--border);">
+          <div class="grid grid-cols-2 gap-2 pt-2">
+            <div>
+              <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">COMMAND POLICY</label>
+              <select id="cfgPolicy" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2 py-1.5 text-[11px] cursor-pointer">
+                <option value="guarded" selected>guarded (An toàn)</option>
+                <option value="allowlist">allowlist (Chỉ định)</option>
+              </select>
+            </div>
+            <div>
+              <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">DEFAULT TIMEOUT (s)</label>
+              <input id="cfgDefaultTimeout" type="number" value="60" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px]">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">MAX TIMEOUT (s)</label>
+              <input id="cfgMaxTimeout" type="number" value="300" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px]">
+            </div>
+            <div>
+              <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">MAX OUTPUT (BYTES)</label>
+              <input id="cfgMaxOutput" type="number" value="5000000" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px]">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MỤC 3: BẢO MẬT & XÁC THỰC -->
+      <div style="background-color: var(--bg-surface); border-color: var(--border);" class="border rounded-xl overflow-hidden shadow-xs">
+        <button onclick="toggleSection('secSecurity')" class="w-full p-3.5 flex items-center justify-between text-left hover:opacity-90 transition">
+          <div class="flex items-center gap-2.5">
+            <span class="text-sm">🛡️</span>
+            <div>
+              <div class="flex items-center gap-1.5">
+                <h3 style="color: var(--text-main);" class="font-semibold text-xs">3. Bảo Mật & Xác Thực (Auth)</h3>
+                <span style="color: var(--mint); background-color: var(--accent-soft);" class="text-[9px] px-1 rounded font-mono font-medium">Hot Reload</span>
+              </div>
+              <p style="color: var(--text-dim);" class="text-[10px]">GATEWAY_TOKEN & Attribution Mode</p>
+            </div>
+          </div>
+          <svg id="arrow-secSecurity" class="w-3.5 h-3.5 text-slate-400 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+        </button>
+
+        <div id="secSecurity" class="p-3.5 pt-0 border-t space-y-2.5 font-mono hidden" style="border-color: var(--border);">
+          <div class="pt-2">
+            <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">GATEWAY_TOKEN</label>
+            <input id="cfgToken" type="text" value="mcp_gateway_9f8d1c7a3b4e5f60" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px]">
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">REQUIRE_AUTH</label>
+              <select id="cfgRequireAuth" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2 py-1.5 text-[11px] cursor-pointer">
+                <option value="false" selected>false (Không bắt buộc)</option>
+                <option value="true">true (Bắt buộc Token)</option>
+              </select>
+            </div>
+            <div>
+              <label style="color: var(--text-sub);" class="text-[10px] uppercase font-sans font-semibold block mb-1">ATTRIBUTION_MODE</label>
+              <select id="cfgAttribution" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2 py-1.5 text-[11px] cursor-pointer">
+                <option value="enforce" selected>enforce (Bắt buộc)</option>
+                <option value="strict">strict</option>
+                <option value="tag">tag</option>
+                <option value="off">off</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MỤC 4: GIAO DIỆN & CHỦ ĐỀ (13 THEMES) -->
+      <div style="background-color: var(--bg-surface); border-color: var(--border);" class="border rounded-xl overflow-hidden transition">
+        <button onclick="toggleSection('secTheme')" class="w-full p-3.5 flex items-center justify-between text-left hover:opacity-90 transition">
+          <div class="flex items-center gap-2.5">
+            <span class="text-sm">🎨</span>
+            <div>
+              <h3 style="color: var(--text-main);" class="font-semibold text-xs">4. Giao Diện & Chủ Đề (16 Theme · VJP-PRO Suite)</h3>
+              <p style="color: var(--text-dim);" class="text-[10px]">Tùy chọn phong cách phối màu developer & security console</p>
+            </div>
+          </div>
+          <svg id="arrow-secTheme" class="w-3.5 h-3.5 text-slate-400 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+        </button>
+
+        <div id="secTheme" class="p-3 pt-0 border-t space-y-1.5 hidden" style="border-color: var(--border);">
+          <div class="grid grid-cols-2 gap-1.5 pt-2">
+            <button onclick="selectThemeFromDrawer('vjp-terminal')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="vjp-terminal" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#a3ff12] shadow-[0_0_8px_#a3ff12] shrink-0"></span>
+              <span class="truncate text-[11px] font-bold text-[#a3ff12]">UCS Terminal (VJP)</span>
+            </button>
+            <button onclick="selectThemeFromDrawer('vjp-command')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="vjp-command" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#42d5ad] shadow-[0_0_8px_#42d5ad] shrink-0"></span>
+              <span class="truncate text-[11px] font-bold text-[#42d5ad]">Command Center (VJP)</span>
+            </button>
+            <button onclick="selectThemeFromDrawer('vjp-light')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="vjp-light" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#2e8b57] shrink-0"></span>
+              <span class="truncate text-[11px]">UCS Light Pro (VJP)</span>
+            </button>
+            <button onclick="selectThemeFromDrawer('exodia')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="exodia" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-gradient-to-tr from-[#00f0ff] via-[#00ff88] to-[#c084fc] shadow-[0_0_8px_#00f0ff] shrink-0"></span>
+              <span class="truncate text-[11px] font-bold text-[#00f0ff]">Exodia Neon</span>
+            </button>
+            <button onclick="selectThemeFromDrawer('rosepine')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="rosepine" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#ea9a97] shrink-0"></span>
+              <span class="truncate text-[11px]">Rose Pine Moon</span>
+            </button>
+            <button onclick="selectThemeFromDrawer('linear')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="linear" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#5e6ad2] shrink-0"></span>
+              <span class="truncate text-[11px]">Linear Studio</span>
+            </button>
+            <button onclick="selectThemeFromDrawer('github')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="github" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#539bf5] shrink-0"></span>
+              <span class="truncate text-[11px]">GitHub Dimmed</span>
+            </button>
+            <button onclick="selectThemeFromDrawer('dracula')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="dracula" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#bd93f9] shrink-0"></span>
+              <span class="truncate text-[11px]">Dracula</span>
+            </button>
+            <button onclick="selectThemeFromDrawer('nord')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="nord" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#88c0d0] shrink-0"></span>
+              <span class="truncate text-[11px]">Nord Arctic</span>
+            </button>
+            <button onclick="selectThemeFromDrawer('tokyo')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="tokyo" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#7aa2f7] shrink-0"></span>
+              <span class="truncate text-[11px]">Tokyo Night</span>
+            </button>
+            <button onclick="selectThemeFromDrawer('gruvbox')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="gruvbox" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#fabd2f] shrink-0"></span>
+              <span class="truncate text-[11px]">Gruvbox Retro</span>
+            </button>
+            <button onclick="selectThemeFromDrawer('catppuccin')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="catppuccin" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#cba6f7] shrink-0"></span>
+              <span class="truncate text-[11px]">Catppuccin</span>
+            </button>
+            <button onclick="selectThemeFromDrawer('monokai')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="monokai" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#ffd866] shrink-0"></span>
+              <span class="truncate text-[11px]">Monokai Pro</span>
+            </button>
+            <button onclick="selectThemeFromDrawer('solarized')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="solarized" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#268bd2] shrink-0"></span>
+              <span class="truncate text-[11px]">Solarized Dark</span>
+            </button>
+            <button onclick="selectThemeFromDrawer('vercel')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="vercel" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#ffffff] shrink-0"></span>
+              <span class="truncate text-[11px]">Vercel Mono</span>
+            </button>
+            <button onclick="selectThemeFromDrawer('light')" class="theme-card p-2 rounded-lg border text-left flex items-center gap-2 transition" data-theme-val="light" style="background-color: var(--bg-base); border-color: var(--border);">
+              <span class="w-3 h-3 rounded-full bg-[#4f46e5] shrink-0"></span>
+              <span class="truncate text-[11px]">Clean Light</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- MỤC 5: MẠNG & PORT -->
+      <div style="background-color: var(--bg-surface); border-color: var(--border);" class="border rounded-xl overflow-hidden">
+        <button onclick="toggleSection('secNetwork')" class="w-full p-3.5 flex items-center justify-between text-left hover:opacity-90 transition">
+          <div class="flex items-center gap-2.5">
+            <span class="text-sm">🌐</span>
+            <div>
+              <div class="flex items-center gap-1.5">
+                <h3 style="color: var(--text-main);" class="font-semibold text-xs">5. Mạng & Socket Binding</h3>
+                <span style="color: var(--text-dim);" class="text-[9px] px-1 rounded font-mono">Cần Restart</span>
+              </div>
+              <p style="color: var(--text-dim);" class="text-[10px]">MCP_BIND_HOST (0.0.0.0) & MCP_PORT (18427)</p>
+            </div>
+          </div>
+          <svg id="arrow-secNetwork" class="w-3.5 h-3.5 text-slate-400 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+        </button>
+
+        <div id="secNetwork" class="p-3.5 pt-0 border-t space-y-2 font-mono hidden" style="border-color: var(--border);">
+          <div class="grid grid-cols-2 gap-2 pt-2">
+            <div>
+              <label style="color: var(--text-dim);" class="text-[10px] uppercase font-semibold block mb-1">MCP_BIND_HOST</label>
+              <input id="cfgBindHost" type="text" value="0.0.0.0" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px]">
+            </div>
+            <div>
+              <label style="color: var(--text-dim);" class="text-[10px] uppercase font-semibold block mb-1">MCP_PORT</label>
+              <input id="cfgPort" type="text" value="18427" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-[11px]">
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div style="background-color: var(--bg-header); border-color: var(--border);" class="p-3.5 border-t flex items-center justify-between shrink-0 font-sans">
+      <span style="color: var(--text-dim);" class="text-[10.5px]">Tự động ghi đè .env</span>
+      <div class="flex items-center gap-2">
+        <button onclick="closeSettingsDrawer()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-3 py-1.5 rounded-lg text-xs font-medium border transition">
+          Đóng
+        </button>
+        <button id="btnApplyEnvHotReload" onclick="applyEnvHotReload()" style="background-color: var(--mint); color: #090b0f;" class="w-[145px] h-[32px] px-4 py-1.5 rounded-lg text-xs font-bold font-sans transition flex items-center justify-center gap-1.5 shadow-xs hover:opacity-90 active:scale-95 shrink-0 whitespace-nowrap select-none">
+          <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+          <span id="btnHotReloadLabel" class="whitespace-nowrap text-center">Save & Reload</span>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Modal Xác nhận Lifecycle Action (Start / Stop / Restart) -->
+  <div id="lifecycleModal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center hidden p-4" onclick="if (event.target === this) closeLifecycleModal()">
+    <div style="background-color: var(--bg-header); border-color: var(--border);" class="max-w-md w-full border rounded-2xl p-5 shadow-2xl space-y-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center shrink-0">
+          <span class="text-amber-400 text-lg">⚠️</span>
+        </div>
+        <div>
+          <h3 id="modalTitle" style="color: var(--text-main);" class="font-bold text-sm">Xác nhận thao tác</h3>
+          <p id="modalDesc" style="color: var(--text-dim);" class="text-xs mt-0.5">Bạn có chắc chắn muốn thực hiện hành động này?</p>
+        </div>
+      </div>
+      <div class="flex items-center justify-end gap-2 pt-2 border-t" style="border-color: var(--border);">
+        <button type="button" onclick="closeLifecycleModal()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-3 py-1.5 border rounded-lg text-xs font-sans transition">Hủy bỏ</button>
+        <button id="modalConfirmBtn" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-sans font-semibold transition" style="background-color: var(--accent); color: var(--bg-base);">Xác nhận</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Xác nhận Xóa Vĩnh Viễn Workspace -->
+  <div id="deleteWorkspaceModal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center hidden p-4" onclick="if (event.target === this) closeDeleteWorkspaceModal()">
+    <div style="background-color: var(--bg-header); border-color: var(--border);" class="max-w-md w-full border rounded-2xl p-5 shadow-2xl space-y-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center shrink-0">
+          <span class="text-rose-400 text-lg">🗑️</span>
+        </div>
+        <div>
+          <h3 style="color: var(--text-main);" class="font-bold text-sm">Xóa vĩnh viễn Workspace?</h3>
+          <p style="color: var(--text-dim);" class="text-xs mt-0.5">Thao tác này sẽ xóa sạch thư mục trên ổ đĩa và không thể khôi phục!</p>
+        </div>
+      </div>
+      <div class="p-3 rounded-lg text-xs font-mono break-all" style="background-color: var(--bg-surface); border: 1px solid var(--border); color: var(--rose, #f43f5e);" id="deleteWorkspaceTargetText">
+        <!-- workspace chat_id -->
+      </div>
+      <div class="flex items-center justify-end gap-2 pt-2 border-t" style="border-color: var(--border);">
+        <button type="button" onclick="closeDeleteWorkspaceModal()" style="background-color: var(--bg-surface); border-color: var(--border); color: var(--text-main);" class="px-3.5 py-1.5 border rounded-lg text-xs font-sans transition hover:opacity-80">Hủy bỏ (No)</button>
+        <button id="deleteWorkspaceConfirmBtn" type="button" onclick="confirmDeleteWorkspace()" class="px-4 py-1.5 rounded-lg text-xs font-sans font-semibold transition bg-rose-600 hover:bg-rose-500 text-white shadow-xs">Xóa vĩnh viễn (Yes)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rust IPC & Interactive Logic -->
+  <script>
+    console.log("STEP 3: BODY SCRIPT STARTED");
+
+    // Safe Storage Access (Protects against WebKit SecurityError on opaque origins)
+    function safeGetStorage(key, fallback = null) {
+      try {
+        return window.localStorage ? window.localStorage.getItem(key) : fallback;
+      } catch (e) {
+        return fallback;
+      }
+    }
+    function safeSetStorage(key, val) {
+      try {
+        if (window.localStorage) window.localStorage.setItem(key, val);
+      } catch (e) {
+        // Ignored in opaque contexts
+      }
+    }
+    function safeRemoveStorage(key) {
+      try {
+        if (window.localStorage) window.localStorage.removeItem(key);
+      } catch (e) {
+        // Ignored in opaque contexts
+      }
+    }
+
+    // ==================== THEME MANAGEMENT ====================
+    function setTheme(theme) {
+      try {
+        document.documentElement.setAttribute('data-theme', theme);
+        document.querySelectorAll('.theme-card').forEach(card => {
+          if (card.getAttribute('data-theme-val') === theme) {
+            card.style.borderColor = 'var(--accent)';
+            card.style.backgroundColor = 'var(--bg-selected)';
+            card.style.fontWeight = 'bold';
+          } else {
+            card.style.borderColor = 'var(--border)';
+            card.style.backgroundColor = 'var(--bg-base)';
+            card.style.fontWeight = 'normal';
+          }
+        });
+        safeSetStorage('bqa_theme', theme);
+        sendToRust('set_theme', { theme });
+      } catch (err) {
+        console.error("Error setting theme:", err);
+      }
+    }
+
+    function selectThemeFromDrawer(theme) {
+      setTheme(theme);
+      showToast('✓ Đã áp dụng giao diện: ' + theme);
+    }
+
+    // ==================== DRAWER CONTROLS ====================
+    function openSettingsDrawer() {
+      const backdrop = document.getElementById('settingsBackdrop');
+      const drawer = document.getElementById('settingsDrawer');
+      if (backdrop) {
+        backdrop.classList.remove('opacity-0', 'pointer-events-none');
+        backdrop.classList.add('opacity-100');
+      }
+      if (drawer) {
+        drawer.classList.remove('translate-x-full');
+        drawer.classList.add('translate-x-0');
+      }
+    }
+
+    function closeSettingsDrawer() {
+      const backdrop = document.getElementById('settingsBackdrop');
+      const drawer = document.getElementById('settingsDrawer');
+      if (backdrop) {
+        backdrop.classList.remove('opacity-100');
+        backdrop.classList.add('opacity-0', 'pointer-events-none');
+      }
+      if (drawer) {
+        drawer.classList.remove('translate-x-0');
+        drawer.classList.add('translate-x-full');
+      }
+    }
+
+    function toggleSection(sectionId) {
+      const sec = document.getElementById(sectionId);
+      const arrow = document.getElementById('arrow-' + sectionId);
+      if (!sec) return;
+      if (sec.classList.contains('hidden')) {
+        sec.classList.remove('hidden');
+        if (arrow) arrow.classList.add('rotate-180');
+      } else {
+        sec.classList.add('hidden');
+        if (arrow) arrow.classList.remove('rotate-180');
+      }
+    }
+
+    // ==================== ENVIRONMENT HOT RELOAD ====================
+    function applyEnvHotReload() {
+      const btn = document.getElementById('btnHotReloadLabel');
+      if (btn) btn.innerText = 'Reloading .env...';
+
+      const configPayload = {
+        HOST_WORKSPACE_DIR: document.getElementById('cfgWorkspaceDir')?.value || '',
+        HOST_DEFAULT_DIR: document.getElementById('cfgDefaultDir')?.value || '',
+        HOST_CHAT_ROOT: document.getElementById('cfgChatRoot')?.value || '',
+        HOST_COMMAND_POLICY: document.getElementById('cfgPolicy')?.value || 'prompt',
+        DEFAULT_TIMEOUT_SECONDS: document.getElementById('cfgDefaultTimeout')?.value || '30',
+        MAX_TIMEOUT_SECONDS: document.getElementById('cfgMaxTimeout')?.value || '300',
+        MAX_OUTPUT_BYTES: document.getElementById('cfgMaxOutput')?.value || '1048576',
+        GATEWAY_TOKEN: document.getElementById('cfgToken')?.value || '',
+        REQUIRE_AUTH: document.getElementById('cfgRequireAuth')?.value || 'false',
+        ATTRIBUTION_MODE: document.getElementById('cfgAttribution')?.value || 'full',
+        MCP_BIND_HOST: document.getElementById('cfgBindHost')?.value || '0.0.0.0',
+        MCP_PORT: document.getElementById('cfgPort')?.value || '18427'
+      };
+
+      sendToRust('save_env', configPayload);
+    }
+
+    window.__onEnvSaved = function(success, message) {
+      const btn = document.getElementById('btnHotReloadLabel');
+      if (btn) {
+        btn.innerText = success ? '✓ Synced .env!' : 'Sync Failed!';
+        setTimeout(() => { btn.innerText = 'Save & Reload'; }, 2000);
+      }
+      showToast(success ? `⚡ ${message}` : `⚠️ ${message}`);
+    };
+
+    // ==================== PAGE SWITCHING ====================
+    function switchPage(page) {
+      const pOverview = document.getElementById('pageOverview');
+      const pActivity = document.getElementById('pageActivity');
+      const pLogs = document.getElementById('pageLogs');
+
+      if (pOverview) { pOverview.classList.add('hidden'); pOverview.classList.remove('page-view'); }
+      if (pActivity) { pActivity.classList.add('hidden'); pActivity.classList.remove('page-view'); }
+      if (pLogs) { pLogs.classList.add('hidden'); pLogs.classList.remove('page-view'); }
+
+      document.querySelectorAll('.nav-tab').forEach(tab => {
+        tab.style.backgroundColor = 'transparent';
+        tab.style.borderColor = 'transparent';
+        tab.style.color = 'var(--text-sub)';
+        tab.classList.remove('font-medium', 'shadow-xs');
+      });
+
+      if (page === 'overview') {
+        if (pOverview) { pOverview.classList.remove('hidden'); pOverview.classList.add('page-view'); }
+        const tab = document.getElementById('tabOverview');
+        if (tab) {
+          tab.style.backgroundColor = 'var(--bg-card)';
+          tab.style.borderColor = 'var(--border)';
+          tab.style.color = 'var(--text-main)';
+          tab.classList.add('font-medium', 'shadow-xs');
+        }
+      } else if (page === 'activity') {
+        if (pActivity) { pActivity.classList.remove('hidden'); pActivity.classList.add('page-view'); }
+        const tab = document.getElementById('tabActivity');
+        if (tab) {
+          tab.style.backgroundColor = 'var(--bg-card)';
+          tab.style.borderColor = 'var(--border)';
+          tab.style.color = 'var(--text-main)';
+          tab.classList.add('font-medium', 'shadow-xs');
+        }
+      } else if (page === 'logs') {
+        if (pLogs) { pLogs.classList.remove('hidden'); pLogs.classList.add('page-view'); }
+        const tab = document.getElementById('tabLogs');
+        if (tab) {
+          tab.style.backgroundColor = 'var(--bg-card)';
+          tab.style.borderColor = 'var(--border)';
+          tab.style.color = 'var(--text-main)';
+          tab.classList.add('font-medium', 'shadow-xs');
+        }
+      }
+    }
+
+    // ==================== PANES & RESIZING ====================
+    const sidebar = document.getElementById('paneSidebar');
+    const paneStream = document.getElementById('paneStream');
+    const inspector = document.getElementById('paneInspector');
+    const resizerLeft = document.getElementById('resizerLeft');
+    const resizerRight = document.getElementById('resizerRight');
+
+    const paneLogStream = document.getElementById('paneLogStream');
+    const paneLogInspector = document.getElementById('paneLogInspector');
+    const resizerLog = document.getElementById('resizerLog');
+    const btnToggleSidebar = document.getElementById('btnToggleSidebar');
+
+    let isSidebarCollapsed = false;
+    let isInspectorCollapsed = false;
+
+    // Load persisted widths from safe storage or fall back to defaults
+    const DEFAULT_SIDEBAR_WIDTH = 224;
+    const DEFAULT_STREAM_WIDTH = 320;
+    const DEFAULT_LOG_INSPECTOR_WIDTH = 420;
+
+    let lastSidebarWidth = parseInt(safeGetStorage('bqa_sidebar_w'), 10) || DEFAULT_SIDEBAR_WIDTH;
+    if (lastSidebarWidth < 160 || lastSidebarWidth > 450) lastSidebarWidth = DEFAULT_SIDEBAR_WIDTH;
+
+    let lastStreamWidth = parseInt(safeGetStorage('bqa_stream_w'), 10) || DEFAULT_STREAM_WIDTH;
+    if (lastStreamWidth < 220 || lastStreamWidth > 950) lastStreamWidth = DEFAULT_STREAM_WIDTH;
+
+    let lastLogInspectorWidth = parseInt(safeGetStorage('bqa_log_insp_w'), 10) || DEFAULT_LOG_INSPECTOR_WIDTH;
+    if (lastLogInspectorWidth < 280 || lastLogInspectorWidth > 950) lastLogInspectorWidth = DEFAULT_LOG_INSPECTOR_WIDTH;
+
+    // Apply saved widths on load
+    if (sidebar) sidebar.style.width = lastSidebarWidth + 'px';
+    if (paneStream) {
+      paneStream.style.width = lastStreamWidth + 'px';
+      paneStream.style.maxWidth = 'none';
+    }
+    if (paneLogInspector) paneLogInspector.style.width = lastLogInspectorWidth + 'px';
+
+    let inspectorAnimTimer = null;
+    let sidebarAnimTimer = null;
+
+    function toggleSidebar() {
+      isSidebarCollapsed = !isSidebarCollapsed;
+      if (!sidebar) return;
+      const btn = document.getElementById('btnToggleSidebar');
+
+      if (sidebarAnimTimer) {
+        clearTimeout(sidebarAnimTimer);
+        sidebarAnimTimer = null;
+      }
+
+      if (isSidebarCollapsed) {
+        lastSidebarWidth = sidebar.offsetWidth > 50 ? sidebar.offsetWidth : DEFAULT_SIDEBAR_WIDTH;
+        if (resizerLeft) resizerLeft.classList.add('resizer-collapsed');
+        sidebar.classList.add('pane-collapsed');
+        sidebar.style.width = '0px';
+        if (btn) {
+          btn.style.color = 'var(--accent)';
+          btn.title = 'Mở danh sách Sessions (Sidebar)';
+        }
+        sidebarAnimTimer = setTimeout(() => {
+          if (isSidebarCollapsed && resizerLeft) resizerLeft.classList.add('hidden');
+          sidebarAnimTimer = null;
+        }, 290);
+      } else {
+        if (resizerLeft) {
+          resizerLeft.classList.remove('hidden');
+          void resizerLeft.offsetWidth;
+          resizerLeft.classList.remove('resizer-collapsed');
+        }
+        sidebar.classList.remove('pane-collapsed');
+        sidebar.style.width = (lastSidebarWidth || DEFAULT_SIDEBAR_WIDTH) + 'px';
+        if (btn) {
+          btn.style.color = 'var(--text-sub)';
+          btn.title = 'Ẩn danh sách Sessions (Sidebar)';
+        }
+      }
+    }
+
+    function toggleInspector() {
+      isInspectorCollapsed = !isInspectorCollapsed;
+      const isActivity = document.getElementById('pageActivity') && !document.getElementById('pageActivity').classList.contains('hidden');
+      const btnInsp = document.getElementById('btnToggleInspector');
+      const btnLogInsp = document.getElementById('btnToggleLogInspector');
+
+      if (isActivity) {
+        if (!inspector || !paneStream) return;
+        if (inspectorAnimTimer) {
+          clearTimeout(inspectorAnimTimer);
+          inspectorAnimTimer = null;
+        }
+
+        if (isInspectorCollapsed) {
+          // Smooth synchronized collapse of Activity Inspector
+          const streamRect = paneStream.getBoundingClientRect();
+          const inspRect = inspector.getBoundingClientRect();
+          const currentStreamW = streamRect.width;
+          const currentInspW = inspRect.width;
+          const totalW = currentStreamW + currentInspW + (resizerRight ? resizerRight.offsetWidth : 0);
+
+          // 1. Lock pixel widths so both panes start at exact current coordinates
+          paneStream.style.flex = 'none';
+          paneStream.style.width = currentStreamW + 'px';
+          inspector.style.flex = 'none';
+          inspector.style.width = currentInspW + 'px';
+          inspector.style.minWidth = '0px';
+
+          // Force reflow
+          void inspector.offsetWidth;
+
+          // 2. Trigger synchronized smooth width transition
+          if (resizerRight) resizerRight.classList.add('resizer-collapsed');
+          inspector.classList.add('pane-collapsed');
+          inspector.style.width = '0px';
+          paneStream.style.width = totalW + 'px';
+
+          if (btnInsp) {
+            btnInsp.style.color = 'var(--accent)';
+            btnInsp.title = 'Mở Khung Chi Tiết Inspector';
+          }
+
+          inspectorAnimTimer = setTimeout(() => {
+            if (isInspectorCollapsed) {
+              paneStream.style.flex = '1';
+              paneStream.style.width = 'auto';
+              if (resizerRight) resizerRight.classList.add('hidden');
+            }
+            inspectorAnimTimer = null;
+          }, 290);
+        } else {
+          // Smooth synchronized expansion of Activity Inspector
+          if (resizerRight) {
+            resizerRight.classList.remove('hidden');
+            void resizerRight.offsetWidth;
+            resizerRight.classList.remove('resizer-collapsed');
+          }
+
+          const totalW = paneStream.offsetWidth;
+          const targetStreamW = Math.min(lastStreamWidth || DEFAULT_STREAM_WIDTH, Math.max(220, totalW - 320));
+          const targetInspW = Math.max(300, totalW - targetStreamW - (resizerRight ? resizerRight.offsetWidth : 0));
+
+          // Set starting frame
+          paneStream.style.flex = 'none';
+          paneStream.style.width = totalW + 'px';
+          inspector.style.flex = 'none';
+          inspector.style.width = '0px';
+          inspector.style.minWidth = '0px';
+          inspector.classList.remove('pane-collapsed');
+
+          // Force reflow
+          void inspector.offsetWidth;
+
+          // Animate to target widths in lockstep
+          paneStream.style.width = targetStreamW + 'px';
+          inspector.style.width = targetInspW + 'px';
+
+          if (btnInsp) {
+            btnInsp.style.color = 'var(--text-sub)';
+            btnInsp.title = 'Thu gọn Khung Chi Tiết Inspector';
+          }
+
+          inspectorAnimTimer = setTimeout(() => {
+            if (!isInspectorCollapsed) {
+              paneStream.style.flex = 'none';
+              paneStream.style.width = targetStreamW + 'px';
+              inspector.style.flex = '1';
+              inspector.style.width = 'auto';
+              inspector.style.minWidth = '280px';
+            }
+            inspectorAnimTimer = null;
+          }, 290);
+        }
+
+      } else {
+        // Smooth toggle for Logs Inspector
+        if (!paneLogInspector) return;
+        if (isInspectorCollapsed) {
+          paneLogInspector.style.minWidth = '0px';
+          paneLogInspector.classList.add('pane-collapsed');
+          if (resizerLog) resizerLog.classList.add('resizer-collapsed');
+          if (btnLogInsp) {
+            btnLogInsp.style.color = 'var(--accent)';
+            btnLogInsp.title = 'Mở Chi tiết Log';
+          }
+          setTimeout(() => {
+            if (isInspectorCollapsed && resizerLog) resizerLog.classList.add('hidden');
+          }, 290);
+        } else {
+          if (resizerLog) {
+            resizerLog.classList.remove('hidden');
+            void resizerLog.offsetWidth;
+            resizerLog.classList.remove('resizer-collapsed');
+          }
+          paneLogInspector.classList.remove('pane-collapsed');
+          paneLogInspector.style.width = (lastLogInspectorWidth || DEFAULT_LOG_INSPECTOR_WIDTH) + 'px';
+          if (btnLogInsp) {
+            btnLogInsp.style.color = 'var(--text-sub)';
+            btnLogInsp.title = 'Thu gọn Chi tiết Log';
+          }
+          setTimeout(() => {
+            if (!isInspectorCollapsed) {
+              paneLogInspector.style.minWidth = '280px';
+            }
+          }, 290);
+        }
+      }
+    }
+
+    // High-performance silky drag resizer using Pointer Events & requestAnimationFrame
+    function setupPaneResizer({ resizer, onDragStart, onDragMove, onDragEnd, onDoubleClick }) {
+      if (!resizer) return;
+
+      let isDragging = false;
+      let activePointerId = null;
+      let rafId = null;
+      let latestClientX = 0;
+
+      const handlePointerMove = (e) => {
+        if (!isDragging || e.pointerId !== activePointerId) return;
+        latestClientX = e.clientX;
+
+        if (!rafId) {
+          rafId = requestAnimationFrame(() => {
+            if (isDragging) {
+              onDragMove(latestClientX);
+            }
+            rafId = null;
+          });
+        }
+      };
+
+      const handlePointerUp = (e) => {
+        if (!isDragging || e.pointerId !== activePointerId) return;
+        isDragging = false;
+
+        if (rafId) {
+          cancelAnimationFrame(rafId);
+          rafId = null;
+        }
+
+        try {
+          if (resizer.hasPointerCapture(activePointerId)) {
+            resizer.releasePointerCapture(activePointerId);
+          }
+        } catch (_) {}
+
+        activePointerId = null;
+        resizer.classList.remove('dragging');
+        document.body.classList.remove('is-resizing');
+        window.removeEventListener('pointermove', handlePointerMove);
+        window.removeEventListener('pointerup', handlePointerUp);
+        window.removeEventListener('pointercancel', handlePointerUp);
+
+        if (onDragEnd) onDragEnd();
+      };
+
+      resizer.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return; // Primary button only
+        e.preventDefault();
+        e.stopPropagation();
+
+        isDragging = true;
+        activePointerId = e.pointerId;
+        latestClientX = e.clientX;
+
+        try {
+          resizer.setPointerCapture(activePointerId);
+        } catch (_) {}
+
+        resizer.classList.add('dragging');
+        document.body.classList.add('is-resizing');
+
+        if (onDragStart) onDragStart(e.clientX);
+
+        window.addEventListener('pointermove', handlePointerMove, { passive: true });
+        window.addEventListener('pointerup', handlePointerUp, { passive: true });
+        window.addEventListener('pointercancel', handlePointerUp, { passive: true });
+      });
+
+      if (onDoubleClick) {
+        resizer.addEventListener('dblclick', (e) => {
+          e.preventDefault();
+          onDoubleClick();
+        });
+      }
+    }
+
+    // Splitter 1: Left Sessions Sidebar
+    setupPaneResizer({
+      resizer: resizerLeft,
+      onDragStart: () => {},
+      onDragMove: (clientX) => {
+        if (!sidebar) return;
+        const minW = 160;
+        const maxW = Math.min(450, Math.floor(window.innerWidth * 0.45));
+        const newWidth = Math.min(Math.max(clientX, minW), maxW);
+        sidebar.style.width = newWidth + 'px';
+        lastSidebarWidth = newWidth;
+      },
+      onDragEnd: () => {
+        if (lastSidebarWidth) {
+          safeSetStorage('bqa_sidebar_w', String(lastSidebarWidth));
+        }
+      },
+      onDoubleClick: () => {
+        if (sidebar) {
+          sidebar.style.width = DEFAULT_SIDEBAR_WIDTH + 'px';
+          lastSidebarWidth = DEFAULT_SIDEBAR_WIDTH;
+          safeSetStorage('bqa_sidebar_w', String(DEFAULT_SIDEBAR_WIDTH));
+        }
+      }
+    });
+
+    // Splitter 2: Middle Stream & Right Inspector
+    let streamDragOffset = 0;
+    setupPaneResizer({
+      resizer: resizerRight,
+      onDragStart: () => {
+        if (paneStream) {
+          streamDragOffset = paneStream.getBoundingClientRect().left;
+        }
+      },
+      onDragMove: (clientX) => {
+        if (!paneStream) return;
+        const minW = 220;
+        // Keep at least 300px for Inspector
+        const maxAvailable = Math.max(minW, window.innerWidth - streamDragOffset - 300);
+        const maxW = Math.min(950, maxAvailable);
+        const newWidth = Math.min(Math.max(clientX - streamDragOffset, minW), maxW);
+        paneStream.style.width = newWidth + 'px';
+        paneStream.style.maxWidth = 'none';
+        lastStreamWidth = newWidth;
+      },
+      onDragEnd: () => {
+        if (lastStreamWidth) {
+          safeSetStorage('bqa_stream_w', String(lastStreamWidth));
+        }
+      },
+      onDoubleClick: () => {
+        if (paneStream) {
+          paneStream.style.width = DEFAULT_STREAM_WIDTH + 'px';
+          paneStream.style.maxWidth = 'none';
+          lastStreamWidth = DEFAULT_STREAM_WIDTH;
+          safeSetStorage('bqa_stream_w', String(DEFAULT_STREAM_WIDTH));
+        }
+      }
+    });
+
+    // Splitter 3: Logs View Inspector
+    setupPaneResizer({
+      resizer: resizerLog,
+      onDragStart: () => {},
+      onDragMove: (clientX) => {
+        if (!paneLogInspector) return;
+        const minW = 280;
+        const maxAvailable = Math.max(minW, window.innerWidth - 300);
+        const maxW = Math.min(950, maxAvailable);
+        const newWidth = Math.min(Math.max(window.innerWidth - clientX, minW), maxW);
+        paneLogInspector.style.width = newWidth + 'px';
+        lastLogInspectorWidth = newWidth;
+      },
+      onDragEnd: () => {
+        if (lastLogInspectorWidth) {
+          safeSetStorage('bqa_log_insp_w', String(lastLogInspectorWidth));
+        }
+      },
+      onDoubleClick: () => {
+        if (paneLogInspector) {
+          paneLogInspector.style.width = DEFAULT_LOG_INSPECTOR_WIDTH + 'px';
+          lastLogInspectorWidth = DEFAULT_LOG_INSPECTOR_WIDTH;
+          safeSetStorage('bqa_log_insp_w', String(DEFAULT_LOG_INSPECTOR_WIDTH));
+        }
+      }
+    });
+
+    // ==================== 4-TAB INSPECTOR SWITCHER ====================
+    function switchInspectorTab(tabKey) {
+      const tabs = [
+        { key: 'output', tabId: 'tabInspOutput', viewId: 'inspViewOutput' },
+        { key: 'meta', tabId: 'tabInspMeta', viewId: 'inspViewMeta' },
+        { key: 'stderr', tabId: 'tabInspStderr', viewId: 'inspViewStderr' },
+        { key: 'raw', tabId: 'tabInspRaw', viewId: 'inspViewRaw' }
+      ];
+
+      tabs.forEach(t => {
+        const tabEl = document.getElementById(t.tabId);
+        const viewEl = document.getElementById(t.viewId);
+        if (!tabEl || !viewEl) return;
+
+        if (t.key === tabKey) {
+          tabEl.style.backgroundColor = 'var(--accent)';
+          tabEl.style.color = 'var(--bg-base)';
+          viewEl.classList.remove('hidden');
+        } else {
+          tabEl.style.backgroundColor = 'transparent';
+          tabEl.style.color = 'var(--text-sub)';
+          viewEl.classList.add('hidden');
+        }
+      });
+    }
+
+    // ==================== TIMEZONE & LOCALIZATION ====================
+    function formatLocalTime(isoStr, format = 'short') {
+      if (!isoStr) return '';
+      try {
+        let normStr = String(isoStr).trim();
+        if (!normStr) return '';
+        if (!normStr.includes('T') && normStr.includes(' ') && normStr.length >= 19) {
+          normStr = normStr.replace(' ', 'T');
+        }
+        if (normStr.includes('T') && !normStr.endsWith('Z') && !normStr.includes('+') && !normStr.slice(10).includes('-')) {
+          normStr += 'Z';
+        }
+        const d = new Date(normStr);
+        if (isNaN(d.getTime())) return isoStr;
+
+        const pad = (n) => String(n).padStart(2, '0');
+        const month = pad(d.getMonth() + 1);
+        const day = pad(d.getDate());
+        const hours = pad(d.getHours());
+        const minutes = pad(d.getMinutes());
+        const seconds = pad(d.getSeconds());
+
+        if (format === 'short') {
+          return `${month}-${day} ${hours}:${minutes}`;
+        } else if (format === 'time_only') {
+          return `${hours}:${minutes}:${seconds}`;
+        } else if (format === 'full') {
+          const year = d.getFullYear();
+          const offsetMin = -d.getTimezoneOffset();
+          const offsetSign = offsetMin >= 0 ? '+' : '-';
+          const offsetH = pad(Math.floor(Math.abs(offsetMin) / 60));
+          return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} (GMT${offsetSign}${offsetH})`;
+        }
+        return `${month}-${day} ${hours}:${minutes}`;
+      } catch (e) {
+        return isoStr;
+      }
+    }
+
+    // ==================== STATE MANAGEMENT ====================
+    let currentWorkspaces = [];
+    let activeChatId = null;
+    let currentRenderedChatId = null;
+    let currentCommands = [];
+    let selectedCommand = null;
+
+    let currentLogs = [];
+    let activeLogCategory = 'all';
+
+    let lastWorkspacesHash = '';
+    let lastCommandsHash = {};
+    let lastLogsHash = '';
+    let activeActionRowEl = null;
+    let activeLogRowEl = null;
+
+    let draggedChatId = null;
+
+    function updateResetButtonVisibility() {
+      const btn = document.getElementById('btnResetWorkspaceOrder');
+      if (!btn) return;
+      const savedOrderRaw = safeGetStorage('bqa_workspace_order');
+      if (savedOrderRaw) {
+        btn.classList.remove('hidden');
+      } else {
+        btn.classList.add('hidden');
+      }
+    }
+
+    function resetWorkspaceOrder() {
+      safeRemoveStorage('bqa_workspace_order');
+      // Re-sort strictly by creation timestamp descending
+      currentWorkspaces.sort((a, b) => {
+        const timeDiff = (b.created_ts || 0) - (a.created_ts || 0);
+        if (timeDiff !== 0) return timeDiff;
+        return (b.mtime || 0) - (a.mtime || 0);
+      });
+      updateResetButtonVisibility();
+      renderSessionList();
+      showToast('✓ Đã khôi phục sắp xếp theo thời gian tạo');
+    }
+
+    // ==================== WORKSPACE & SESSION RENDERING ====================
+    window.__onWorkspacesLoaded = function(workspaces) {
+      if (!Array.isArray(workspaces)) return;
+      if (draggedChatId) return; // Do not interrupt ongoing drag & drop gesture
+
+      const rawWorkspaces = workspaces.map(w => ({
+        ...w,
+        chat_id: w.chat_id || w.id,
+        ops_count: w.ops_count !== undefined ? w.ops_count : (w.ops || 0),
+        created_ts: w.created_ts || 0
+      }));
+
+      // Check for user's custom drag-and-drop order
+      const savedOrderRaw = safeGetStorage('bqa_workspace_order');
+      let savedOrder = null;
+      if (savedOrderRaw) {
+        try {
+          const parsed = JSON.parse(savedOrderRaw);
+          if (Array.isArray(parsed)) savedOrder = parsed;
+        } catch (e) {
+          savedOrder = null;
+        }
+      }
+
+      if (savedOrder && savedOrder.length > 0) {
+        const map = new Map();
+        rawWorkspaces.forEach(w => map.set(w.chat_id, w));
+
+        const ordered = [];
+        const seen = new Set();
+
+        // 1. Any newly created workspaces not in saved order go to the top, sorted by created_ts desc
+        const newItems = rawWorkspaces.filter(w => !savedOrder.includes(w.chat_id));
+        newItems.sort((a, b) => ((b.created_ts || 0) - (a.created_ts || 0)) || ((b.mtime || 0) - (a.mtime || 0)));
+        newItems.forEach(w => {
+          ordered.push(w);
+          seen.add(w.chat_id);
+        });
+
+        // 2. Add workspaces according to user's saved manual order
+        savedOrder.forEach(id => {
+          if (map.has(id) && !seen.has(id)) {
+            ordered.push(map.get(id));
+            seen.add(id);
+          }
+        });
+
+        currentWorkspaces = ordered;
+      } else {
+        // Strictly sort by creation timestamp descending (newest first)
+        rawWorkspaces.sort((a, b) => {
+          const timeDiff = (b.created_ts || 0) - (a.created_ts || 0);
+          if (timeDiff !== 0) return timeDiff;
+          return (b.mtime || 0) - (a.mtime || 0);
+        });
+        currentWorkspaces = rawWorkspaces;
+      }
+
+      updateResetButtonVisibility();
+
+      const currentListHash = currentWorkspaces.map(w => `${w.chat_id}:${w.ops_count}:${w.created_ts}`).join('|');
+      const dataChanged = currentListHash !== lastWorkspacesHash;
+      lastWorkspacesHash = currentListHash;
+
+      // Update Telemetry Metrics
+      const metricSessions = document.getElementById('metricSessions');
+      if (metricSessions) {
+        metricSessions.innerHTML = `${currentWorkspaces.length} <span style="color: var(--text-dim);" class="text-xs font-normal font-sans">sessions</span>`;
+      }
+
+      const totalOps = currentWorkspaces.reduce((sum, w) => sum + (w.ops_count || 0), 0);
+      const metricCommands = document.getElementById('metricCommands');
+      if (metricCommands) {
+        metricCommands.innerHTML = `${totalOps.toLocaleString()} <span style="color: var(--mint);" class="text-xs font-normal font-sans">(100% OK)</span>`;
+      }
+
+      // If activeChatId not set or not in list, select first
+      if (!activeChatId || !currentWorkspaces.some(w => w.chat_id === activeChatId)) {
+        if (currentWorkspaces.length > 0) {
+          activeChatId = currentWorkspaces[0].chat_id;
+        }
+      }
+
+      const listContainer = document.getElementById('sessionListContainer');
+      const hasItems = listContainer && listContainer.children.length > 0 && !listContainer.innerText.includes('Chưa có');
+
+      if (dataChanged || !hasItems) {
+        renderSessionList();
+      } else {
+        updateActiveSessionHighlight();
+      }
+
+      if (activeChatId) {
+        const streamTitle = document.getElementById('streamTitle');
+        if (streamTitle && streamTitle.innerText !== activeChatId) {
+          streamTitle.innerText = activeChatId;
+        }
+        const inspSess = document.getElementById('inspectSessionId');
+        const inspSessCmd = document.getElementById('inspectSessionIdCmd');
+        if (inspSess && (inspSess.innerText === '--' || !inspSess.innerText)) inspSess.innerText = activeChatId;
+        if (inspSessCmd && (inspSessCmd.innerText === '--' || !inspSessCmd.innerText)) inspSessCmd.innerText = activeChatId;
+        sendToRust('get_session_details', { chat_id: activeChatId });
+      }
+    };
+
+    function selectSession(chatId) {
+      if (activeChatId === chatId && currentRenderedChatId === chatId) return;
+      activeChatId = chatId;
+      updateActiveSessionHighlight();
+      const streamTitle = document.getElementById('streamTitle');
+      if (streamTitle) streamTitle.innerText = chatId;
+
+      const inspSess = document.getElementById('inspectSessionId');
+      const inspSessCmd = document.getElementById('inspectSessionIdCmd');
+      if (inspSess) inspSess.innerText = chatId;
+      if (inspSessCmd) inspSessCmd.innerText = chatId;
+
+      // Show immediate loading placeholder so the UI feels snappy and old commands are cleared
+      const streamContainer = document.getElementById('commandStreamContainer');
+      if (streamContainer && currentRenderedChatId !== chatId) {
+        streamContainer.innerHTML = `
+          <div class="p-6 text-center text-xs" style="color: var(--text-dim);">
+            <div class="inline-block animate-pulse">⟳ Đang tải danh sách lệnh...</div>
+          </div>
+        `;
+      }
+
+      sendToRust('get_session_details', { chat_id: chatId });
+    }
+
+    function updateActiveSessionHighlight() {
+      document.querySelectorAll('.session-item').forEach(el => {
+        const isSelected = el.getAttribute('data-chat-id') === activeChatId;
+        el.classList.toggle('active', isSelected);
+        el.style.backgroundColor = isSelected ? 'var(--bg-selected)' : 'transparent';
+        el.style.borderColor = isSelected ? 'var(--border)' : 'transparent';
+        el.style.color = isSelected ? 'var(--text-main)' : 'var(--text-sub)';
+        if (isSelected) {
+          el.classList.add('border', 'shadow-xs', 'font-medium');
+        } else {
+          el.classList.remove('border', 'shadow-xs', 'font-medium');
+        }
+        const badge = el.querySelector('.session-ops-badge');
+        if (badge) {
+          badge.style.color = isSelected ? 'var(--accent)' : 'var(--text-dim)';
+          if (isSelected) badge.classList.add('font-bold'); else badge.classList.remove('font-bold');
+        }
+      });
+    }
+
+    let pendingDeleteChatId = null;
+
+    function openDeleteWorkspaceModal(chatId, label) {
+      pendingDeleteChatId = chatId;
+      const modal = document.getElementById('deleteWorkspaceModal');
+      const targetEl = document.getElementById('deleteWorkspaceTargetText');
+      if (targetEl) {
+        targetEl.textContent = `${chatId}${label && label !== chatId ? ' (' + label + ')' : ''}`;
+      }
+      if (modal) modal.classList.remove('hidden');
+    }
+
+    function closeDeleteWorkspaceModal() {
+      pendingDeleteChatId = null;
+      const modal = document.getElementById('deleteWorkspaceModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function confirmDeleteWorkspace() {
+      if (!pendingDeleteChatId) return;
+      const chatIdToDelete = pendingDeleteChatId;
+      closeDeleteWorkspaceModal();
+      showToast(`⏳ Đang xóa thư mục workspace ${chatIdToDelete}...`);
+      sendToRust('delete_workspace', { chat_id: chatIdToDelete });
+    }
+
+    window.__onWorkspaceDeleted = function(success, chatId, message) {
+      showToast(success ? `✓ ${message}` : `⚠️ ${message}`);
+      if (success) {
+        // Clean up from saved custom order if present
+        const savedOrderRaw = safeGetStorage('bqa_workspace_order');
+        if (savedOrderRaw) {
+          try {
+            let saved = JSON.parse(savedOrderRaw);
+            if (Array.isArray(saved)) {
+              saved = saved.filter(id => id !== chatId);
+              safeSetStorage('bqa_workspace_order', JSON.stringify(saved));
+            }
+          } catch (e) {}
+        }
+      }
+      if (success && activeChatId === chatId) {
+        activeChatId = null;
+        currentRenderedChatId = null;
+        const streamTitle = document.getElementById('streamTitle');
+        if (streamTitle) streamTitle.innerText = '--';
+        const inspSess = document.getElementById('inspectSessionId');
+        const inspSessCmd = document.getElementById('inspectSessionIdCmd');
+        if (inspSess) inspSess.innerText = '--';
+        if (inspSessCmd) inspSessCmd.innerText = '--';
+        const streamContainer = document.getElementById('commandStreamContainer');
+        if (streamContainer) {
+          streamContainer.innerHTML = `
+            <div class="p-6 text-center text-xs" style="color: var(--text-dim);">
+              <div class="inline-block">Chọn một workspace từ danh sách bên trái để xem nhật ký</div>
+            </div>
+          `;
+        }
+        const targetEl = document.getElementById('inspectCommandTarget');
+        if (targetEl) targetEl.innerText = 'Chọn một lệnh để xem chi tiết';
+        const metaContainer = document.getElementById('commandInspectMeta');
+        if (metaContainer) metaContainer.innerHTML = '<div class="text-[11px] p-2 rounded" style="background-color: var(--bg-surface); color: var(--text-dim);">Không có lệnh nào được chọn</div>';
+      }
+    };
+
+    function renderSessionList() {
+      const container = document.getElementById('sessionListContainer');
+      if (!container) return;
+      container.innerHTML = '';
+
+      if (currentWorkspaces.length === 0) {
+        container.innerHTML = `<div class="p-3 text-center text-[11px]" style="color: var(--text-dim);">Chưa có workspace nào</div>`;
+        return;
+      }
+
+      currentWorkspaces.forEach(w => {
+        const isActive = w.chat_id === activeChatId;
+        const item = document.createElement('div');
+        item.setAttribute('data-chat-id', w.chat_id);
+        item.setAttribute('draggable', 'true');
+        item.className = `session-item ${isActive ? 'active' : ''} p-2 rounded-lg cursor-pointer flex items-center justify-between gap-1.5 font-mono text-xs min-w-0 overflow-hidden select-none`;
+        item.style.backgroundColor = isActive ? 'var(--bg-selected)' : 'transparent';
+        item.style.borderColor = isActive ? 'var(--border)' : 'transparent';
+        item.style.color = isActive ? 'var(--text-main)' : 'var(--text-sub)';
+        if (isActive) item.classList.add('border', 'shadow-xs', 'font-medium');
+
+        // Drag handle indicator
+        const dragHandle = document.createElement('span');
+        dragHandle.className = 'session-drag-handle';
+        dragHandle.title = 'Kéo thả để sắp xếp lại vị trí workspace';
+        dragHandle.innerHTML = '⋮⋮';
+
+        // Workspace Label & Tooltip with Creation Time
+        const labelSpan = document.createElement('span');
+        labelSpan.className = 'truncate min-w-0 flex-1 select-none';
+        let tooltip = w.chat_id || '';
+        if (w.created_at) {
+          tooltip += `\n• Thời gian tạo: ${formatLocalTime(w.created_at, 'full')}`;
+        } else if (w.created_ts) {
+          tooltip += `\n• Thời gian tạo: ${new Date(w.created_ts * 1000).toLocaleString()}`;
+        }
+        tooltip += '\n• Kéo thả để thay đổi vị trí sắp xếp';
+        labelSpan.title = tooltip;
+        labelSpan.textContent = w.label || w.chat_id || '';
+
+        const rightDiv = document.createElement('div');
+        rightDiv.className = 'flex items-center gap-1 shrink-0 ml-1';
+
+        const opsBadge = document.createElement('span');
+        opsBadge.style.color = isActive ? 'var(--accent)' : 'var(--text-dim)';
+        opsBadge.className = `session-ops-badge text-[10px] whitespace-nowrap ${isActive ? 'font-bold' : ''}`;
+        opsBadge.textContent = `${w.ops_count || 0} ops`;
+
+        const delBtn = document.createElement('button');
+        delBtn.setAttribute('draggable', 'false');
+        delBtn.className = 'p-1 rounded opacity-60 hover:opacity-100 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition shrink-0';
+        delBtn.title = `Xóa vĩnh viễn workspace: ${w.chat_id}`;
+        delBtn.innerHTML = '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>';
+        delBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          openDeleteWorkspaceModal(w.chat_id, w.label);
+        });
+
+        rightDiv.appendChild(opsBadge);
+        rightDiv.appendChild(delBtn);
+
+        item.appendChild(dragHandle);
+        item.appendChild(labelSpan);
+        item.appendChild(rightDiv);
+
+        item.onclick = (e) => {
+          if (e.target.closest('button')) return;
+          selectSession(w.chat_id);
+        };
+
+        // Drag and drop event handlers
+        item.addEventListener('dragstart', (e) => {
+          draggedChatId = w.chat_id;
+          e.dataTransfer.setData('text/plain', w.chat_id);
+          e.dataTransfer.effectAllowed = 'move';
+          item.classList.add('is-dragging');
+        });
+
+        item.addEventListener('dragend', () => {
+          draggedChatId = null;
+          item.classList.remove('is-dragging');
+          document.querySelectorAll('.session-item').forEach(el => {
+            el.classList.remove('drag-over-top', 'drag-over-bottom', 'is-dragging');
+          });
+        });
+
+        item.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          if (!draggedChatId || draggedChatId === w.chat_id) return;
+
+          const rect = item.getBoundingClientRect();
+          const isTop = e.clientY < (rect.top + rect.height / 2);
+          item.classList.toggle('drag-over-top', isTop);
+          item.classList.toggle('drag-over-bottom', !isTop);
+        });
+
+        item.addEventListener('dragleave', () => {
+          item.classList.remove('drag-over-top', 'drag-over-bottom');
+        });
+
+        item.addEventListener('drop', (e) => {
+          e.preventDefault();
+          item.classList.remove('drag-over-top', 'drag-over-bottom');
+          const srcChatId = e.dataTransfer.getData('text/plain') || draggedChatId;
+          const targetChatId = w.chat_id;
+
+          if (!srcChatId || srcChatId === targetChatId) return;
+
+          const rect = item.getBoundingClientRect();
+          const isDropBefore = e.clientY < (rect.top + rect.height / 2);
+
+          const srcIdx = currentWorkspaces.findIndex(x => x.chat_id === srcChatId);
+          if (srcIdx === -1) return;
+
+          const [draggedItem] = currentWorkspaces.splice(srcIdx, 1);
+          let targetIdx = currentWorkspaces.findIndex(x => x.chat_id === targetChatId);
+          if (targetIdx === -1) {
+            currentWorkspaces.push(draggedItem);
+          } else {
+            if (!isDropBefore) {
+              targetIdx += 1;
+            }
+            currentWorkspaces.splice(targetIdx, 0, draggedItem);
+          }
+
+          // Save custom ordering
+          safeSetStorage('bqa_workspace_order', JSON.stringify(currentWorkspaces.map(x => x.chat_id)));
+          updateResetButtonVisibility();
+          renderSessionList();
+          showToast(`✓ Đã đổi vị trí workspace "${draggedItem.label || draggedItem.chat_id}"`);
+        });
+
+        container.appendChild(item);
+      });
+    }
+
+    // ==================== COMMAND JOURNAL RENDERING ====================
+    // ==================== COMMAND JOURNAL RENDERING ====================
+    let fastPollDebounce = null;
+    window.__triggerFastPoll = function() {
+      if (fastPollDebounce) return;
+      fastPollDebounce = setTimeout(() => {
+        fastPollDebounce = null;
+        if (activeChatId) {
+          sendToRust('get_session_details', { chat_id: activeChatId });
+        }
+        sendToRust('get_workspaces');
+      }, 50);
+    };
+
+    window.__onJournalLoaded = function(chatIdOrDetails, maybeCommands) {
+      let chatId = chatIdOrDetails;
+      let commands = maybeCommands;
+      if (typeof chatIdOrDetails === 'object' && chatIdOrDetails !== null) {
+        chatId = chatIdOrDetails.chat_id;
+        commands = chatIdOrDetails.commands;
+      }
+      if (chatId && activeChatId && chatId !== activeChatId) return;
+
+      const newCommands = Array.isArray(commands) ? commands : [];
+      const topCmd = newCommands[0];
+      const hash = `${chatId}:${newCommands.length}:${topCmd ? (topCmd.timestamp || '') + (topCmd.cmd || '') + (topCmd.output || '').length + topCmd.exit_code : ''}`;
+      const streamContainer = document.getElementById('commandStreamContainer');
+      const hasItems = streamContainer && streamContainer.children.length > 0 && !streamContainer.innerText.includes('Chưa có') && !streamContainer.innerText.includes('Đang tải');
+
+      const sessionSwitched = currentRenderedChatId !== chatId;
+      const changed = lastCommandsHash[chatId] !== hash;
+      lastCommandsHash[chatId] = hash;
+
+      currentCommands = newCommands;
+
+      if (sessionSwitched || changed || !hasItems) {
+        currentRenderedChatId = chatId;
+        let commandToSelect = currentCommands[0];
+        if (!sessionSwitched && selectedCommand) {
+          const prevId = selectedCommand.id;
+          const prevTs = selectedCommand.timestamp;
+          const prevCmd = selectedCommand.cmd;
+          const match = currentCommands.find(c => (prevId && c.id === prevId) || (c.timestamp === prevTs && c.cmd === prevCmd));
+          if (match) commandToSelect = match;
+        }
+        renderCommandStream(commandToSelect, sessionSwitched);
+        if (commandToSelect) {
+          selectCommand(commandToSelect);
+        } else {
+          clearInspector();
+        }
+      }
+    };
+
+    function createCommandRow(c, isSelected) {
+      const row = document.createElement('div');
+      const key = c.id || `${c.timestamp}_${c.cmd}`;
+      row.setAttribute('data-cmd-key', key);
+      const isSuccess = c.exit_code === 0;
+      row.className = `action-row ${isSelected ? 'selected shadow-xs' : ''} p-2 rounded-lg border cursor-pointer flex flex-col gap-0.5 min-w-0 overflow-hidden`;
+      row.style.backgroundColor = isSelected ? 'var(--bg-selected)' : 'var(--bg-header)';
+      row.style.borderColor = isSelected ? 'var(--accent)' : 'var(--border)';
+
+      const timeDisplay = formatLocalTime(c.timestamp || c.time_short, 'short');
+      const hasIntent = c.intent && c.intent.trim().length > 0 && c.intent !== c.cmd;
+
+      row.innerHTML = `
+        <div class="flex items-center justify-between gap-1 text-[11px] min-w-0 overflow-hidden">
+          <div class="flex items-center gap-1 min-w-0 truncate">
+            <span style="color: var(--accent);" class="font-bold text-[11px] truncate whitespace-nowrap tool-name">${(c.tool || 'cmd').replace('host_', '')}</span>
+            <span class="badge-latest ${c.is_latest ? '' : 'hidden'}" style="color: var(--mint); background-color: var(--accent-soft); font-size: 8.5px; padding: 0 4px; border-radius: 4px;">Mới</span>
+          </div>
+          <div class="flex items-center gap-1 shrink-0 whitespace-nowrap text-[10px]">
+            <span style="color: var(--text-dim);" class="time-display whitespace-nowrap">${timeDisplay}</span>
+            <span class="status-display font-semibold whitespace-nowrap" style="color: ${isSuccess ? 'var(--mint)' : '#ff6b61'};">${isSuccess ? 'OK' : 'ERR ' + c.exit_code}</span>
+          </div>
+        </div>
+        <div style="color: var(--text-main);" class="font-medium truncate text-[11px] min-w-0 mt-0.5 cmd-text font-mono"></div>
+        <div class="intent-container ${hasIntent ? '' : 'hidden'} text-[10.5px] truncate min-w-0 mt-0.5 flex items-center gap-1" style="color: var(--text-dim);">
+          <span style="color: var(--accent);" class="shrink-0 text-[10px]">🎯</span>
+          <span class="truncate intent-text"></span>
+        </div>
+      `;
+
+      const cmdEl = row.querySelector('.cmd-text');
+      if (cmdEl) cmdEl.innerText = c.cmd || '';
+      const intentEl = row.querySelector('.intent-text');
+      if (intentEl && hasIntent) intentEl.innerText = c.intent;
+
+      row.onclick = () => {
+        if (activeActionRowEl && activeActionRowEl !== row) {
+          activeActionRowEl.style.backgroundColor = 'var(--bg-header)';
+          activeActionRowEl.style.borderColor = 'var(--border)';
+          activeActionRowEl.classList.remove('selected', 'shadow-xs');
+        }
+        row.style.backgroundColor = 'var(--bg-selected)';
+        row.style.borderColor = 'var(--accent)';
+        row.classList.add('selected', 'shadow-xs');
+        activeActionRowEl = row;
+        selectCommand(c, true);
+      };
+
+      return row;
+    }
+
+    function renderCommandStream(targetSelected, sessionSwitched) {
+      const container = document.getElementById('commandStreamContainer');
+      if (!container) return;
+
+      if (currentCommands.length === 0) {
+        container.innerHTML = `<div class="p-4 text-center text-[11px]" style="color: var(--text-dim);">Chưa có nhật ký lệnh trong phiên này</div>`;
+        activeActionRowEl = null;
+        return;
+      }
+
+      const getCmdKey = (c) => (c && (c.id || `${c.timestamp}_${c.cmd}`)) || '';
+
+      // If session switched or container has loading placeholder: perform clean initial render
+      const hasPlaceholder = container.innerText.includes('Đang tải') || container.innerText.includes('Chưa có');
+      if (sessionSwitched || hasPlaceholder || container.children.length === 0) {
+        container.innerHTML = '';
+        activeActionRowEl = null;
+        const fragment = document.createDocumentFragment();
+        currentCommands.forEach((c, idx) => {
+          const isSelected = targetSelected ? (getCmdKey(c) === getCmdKey(targetSelected)) : idx === 0;
+          const row = createCommandRow(c, isSelected);
+          if (isSelected) activeActionRowEl = row;
+          fragment.appendChild(row);
+        });
+        container.appendChild(fragment);
+        return;
+      }
+
+      // INCREMENTAL PATCHING:
+      const incomingKeys = new Set(currentCommands.map(getCmdKey));
+
+      // Map current DOM elements by data-cmd-key and PRUNE stale elements
+      const existingRows = container.querySelectorAll('.action-row');
+      const domMap = new Map();
+      existingRows.forEach(row => {
+        const key = row.getAttribute('data-cmd-key');
+        if (!key || !incomingKeys.has(key)) {
+          if (activeActionRowEl === row) activeActionRowEl = null;
+          row.remove();
+        } else {
+          domMap.set(key, row);
+        }
+      });
+
+      // Find new commands (that aren't in domMap yet)
+      const newCommandsToInsert = [];
+      currentCommands.forEach((c) => {
+        const key = getCmdKey(c);
+        if (!domMap.has(key)) {
+          const isSelected = targetSelected ? (getCmdKey(c) === getCmdKey(targetSelected)) : false;
+          const row = createCommandRow(c, isSelected);
+          row.classList.add('animate-slide-down');
+          newCommandsToInsert.push({ row, c });
+        } else {
+          // In-place update existing row
+          const row = domMap.get(key);
+          const badgeLatest = row.querySelector('.badge-latest');
+          if (badgeLatest) {
+            if (c.is_latest) badgeLatest.classList.remove('hidden');
+            else badgeLatest.classList.add('hidden');
+          }
+          const statusEl = row.querySelector('.status-display');
+          if (statusEl) {
+            const isSuccess = c.exit_code === 0;
+            statusEl.innerText = isSuccess ? 'OK' : 'ERR ' + c.exit_code;
+            statusEl.style.color = isSuccess ? 'var(--mint)' : '#ff6b61';
+          }
+          const cmdEl = row.querySelector('.cmd-text');
+          if (cmdEl && cmdEl.innerText !== (c.cmd || '')) {
+            cmdEl.innerText = c.cmd || '';
+          }
+          const hasIntent = c.intent && c.intent.trim().length > 0 && c.intent !== c.cmd;
+          const intentContainer = row.querySelector('.intent-container');
+          const intentEl = row.querySelector('.intent-text');
+          if (intentContainer && intentEl) {
+            if (hasIntent) {
+              intentEl.innerText = c.intent;
+              intentContainer.classList.remove('hidden');
+            } else {
+              intentContainer.classList.add('hidden');
+            }
+          }
+
+          if (targetSelected && getCmdKey(c) === getCmdKey(targetSelected)) {
+            if (activeActionRowEl && activeActionRowEl !== row) {
+              activeActionRowEl.style.backgroundColor = 'var(--bg-header)';
+              activeActionRowEl.style.borderColor = 'var(--border)';
+              activeActionRowEl.classList.remove('selected', 'shadow-xs');
+            }
+            activeActionRowEl = row;
+            row.classList.add('selected', 'shadow-xs');
+            row.style.backgroundColor = 'var(--bg-selected)';
+            row.style.borderColor = 'var(--accent)';
+          }
+        }
+      });
+
+      // Prepend only the new commands at the top
+      if (newCommandsToInsert.length > 0) {
+        for (let i = newCommandsToInsert.length - 1; i >= 0; i--) {
+          const item = newCommandsToInsert[i];
+          container.insertBefore(item.row, container.firstChild);
+          if (targetSelected && getCmdKey(item.c) === getCmdKey(targetSelected)) {
+            if (activeActionRowEl && activeActionRowEl !== item.row) {
+              activeActionRowEl.style.backgroundColor = 'var(--bg-header)';
+              activeActionRowEl.style.borderColor = 'var(--border)';
+              activeActionRowEl.classList.remove('selected', 'shadow-xs');
+            }
+            activeActionRowEl = item.row;
+          }
+        }
+      }
+    }
+
+    function selectCommand(c, userTriggered = false) {
+      selectedCommand = c;
+      if (!c) return;
+
+      const inspectTool = document.getElementById('inspectTool');
+      const inspectTimestamp = document.getElementById('inspectTimestamp');
+      const inspectExit = document.getElementById('inspectExit');
+      const inspectOutput = document.getElementById('inspectOutput');
+      const inspectCommand = document.getElementById('inspectCommand');
+      const inspectCwd = document.getElementById('inspectCwd');
+      const inspectStderr = document.getElementById('inspectStderr');
+      const inspectStderrBadge = document.getElementById('inspectStderrBadge');
+      const inspectRawJson = document.getElementById('inspectRawJson');
+
+      if (inspectTool) inspectTool.innerText = c.tool || 'unknown';
+      if (inspectTimestamp) {
+        inspectTimestamp.innerText = formatLocalTime(c.timestamp, 'full') || c.timestamp || 'N/A';
+      }
+      if (inspectExit) {
+        const isSuccess = c.exit_code === 0;
+        inspectExit.innerText = `${c.exit_code} (${isSuccess ? 'Success' : 'Failed'}) · ${c.duration || '0ms'}`;
+        inspectExit.style.color = isSuccess ? 'var(--mint)' : '#ff6b61';
+      }
+
+      // Tab 1: Output
+      if (inspectOutput) {
+        inspectOutput.innerText = c.output && c.output.trim().length > 0 ? c.output : '(Không có kết quả STDOUT)';
+      }
+
+      // Tab 2: Meta
+      const inspectSessionId = document.getElementById('inspectSessionId');
+      const inspectSessionIdCmd = document.getElementById('inspectSessionIdCmd');
+      const curSessId = activeChatId || c.chat_id || '--';
+      if (inspectSessionId) inspectSessionId.innerText = curSessId;
+      if (inspectSessionIdCmd) inspectSessionIdCmd.innerText = curSessId;
+      if (inspectCommand) inspectCommand.innerText = c.cmd || '(Trống)';
+      const inspectIntentCard = document.getElementById('inspectIntentCard');
+      const inspectIntent = document.getElementById('inspectIntent');
+      if (inspectIntentCard && inspectIntent) {
+        if (c.intent && c.intent.trim().length > 0 && c.intent !== c.cmd) {
+          inspectIntent.innerText = c.intent;
+          inspectIntentCard.classList.remove('hidden');
+        } else {
+          inspectIntentCard.classList.add('hidden');
+        }
+      }
+      if (inspectCwd) inspectCwd.innerText = c.cwd || '(Không xác định)';
+
+      // Tab 3: STDERR
+      if (inspectStderr) {
+        inspectStderr.innerText = c.stderr && c.stderr.trim().length > 0 ? c.stderr : 'Không có lỗi phát sinh (Exit Code 0).';
+      }
+      if (inspectStderrBadge) {
+        if (c.stderr && c.stderr.trim().length > 0) {
+          inspectStderrBadge.innerText = 'Có lỗi';
+          inspectStderrBadge.style.color = '#ff6b61';
+        } else {
+          inspectStderrBadge.innerText = 'None';
+          inspectStderrBadge.style.color = 'var(--mint)';
+        }
+      }
+
+      // Tab 4: Raw JSON
+      if (inspectRawJson) {
+        inspectRawJson.innerText = c.raw_json ? formatJson(c.raw_json) : JSON.stringify(c, null, 2);
+      }
+
+      if (userTriggered && isInspectorCollapsed) {
+        toggleInspector();
+      }
+    }
+
+    function clearInspector() {
+      const inspectTool = document.getElementById('inspectTool');
+      const inspectTimestamp = document.getElementById('inspectTimestamp');
+      const inspectExit = document.getElementById('inspectExit');
+      const inspectOutput = document.getElementById('inspectOutput');
+      const inspectCommand = document.getElementById('inspectCommand');
+      const inspectCwd = document.getElementById('inspectCwd');
+      const inspectStderr = document.getElementById('inspectStderr');
+      const inspectRawJson = document.getElementById('inspectRawJson');
+      const inspectSessionId = document.getElementById('inspectSessionId');
+      const inspectSessionIdCmd = document.getElementById('inspectSessionIdCmd');
+
+      if (inspectSessionId) inspectSessionId.innerText = activeChatId || '--';
+      if (inspectSessionIdCmd) inspectSessionIdCmd.innerText = activeChatId || '--';
+      if (inspectTool) inspectTool.innerText = 'None';
+      if (inspectTimestamp) inspectTimestamp.innerText = 'N/A';
+      if (inspectExit) inspectExit.innerText = 'N/A';
+      if (inspectOutput) inspectOutput.innerText = '(Không có dữ liệu)';
+      if (inspectCommand) inspectCommand.innerText = '(Trống)';
+      const inspectIntentCard = document.getElementById('inspectIntentCard');
+      if (inspectIntentCard) inspectIntentCard.classList.add('hidden');
+      if (inspectCwd) inspectCwd.innerText = '(Trống)';
+      if (inspectStderr) inspectStderr.innerText = '(Trống)';
+      if (inspectRawJson) inspectRawJson.innerText = '{}';
+    }
+
+    function formatJson(raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        return JSON.stringify(parsed, null, 2);
+      } catch (e) {
+        return raw;
+      }
+    }
+
+    // ==================== LOGS & FORENSIC VIEWER ====================
+    window.__onLogsLoaded = function(logs) {
+      if (!Array.isArray(logs)) return;
+      const hash = `${logs.length}:${logs[0] ? (logs[0].id || '') + (logs[0].time || '') + (logs[0].msg || '') : ''}`;
+      const logContainer = document.getElementById('logStreamContainer');
+      const hasItems = logContainer && logContainer.children.length > 0 && !logContainer.innerText.includes('Không có');
+      if (hash === lastLogsHash && hasItems) return;
+      lastLogsHash = hash;
+
+      currentLogs = logs;
+      activeLogRowEl = null;
+      renderFilteredLogs();
+    };
+
+    function setLogCategoryFilter(category) {
+      activeLogCategory = category;
+      document.querySelectorAll('.log-filter-chip').forEach(chip => {
+        if (chip.getAttribute('data-chip') === category) {
+          chip.style.backgroundColor = 'var(--accent)';
+          chip.style.color = 'var(--bg-base)';
+          chip.style.border = 'none';
+        } else {
+          chip.style.backgroundColor = 'var(--bg-card)';
+          chip.style.color = 'var(--text-sub)';
+          chip.style.border = '1px solid var(--border)';
+        }
+      });
+      activeLogRowEl = null;
+      renderFilteredLogs();
+    }
+
+    function renderFilteredLogs() {
+      const container = document.getElementById('logStreamContainer');
+      if (!container) return;
+      container.innerHTML = '';
+      activeLogRowEl = null;
+
+      const filtered = currentLogs.filter(l => {
+        if (activeLogCategory === 'all') return true;
+        if (activeLogCategory === 'error') return (l.severity === 'ERROR' || l.severity === 'WARN' || l.cat === 'error');
+        if (activeLogCategory === 'process') return (l.cat === 'process' || (l.action && l.action.includes('command')));
+        if (activeLogCategory === 'file') return (l.cat === 'file' || (l.action && l.action.includes('file')));
+        if (activeLogCategory === 'session') return (l.cat === 'session' || (l.session && l.session !== 'system') || (l.action && (l.action.includes('mcp') || l.action.includes('session'))));
+        if (activeLogCategory === 'network') return (l.cat === 'network' || (l.action && (l.action.includes('HTTP') || l.action.includes('healthz') || l.action.includes('/'))));
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        container.innerHTML = `<div class="p-4 text-center text-[11px]" style="color: var(--text-dim);">Không có nhật ký nào thuộc danh mục này</div>`;
+        return;
+      }
+
+      filtered.forEach((l, idx) => {
+        const isSelected = idx === 0;
+        const row = document.createElement('div');
+        row.className = `log-row ${isSelected ? 'selected shadow-xs' : ''} p-2.5 rounded-lg border flex items-center justify-between gap-2 cursor-pointer min-w-0 overflow-hidden`;
+        row.style.backgroundColor = isSelected ? 'var(--bg-selected)' : 'var(--bg-header)';
+        row.style.borderColor = isSelected ? 'var(--accent)' : 'var(--border)';
+
+        if (isSelected) activeLogRowEl = row;
+
+        const isErr = l.severity === 'ERROR';
+        const isWarn = l.severity === 'WARN';
+        const sevColor = isErr ? '#ff6b61' : (isWarn ? 'var(--amber, #fbbf24)' : 'var(--mint)');
+        const logTime = formatLocalTime(l.timestamp || l.time, 'time_only') || l.time || '';
+
+        const leftDiv = document.createElement('div');
+        leftDiv.className = 'flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden';
+
+        const sevSpan = document.createElement('span');
+        sevSpan.style.color = sevColor;
+        sevSpan.className = 'font-bold text-[10px] shrink-0 whitespace-nowrap';
+        sevSpan.textContent = `[${l.severity || 'INFO'}]`;
+
+        const timeSpan = document.createElement('span');
+        timeSpan.style.color = 'var(--text-dim)';
+        timeSpan.className = 'text-[10px] shrink-0 whitespace-nowrap';
+        timeSpan.textContent = logTime;
+
+        const actionSpan = document.createElement('span');
+        actionSpan.style.color = 'var(--accent)';
+        actionSpan.className = 'font-semibold text-[11px] shrink-0 whitespace-nowrap';
+        actionSpan.textContent = l.action || 'event';
+
+        const msgSpan = document.createElement('span');
+        msgSpan.style.color = 'var(--text-main)';
+        msgSpan.className = 'truncate min-w-0 flex-1 text-[11px]';
+        msgSpan.textContent = l.msg || '';
+
+        leftDiv.appendChild(sevSpan);
+        leftDiv.appendChild(timeSpan);
+        leftDiv.appendChild(actionSpan);
+        leftDiv.appendChild(msgSpan);
+
+        const sessionSpan = document.createElement('span');
+        sessionSpan.style.color = 'var(--text-dim)';
+        sessionSpan.className = 'text-[10px] shrink-0 whitespace-nowrap ml-1';
+        sessionSpan.textContent = l.session || 'system';
+
+        row.appendChild(leftDiv);
+        row.appendChild(sessionSpan);
+
+        row.onclick = () => {
+          if (activeLogRowEl && activeLogRowEl !== row) {
+            activeLogRowEl.style.backgroundColor = 'var(--bg-header)';
+            activeLogRowEl.style.borderColor = 'var(--border)';
+            activeLogRowEl.classList.remove('selected', 'shadow-xs');
+          }
+          row.style.backgroundColor = 'var(--bg-selected)';
+          row.style.borderColor = 'var(--accent)';
+          row.classList.add('selected', 'shadow-xs');
+          activeLogRowEl = row;
+          selectLog(l, true);
+        };
+
+        container.appendChild(row);
+      });
+
+      if (filtered.length > 0) {
+        selectLog(filtered[0]);
+      }
+    }
+
+    function selectLog(l, userTriggered = false) {
+      if (!l) return;
+      const logInspectId = document.getElementById('logInspectId');
+      const logInspectCategory = document.getElementById('logInspectCategory');
+      const logInspectAction = document.getElementById('logInspectAction');
+      const logInspectSession = document.getElementById('logInspectSession');
+      const logInspectJson = document.getElementById('logInspectJson');
+
+      const fullTime = formatLocalTime(l.timestamp || l.time, 'full');
+      if (logInspectId) logInspectId.innerText = l.id || 'evt';
+      if (logInspectCategory) logInspectCategory.innerText = `${l.severity || 'INFO'} · ${l.cat || 'runtime'} · ${fullTime}`;
+      if (logInspectAction) logInspectAction.innerText = l.action || 'event';
+      if (logInspectSession) logInspectSession.innerText = l.session || 'system';
+      if (logInspectJson) logInspectJson.innerText = l.json ? formatJson(l.json) : JSON.stringify(l, null, 2);
+
+      if (userTriggered && isInspectorCollapsed) {
+        toggleInspector();
+      }
+    }
+
+    // ==================== RUNTIME STATUS & LIFECYCLE ====================
+    window.__onRuntimeStatusLoaded = function(status) {
+      if (!status) return;
+
+      const topbarStatusDot = document.getElementById('topbarStatusDot');
+      const topbarStatusText = document.getElementById('topbarStatusText');
+      const bridgeStateText = document.getElementById('bridgeStateText');
+      const bridgeActionsRunning = document.getElementById('bridgeActionsRunning');
+      const bridgeActionsStopped = document.getElementById('bridgeActionsStopped');
+      const bridgeUrlDisplay = document.getElementById('bridgeUrlDisplay');
+      const tunnelStatusBadge = document.getElementById('tunnelStatusBadge');
+
+      const isRunning = (status.fastmcp_running === true) || (status.server && status.server.running === true);
+      const isTunnelRunning = (status.tunnel_running === true) || (status.tunnel && status.tunnel.running === true);
+      const port = status.fastmcp_port || (status.server && status.server.port) || 18427;
+
+      if (topbarStatusDot) {
+        topbarStatusDot.style.backgroundColor = isRunning ? 'var(--mint)' : 'var(--text-dim)';
+      }
+      if (topbarStatusText) {
+        if (isRunning && isTunnelRunning) {
+          topbarStatusText.innerText = `0.0.0.0:${port} · Edge Active`;
+        } else if (isRunning) {
+          topbarStatusText.innerText = `0.0.0.0:${port} · Local`;
+        } else {
+          topbarStatusText.innerText = 'Offline (Stopped)';
+        }
+      }
+
+      if (bridgeStateText) {
+        bridgeStateText.innerHTML = `<span id="bridgeDot" style="background-color: ${isRunning ? 'var(--mint)' : 'var(--text-dim)'};" class="w-2 h-2 rounded-full"></span><span>${isRunning ? 'Running' : 'Stopped'}</span>`;
+        bridgeStateText.style.color = isRunning ? 'var(--mint)' : 'var(--text-dim)';
+      }
+
+      if (bridgeActionsRunning && bridgeActionsStopped) {
+        if (isRunning) {
+          bridgeActionsRunning.classList.remove('hidden');
+          bridgeActionsRunning.classList.add('flex');
+          bridgeActionsStopped.classList.remove('flex');
+          bridgeActionsStopped.classList.add('hidden');
+        } else {
+          bridgeActionsRunning.classList.remove('flex');
+          bridgeActionsRunning.classList.add('hidden');
+          bridgeActionsStopped.classList.remove('hidden');
+          bridgeActionsStopped.classList.add('flex');
+        }
+      }
+
+      if (tunnelStatusBadge) {
+        if (isTunnelRunning) {
+          tunnelStatusBadge.innerText = 'Edge Connected';
+          tunnelStatusBadge.style.color = 'var(--mint)';
+          tunnelStatusBadge.style.backgroundColor = 'var(--accent-soft)';
+        } else {
+          tunnelStatusBadge.innerText = 'Tunnel Inactive';
+          tunnelStatusBadge.style.color = 'var(--text-dim)';
+          tunnelStatusBadge.style.backgroundColor = 'var(--bg-base)';
+        }
+      }
+
+      if (bridgeUrlDisplay) {
+        const fallback = `http://127.0.0.1:${port}/mcp`;
+        const activeUrl = status.tunnel_url || status.url || fallback;
+        bridgeUrlDisplay.innerText = activeUrl;
+        latestTunnelUrl = activeUrl;
+      }
+
+      // Populate Settings Drawer Fields
+      if (status.workspace_root) setVal('cfgWorkspaceDir', status.workspace_root);
+      if (status.default_dir) setVal('cfgDefaultDir', status.default_dir);
+      if (status.chat_root) setVal('cfgChatRoot', status.chat_root);
+      if (status.policy) setVal('cfgPolicy', status.policy);
+      if (status.default_timeout) setVal('cfgDefaultTimeout', status.default_timeout);
+      if (status.max_timeout) setVal('cfgMaxTimeout', status.max_timeout);
+      if (status.max_output_bytes) setVal('cfgMaxOutput', status.max_output_bytes);
+      if (status.gateway_token) setVal('cfgToken', status.gateway_token);
+      if (status.require_auth !== undefined) setVal('cfgRequireAuth', status.require_auth ? 'true' : 'false');
+      if (status.attribution_mode) setVal('cfgAttribution', status.attribution_mode);
+      if (status.fastmcp_port) setVal('cfgPort', String(status.fastmcp_port));
+      if (status.bind_host) setVal('cfgBindHost', String(status.bind_host));
+    };
+
+    function setVal(id, val) {
+      const el = document.getElementById(id);
+      if (el && !el.matches(':focus')) {
+        el.value = val;
+      }
+    }
+
+    // ==================== LIFECYCLE ACTIONS WITH MODAL ====================
+    let pendingLifecycleAction = null;
+
+    function promptStartServer() {
+      pendingLifecycleAction = 'start';
+      openLifecycleModal('Khởi chạy FastMCP Server', 'Bạn có muốn khởi chạy FastMCP server daemon trên cổng 18427?');
+    }
+
+    function promptStopServer() {
+      pendingLifecycleAction = 'stop';
+      openLifecycleModal('Dừng FastMCP Server', 'Bạn có chắc chắn muốn dừng runtime máy chủ? Kết nối SSE/MCP sẽ bị ngắt.');
+    }
+
+    function promptRestartServer() {
+      pendingLifecycleAction = 'restart';
+      openLifecycleModal('Khởi động lại FastMCP Server', 'Khởi động lại server daemon để nạp lại cấu hình và giải phóng tài nguyên.');
+    }
+
+    function handleRestartServer() {
+      promptRestartServer();
+    }
+
+    function startBridgeServer() {
+      promptStartServer();
+    }
+
+    function stopBridgeServer() {
+      promptStopServer();
+    }
+
+    function openLifecycleModal(title, desc) {
+      const modal = document.getElementById('lifecycleModal');
+      const titleEl = document.getElementById('modalTitle');
+      const descEl = document.getElementById('modalDesc');
+      const confirmBtn = document.getElementById('modalConfirmBtn');
+
+      if (titleEl) titleEl.innerText = title;
+      if (descEl) descEl.innerText = desc;
+      if (confirmBtn) {
+        confirmBtn.onclick = executeConfirmedLifecycleAction;
+      }
+      if (modal) modal.classList.remove('hidden');
+    }
+
+    function closeLifecycleModal() {
+      pendingLifecycleAction = null;
+      const modal = document.getElementById('lifecycleModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function executeConfirmedLifecycleAction() {
+      if (!pendingLifecycleAction) return;
+      const act = pendingLifecycleAction;
+      closeLifecycleModal();
+
+      const topbarStatusDot = document.getElementById('topbarStatusDot');
+      const topbarStatusText = document.getElementById('topbarStatusText');
+      const restartIcon = document.getElementById('restartIcon');
+
+      if (topbarStatusDot) topbarStatusDot.style.backgroundColor = 'var(--amber, #fbbf24)';
+      if (topbarStatusText) topbarStatusText.innerText = act === 'stop' ? 'Stopping...' : (act === 'restart' ? 'Restarting...' : 'Starting...');
+      if (restartIcon && act === 'restart') restartIcon.classList.add('animate-spin');
+
+      sendToRust('lifecycle_action', { action: act });
+    }
+
+    window.__onLifecycleActionFinished = function(action, success, message) {
+      const restartIcon = document.getElementById('restartIcon');
+      if (restartIcon) restartIcon.classList.remove('animate-spin');
+
+      const msg = message || (success ? `Thao tác ${action} thành công` : `Thao tác ${action} thất bại`);
+      showToast(success ? `✓ ${msg}` : `⚠️ ${msg}`);
+      sendToRust('get_runtime_status');
+    };
+
+    // ==================== CLIPBOARD & TOAST ====================
+    let latestTunnelUrl = '';
+
+    function copyTextToClipboard(text, onSuccess, onFail) {
+      if (!text) {
+        showToast('⚠️ Nội dung sao chép trống');
+        return;
+      }
+
+      // 1. Immediately send to Rust backend so Linux system clipboard is updated via xclip/wl-copy
+      sendToRust('copy_to_clipboard', { text: text });
+
+      let succeeded = false;
+      const triggerSuccess = () => {
+        if (!succeeded) {
+          succeeded = true;
+          if (onSuccess) onSuccess();
+        }
+      };
+
+      const fallbackExec = () => {
+        try {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.style.position = 'fixed';
+          ta.style.left = '-9999px';
+          ta.style.top = '-9999px';
+          ta.setAttribute('readonly', '');
+          document.body.appendChild(ta);
+          ta.focus();
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        } catch (_) {}
+        // Rust xclip already performed the copy at the OS level
+        triggerSuccess();
+      };
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text)
+          .then(triggerSuccess)
+          .catch(() => fallbackExec());
+      } else {
+        fallbackExec();
+      }
+    }
+
+    function copyDetails() {
+      const cmd = document.getElementById('inspectCommand')?.innerText || '';
+      const out = document.getElementById('inspectOutput')?.innerText || '';
+      const text = `Command: ${cmd}\nOutput:\n${out}`;
+      copyTextToClipboard(text, () => {
+        showToast('✓ Copied command details');
+        const btn = document.getElementById('copyBtnLabel');
+        if (btn) {
+          btn.innerText = 'Copied!';
+          setTimeout(() => { btn.innerText = 'Copy'; }, 1500);
+        }
+      });
+    }
+
+    function copyLogJson() {
+      const json = document.getElementById('logInspectJson')?.innerText || '{}';
+      copyTextToClipboard(json, () => {
+        showToast('✓ Copied JSON forensics');
+        const btn = document.getElementById('copyLogLabel');
+        if (btn) {
+          btn.innerText = 'Copied!';
+          setTimeout(() => { btn.innerText = 'Copy JSON'; }, 1500);
+        }
+      });
+    }
+
+    function copyBridgeUrl() {
+      const displayEl = document.getElementById('bridgeUrlDisplay');
+      let url = (latestTunnelUrl || displayEl?.innerText || '').trim();
+      if (!url || url.includes('Đang đồng bộ') || url.includes('...')) {
+        url = 'http://127.0.0.1:18427/mcp';
+      }
+      copyTextToClipboard(url, () => {
+        showToast('✓ Copied Tunnel URL: ' + url);
+        const label = document.getElementById('copyUrlLabel');
+        if (label) {
+          label.innerText = 'Copied!';
+          setTimeout(() => { label.innerText = 'Copy Tunnel URL'; }, 1500);
+        }
+      });
+    }
+
+    function copySessionBind(chatId, btnEl, type = 'id') {
+      const targetId = chatId || activeChatId;
+      if (!targetId) {
+        showToast('⚠️ No active session selected');
+        return;
+      }
+      const textToCopy = type === 'cli' ? `bqa session bind ${targetId}` : targetId;
+      const labelDesc = type === 'cli' ? 'CLI command' : 'Session ID';
+
+      copyTextToClipboard(textToCopy, () => {
+        showToast(`✓ Copied ${labelDesc}: ${targetId}`);
+        if (btnEl) {
+          const textSpan = btnEl.querySelector('.btn-copy-text') || btnEl.querySelector('span:last-child');
+          if (textSpan) {
+            const origText = textSpan.innerText;
+            const origColor = btnEl.style.color;
+            textSpan.innerText = 'Copied!';
+            textSpan.classList.add('whitespace-nowrap');
+            btnEl.style.color = 'var(--mint, #10b981)';
+            setTimeout(() => {
+              textSpan.innerText = origText;
+              btnEl.style.color = origColor;
+            }, 1500);
+          } else {
+            const origHtml = btnEl.innerHTML;
+            btnEl.innerHTML = `<span class="text-emerald-400 whitespace-nowrap">Copied!</span>`;
+            setTimeout(() => {
+              btnEl.innerHTML = origHtml;
+            }, 1500);
+          }
+        }
+      });
+    }
+
+    function showToast(msg) {
+      let toast = document.getElementById('appToast');
+      if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'appToast';
+        toast.className = 'fixed top-14 right-4 z-50 px-3.5 py-2 rounded-lg border text-xs font-medium font-mono shadow-xl transition-all duration-300 transform translate-y-[-10px] opacity-0 flex items-center gap-2';
+        toast.style.backgroundColor = 'var(--bg-header)';
+        toast.style.borderColor = 'var(--accent)';
+        toast.style.color = 'var(--text-main)';
+        document.body.appendChild(toast);
+      }
+      toast.innerHTML = `<span style="color: var(--mint);">●</span> <span>${msg}</span>`;
+      toast.classList.remove('hidden', 'translate-y-[-10px]', 'opacity-0');
+      toast.classList.add('translate-y-0', 'opacity-100');
+
+      setTimeout(() => {
+        toast.classList.remove('translate-y-0', 'opacity-100');
+        toast.classList.add('translate-y-[-10px]', 'opacity-0');
+      }, 2400);
+    }
+
+    // ==================== BOOT SEQUENCE ANIMATION (VJP-PRO CONTRACT) ====================
+    const BOOT_PHASES = [
+      { title: "INITIALIZING INTERFACE", sub: "Khởi tạo hệ thống giao diện và visual token...", percent: 25, duration: 300 },
+      { title: "LOADING WORKSPACES", sub: "Quét nạp danh sách chat workspace và phiên làm việc...", percent: 55, duration: 320 },
+      { title: "CONNECTING ACTIVITY STREAM", sub: "Kết nối luồng giám sát Activity Stream thời gian thực...", percent: 85, duration: 320 },
+      { title: "SYSTEM READY", sub: "Đã sẵn sàng. Mở giao diện BQA Native Studio...", percent: 100, duration: 220 },
+    ];
+
+    let bootActive = true;
+    function runBootSequence() {
+      const screen = document.getElementById('bootScreen');
+      if (!screen) return;
+
+      console.log("BOOT SEQUENCE STARTING, WATCHDOG 1.8s ARMED");
+
+      // GUARANTEED WATCHDOG: Ensure boot screen NEVER blocks UI longer than 1.8s
+      setTimeout(() => {
+        if (bootActive) {
+          console.log("WATCHDOG TRIGGERED: FORCE DISMISSING BOOT SCREEN");
+          dismissBootScreen();
+        }
+      }, 1800);
+
+      let phaseIdx = 0;
+      function nextPhase() {
+        if (!bootActive) return;
+        if (phaseIdx >= BOOT_PHASES.length) {
+          dismissBootScreen();
+          return;
+        }
+        const p = BOOT_PHASES[phaseIdx];
+        const phaseEl = document.getElementById('bootPhaseText');
+        const subEl = document.getElementById('bootStepSubtext');
+        const pctEl = document.getElementById('bootPercent');
+        const barEl = document.getElementById('bootProgressBar');
+        if (phaseEl) phaseEl.textContent = p.title;
+        if (subEl) subEl.textContent = p.sub;
+        if (pctEl) pctEl.textContent = p.percent + '%';
+        if (barEl) barEl.style.width = p.percent + '%';
+        console.log("BOOT PHASE:", p.title, p.percent + "%");
+        phaseIdx++;
+        setTimeout(nextPhase, p.duration);
+      }
+      nextPhase();
+    }
+
+    function dismissBootScreen() {
+      if (!bootActive && document.getElementById('bootScreen')?.style.display === 'none') return;
+      bootActive = false;
+      console.log("DISMISSING BOOT SCREEN NOW");
+      const screen = document.getElementById('bootScreen');
+      if (!screen) return;
+      screen.style.opacity = '0';
+      setTimeout(() => {
+        screen.style.display = 'none';
+        console.log("BOOT SCREEN COMPLETELY HIDDEN");
+      }, 350);
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (bootActive) {
+          dismissBootScreen();
+        }
+        closeLifecycleModal();
+        closeDeleteWorkspaceModal();
+      }
+    });
+
+    // ==================== AUTO-POLLING & REAL-TIME DISPATCH ====================
+    let autoPollTimer = null;
+    let liveSessionPollTimer = null;
+
+    function pollBackendState() {
+      sendToRust('get_runtime_status');
+      sendToRust('get_workspaces');
+      sendToRust('get_logs');
+    }
+
+    function startAutoPolling() {
+      if (autoPollTimer) clearInterval(autoPollTimer);
+      if (liveSessionPollTimer) clearInterval(liveSessionPollTimer);
+      pollBackendState();
+      autoPollTimer = setInterval(pollBackendState, 3000);
+      liveSessionPollTimer = setInterval(() => {
+        if (activeChatId) {
+          sendToRust('get_session_details', { chat_id: activeChatId });
+        }
+      }, 1000);
+    }
+
+    function refreshSessionsFromDisk() {
+      sendToRust('get_workspaces');
+      showToast('✓ Đang đồng bộ sessions từ đĩa...');
+    }
+
+    function refreshLogsFromDisk() {
+      sendToRust('get_logs');
+      showToast('✓ Đang làm mới audit logs...');
+    }
+
+    // ==================== INITIALIZATION ====================
+    try {
+      console.log("STEP 4: INIT START");
+      const savedTheme = safeGetStorage('bqa_theme', 'vjp-terminal');
+      setTheme(savedTheme || 'vjp-terminal');
+      console.log("STEP 5: THEME INITIALIZED ->", savedTheme || 'vjp-terminal');
+      runBootSequence();
+      console.log("STEP 6: BOOT SEQUENCE STARTED");
+      startAutoPolling();
+      console.log("STEP 7: AUTO POLLING STARTED");
+    } catch (err) {
+      console.error("FATAL ERROR IN INIT:", err);
+      dismissBootScreen();
+    }
+  </script>
+</body>
+</html>

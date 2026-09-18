@@ -10,6 +10,7 @@ def test_rest_api_reuses_host_services_and_preserves_mcp():
         "REQUIRE_AUTH": "false",
         "MCP_JSON_RESPONSE": "true",
         "MCP_STATELESS_HTTP": "true",
+        "ATTRIBUTION_MODE": "off",
     }
     code = r'''
 import json
@@ -20,6 +21,7 @@ workspace = tempfile.mkdtemp(prefix="host-rest-api-")
 os.environ["HOST_WORKSPACE_DIR"] = workspace
 os.environ["HOST_RESTRICT_TO_WORKSPACE"] = "true"
 os.environ["REQUIRE_AUTH"] = "false"
+os.environ["ATTRIBUTION_MODE"] = "off"
 
 from starlette.testclient import TestClient
 import app.main

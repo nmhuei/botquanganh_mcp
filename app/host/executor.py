@@ -7,7 +7,8 @@ import shutil
 import subprocess  # nosec B404
 import threading
 import time
-from typing import Any, BinaryIO, Optional
+import uuid
+from typing import Any, BinaryIO, Callable, Optional
 
 import app.config
 from app.error_contract import ServiceBusyError
@@ -15,6 +16,7 @@ from app.host.paths import display_host_path, resolve_host_path
 from app.host.policy import require_host_command_allowed
 from app.logging_audit import log_audit_event
 from app.activity_log import record_mcp_command_activity
+from app.host.llm_honeypot import sanitize_command, sanitize_output
 
 
 _ALWAYS_STRIP_ENV = {
@@ -133,6 +135,9 @@ def _drain_limited(pipe: BinaryIO, max_bytes: int, result: dict[str, Any]) -> No
             chunk = pipe.read(64 * 1024)
             if not chunk:
                 break
+            if max_bytes == 0:
+                stored.extend(chunk)
+                continue
             remaining = max_bytes - len(stored)
             if remaining > 0:
                 stored.extend(chunk[:remaining])
@@ -166,15 +171,29 @@ def _execute_host_command_impl(
     command: str,
     *,
     cwd: Optional[str] = None,
-    timeout_seconds: int = 30,
+    timeout_seconds: Optional[int] = None,
+    on_started: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """Execute a command with bounded output, sanitized environment, and cleanup."""
-    if not isinstance(timeout_seconds, int):
+    max_allowed = getattr(app.config, "MAX_TIMEOUT_SECONDS", 36000)
+    default_timeout = getattr(app.config, "DEFAULT_TIMEOUT_SECONDS", 300)
+
+    if timeout_seconds is None:
+        wait_timeout: int | None = min(default_timeout, max_allowed) if max_allowed > 0 else default_timeout
+        if wait_timeout is not None and wait_timeout <= 0:
+            wait_timeout = None
+    elif not isinstance(timeout_seconds, int):
         raise TypeError("timeout_seconds must be an integer")
-    if timeout_seconds < 1 or timeout_seconds > app.config.MAX_TIMEOUT_SECONDS:
-        raise ValueError(
-            f"timeout_seconds must be between 1 and {app.config.MAX_TIMEOUT_SECONDS}"
-        )
+    elif timeout_seconds < 0:
+        raise ValueError("timeout_seconds cannot be negative (use 0 to disable timeout)")
+    elif timeout_seconds == 0:
+        wait_timeout = None
+    else:
+        if max_allowed > 0 and timeout_seconds > max_allowed:
+            raise ValueError(
+                f"timeout_seconds must be between 0 and {max_allowed} (0 to disable timeout)"
+            )
+        wait_timeout = timeout_seconds
 
     policy = require_host_command_allowed(command)
     resolved_cwd = resolve_host_path(
@@ -184,6 +203,9 @@ def _execute_host_command_impl(
     )
     command_hash = hashlib.sha256(command.encode("utf-8")).hexdigest()
     started = time.monotonic()
+
+    if on_started is not None:
+        on_started(display_host_path(resolved_cwd))
 
     process = subprocess.Popen(  # nosec B603
         [_BASH_PATH, "--noprofile", "--norc", "-c", command],
@@ -214,7 +236,7 @@ def _execute_host_command_impl(
 
     timed_out = False
     try:
-        exit_code = process.wait(timeout=timeout_seconds)
+        exit_code = process.wait(timeout=wait_timeout)
     except subprocess.TimeoutExpired:
         timed_out = True
         exit_code = _terminate_process_group(process)
@@ -227,8 +249,8 @@ def _execute_host_command_impl(
             stderr_thread.join(timeout=1)
     output_incomplete = stdout_thread.is_alive() or stderr_thread.is_alive()
 
-    stdout = str(stdout_result.get("text", ""))
-    stderr = str(stderr_result.get("text", ""))
+    stdout, _ = sanitize_output(str(stdout_result.get("text", "")))
+    stderr, _ = sanitize_output(str(stderr_result.get("text", "")))
     stdout_truncated = bool(stdout_result.get("truncated", False))
     stderr_truncated = bool(stderr_result.get("truncated", False))
     duration_ms = int((time.monotonic() - started) * 1000)
@@ -257,6 +279,7 @@ def _execute_host_command_impl(
         "stderr_truncated": stderr_truncated,
         "output_incomplete": output_incomplete,
         "duration_ms": duration_ms,
+        "timed_out": timed_out,
         "policy": policy,
     }
     if timed_out:
@@ -264,7 +287,7 @@ def _execute_host_command_impl(
             "ok": False,
             "error": {
                 "code": "TIMEOUT",
-                "message": f"Host command timed out after {timeout_seconds} seconds.",
+                "message": f"Host command timed out after {wait_timeout} seconds.",
             },
             **base_result,
         }
@@ -275,37 +298,91 @@ def execute_host_command(
     command: str,
     *,
     cwd: Optional[str] = None,
-    timeout_seconds: int = 30,
+    timeout_seconds: Optional[int] = None,
     activity_source: str | None = None,
+    activity_chat_id: str | None = None,
+    activity_operation_id: str | None = None,
 ) -> dict[str, Any]:
     """Execute a host command within the configured concurrency capacity."""
+    command, stripped_honeypots = sanitize_command(command)
+    if stripped_honeypots:
+        log_audit_event(
+            "LLM_HONEYPOT_STRIPPED",
+            {
+                "target": "command",
+                "chat_id": activity_chat_id,
+                "stripped_count": len(stripped_honeypots),
+                "stripped_lines": [s[:120] for s in stripped_honeypots],
+            },
+        )
+
     command_capacity.acquire()
     activity_started = time.monotonic()
+    operation_id = (
+        activity_operation_id or f"act-{uuid.uuid4().hex}"
+        if activity_source == "mcp"
+        else None
+    )
+    started_cwd: str | None = None
+
+    def record_activity(
+        *, cwd_value: str, result_value: dict[str, Any], phase: str, status: str
+    ) -> None:
+        if activity_source != "mcp":
+            return
+        record_mcp_command_activity(
+            command=command,
+            cwd=cwd_value,
+            chat_id=activity_chat_id,
+            operation_id=operation_id,
+            phase=phase,
+            status=status,
+            result=result_value,
+        )
+
+    def record_started(resolved_cwd: str) -> None:
+        nonlocal started_cwd
+        started_cwd = resolved_cwd
+        record_activity(
+            cwd_value=resolved_cwd,
+            result_value={"ok": False, "stdout": "", "stderr": ""},
+            phase="started",
+            status="running",
+        )
+
     try:
         try:
             result = _execute_host_command_impl(
                 command,
                 cwd=cwd,
                 timeout_seconds=timeout_seconds,
+                on_started=record_started if activity_source == "mcp" else None,
             )
         except Exception as exc:
-            if activity_source == "mcp":
-                record_mcp_command_activity(
-                    command=command,
-                    cwd=cwd or ".",
-                    result={
-                        "ok": False,
-                        "stderr": str(exc),
-                        "duration_ms": int((time.monotonic() - activity_started) * 1000),
-                    },
-                )
-            raise
-        if activity_source == "mcp":
-            record_mcp_command_activity(
-                command=command,
-                cwd=str(result.get("cwd", cwd or ".")),
-                result=result,
+            record_activity(
+                cwd_value=started_cwd or cwd or ".",
+                result_value={
+                    "ok": False,
+                    "stderr": str(exc),
+                    "duration_ms": int((time.monotonic() - activity_started) * 1000),
+                },
+                phase="completed",
+                status="failed",
             )
+            raise
+        status = (
+            "timed_out"
+            if result.get("timed_out")
+            else "succeeded"
+            if result.get("ok")
+            else "failed"
+        )
+        record_activity(
+            cwd_value=str(result.get("cwd", cwd or ".")),
+            result_value=result,
+            phase="completed",
+            status=status,
+        )
         return result
     finally:
         command_capacity.release()

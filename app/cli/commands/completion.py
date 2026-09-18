@@ -20,7 +20,7 @@ def generate(shell: str) -> str:
         knowledge) COMPREPLY=( $(compgen -W "overview guide tools search all" -- "$cur") ); return ;;
         config) COMPREPLY=( $(compgen -W "show get path validate" -- "$cur") ); return ;;
         completion) COMPREPLY=( $(compgen -W "bash zsh fish" -- "$cur") ); return ;;
-        logs) COMPREPLY=( $(compgen -W "server tunnel launcher audit follow" -- "$cur") ); return ;;
+        logs) COMPREPLY=( $(compgen -W "all server tunnel launcher audit follow" -- "$cur") ); return ;;
     esac
     if [[ $COMP_CWORD -eq 1 ]]; then
         COMPREPLY=( $(compgen -W "{_COMMANDS}" -- "$cur") )

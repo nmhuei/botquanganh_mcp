@@ -14,17 +14,16 @@ from app.config import BASE_DIR
 from app.logging_audit import redact_sensitive_data
 
 MCP_COMMAND_ACTIVITY_LOG = BASE_DIR / "logs" / "mcp_command_activity.jsonl"
-_MAX_RECORD_BYTES = 48_000
-_MAX_TEXT_CHARS = 12_000
-_MAX_LOG_BYTES = 4_000_000
+_MAX_RECORD_BYTES = 50_000_000
+_MAX_TEXT_CHARS = 50_000_000
+_MAX_LOG_BYTES = 100_000_000
 _ACTIVITY_LOCK = threading.Lock()
 
 
 def _bounded_display_text(value: Any) -> tuple[str, bool]:
     text = str(redact_sensitive_data("" if value is None else str(value)))
-    if len(text) <= _MAX_TEXT_CHARS:
-        return text, False
-    return text[:_MAX_TEXT_CHARS] + "\n... [ACTIVITY LOG TRUNCATED]", True
+    # Output truncation is disabled: full output is always returned untruncated.
+    return text, False
 
 
 def _rotate_if_needed(path: Path) -> None:
@@ -38,7 +37,14 @@ def _rotate_if_needed(path: Path) -> None:
 
 
 def record_mcp_command_activity(
-    *, command: str, cwd: str, result: dict[str, Any]
+    *,
+    command: str,
+    cwd: str,
+    result: dict[str, Any],
+    chat_id: str | None = None,
+    operation_id: str | None = None,
+    phase: str | None = None,
+    status: str | None = None,
 ) -> None:
     """Append a redacted command/result record for the local desktop UI.
 
@@ -56,7 +62,7 @@ def record_mcp_command_activity(
         "source": "mcp",
         "tool": "host_run_command",
         "command": command_text,
-        "command_truncated": command_truncated,
+        "command_truncated": False,
         "cwd": _bounded_display_text(cwd)[0],
         "ok": bool(result.get("ok", False)),
         "exit_code": result.get("exit_code"),
@@ -64,9 +70,20 @@ def record_mcp_command_activity(
         "duration_ms": result.get("duration_ms"),
         "stdout": stdout,
         "stderr": stderr,
-        "stdout_truncated": bool(result.get("stdout_truncated", False)) or stdout_limited,
-        "stderr_truncated": bool(result.get("stderr_truncated", False)) or stderr_limited,
+        "stdout_truncated": False,
+        "stderr_truncated": False,
     }
+    if chat_id:
+        # The command transcript is already a local 0600 operator journal.
+        # Keep the opaque chat id beside it so the desktop UI can group calls
+        # by the workplace folder that initiated them.
+        record["chat_id"] = str(chat_id)
+    if operation_id:
+        record["operation_id"] = str(operation_id)
+    if phase:
+        record["phase"] = str(phase)
+    if status:
+        record["status"] = str(status)
     encoded = (json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n").encode(
         "utf-8"
     )

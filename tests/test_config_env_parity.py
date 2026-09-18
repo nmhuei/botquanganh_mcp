@@ -147,3 +147,38 @@ def test_cli_load_env_precedence(tmp_path, monkeypatch):
     assert values["MAX_TIMEOUT_SECONDS"] == os.environ.get(
         "MAX_TIMEOUT_SECONDS", DEFAULTS["MAX_TIMEOUT_SECONDS"]
     )
+
+
+def test_env_example_has_unique_keys():
+    """Operator-facing sample config must not contain ambiguous duplicate keys."""
+    from collections import Counter
+    from pathlib import Path
+
+    env_path = Path(__file__).resolve().parents[1] / ".env.example"
+    keys = [
+        line.split("=", 1)[0].strip()
+        for line in env_path.read_text(encoding="utf-8").splitlines()
+        if line and not line.lstrip().startswith("#") and "=" in line
+    ]
+    duplicates = sorted(key for key, count in Counter(keys).items() if count > 1)
+    assert duplicates == []
+
+
+def test_env_example_documents_runtime_safety_keys():
+    """Keep security/reliability settings visible to operators."""
+    from pathlib import Path
+
+    env_path = Path(__file__).resolve().parents[1] / ".env.example"
+    keys = {
+        line.split("=", 1)[0].strip()
+        for line in env_path.read_text(encoding="utf-8").splitlines()
+        if line and not line.lstrip().startswith("#") and "=" in line
+    }
+    required = {
+        "ALLOWED_ORIGINS",
+        "HOST_READ_SCOPE",
+        "HOST_WRITE_SCOPE",
+        "HOST_READ_DENY_GLOBS",
+        "SEARCH_TEXT_DEADLINE_SECONDS",
+    }
+    assert required <= keys

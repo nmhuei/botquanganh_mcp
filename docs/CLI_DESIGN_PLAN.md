@@ -1,5 +1,7 @@
 # CLI Design Plan
 
+> Historical design record. Some ports, tool counts, test counts, packaging notes, and v1 backlog items below describe earlier implementation stages. Use `README.md`, `docs/OPERATIONS_RUNBOOK.md`, `docs/RELEASE_CHECKLIST.md`, and current CLI help as the source of truth for shipped behavior.
+
 ## 1. Mục tiêu
 
 Thiết kế một CLI thống nhất cho repo `botquanganh_mcp`, phục vụ cả hai nhóm nhu cầu:

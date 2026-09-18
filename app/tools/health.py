@@ -32,7 +32,11 @@ HOST_TOOLS = [
     "host_run_command",
     "ctf_fetch_url",
     "ctf_render_fetch_result",
+    "ctf_triage_artifact",
     "host_knowledge",
+    "host_workspace_bind",
+    "host_workspace_list",
+    "host_save_note",
 ]
 
 

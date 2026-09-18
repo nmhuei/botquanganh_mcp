@@ -5,7 +5,6 @@ import pytest
 
 import app.config
 import app.host.executor as executor
-from app.error_contract import ServiceBusyError
 from app.host.executor import CommandCapacity, execute_host_command
 
 
@@ -79,13 +78,17 @@ def test_invalid_inputs_do_not_leak_capacity_slots(isolated_workspace, monkeypat
     monkeypatch.setattr(executor, "command_capacity", capacity)
 
     with pytest.raises(ValueError):
-        execute_host_command("printf x", timeout_seconds=0)
+        execute_host_command("printf x", timeout_seconds=-1)
     with pytest.raises(TypeError):
         execute_host_command("printf x", timeout_seconds="2")  # type: ignore[arg-type]
+    monkeypatch.setattr(app.config, "MAX_TIMEOUT_SECONDS", 10)
     with pytest.raises(ValueError):
-        execute_host_command("printf x", timeout_seconds=9999)
+        execute_host_command("printf x", timeout_seconds=app.config.MAX_TIMEOUT_SECONDS + 1)
+
+
     with pytest.raises(PermissionError):
         execute_host_command("sudo id", timeout_seconds=5)
+
     with pytest.raises(PermissionError):
         execute_host_command("shutdown now", timeout_seconds=5)
 
