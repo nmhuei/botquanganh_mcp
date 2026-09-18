@@ -31,7 +31,7 @@ from app.tools.host import (
     host_write_file,
 )
 from app.tools.host_knowledge import host_knowledge
-from app.tools.workspace_tools import host_save_note, host_workspace_bind
+from app.tools.workspace_tools import host_save_note, host_workspace_bind, host_workspace_list
 
 VALID_ID = "enforce-chat"
 OTHER_VALID_ID = "second-chat"
@@ -56,6 +56,7 @@ TOOL_FUNCTIONS = {
     "ctf_triage_artifact": ctf_triage_artifact,
     "host_knowledge": host_knowledge,
     "host_workspace_bind": host_workspace_bind,
+    "host_workspace_list": host_workspace_list,
     "host_save_note": host_save_note,
 }
 
@@ -379,8 +380,8 @@ def fake_workspace_infra(monkeypatch, tmp_path):
     monkeypatch.setitem(sys.modules, "app.chat_workspace", module)
 
 
-def test_only_host_workspace_bind_is_exempt():
-    assert BIND_EXEMPT_TOOLS == frozenset({"host_workspace_bind"})
+def test_discovery_and_bind_are_exempt_from_enforce():
+    assert {"host_workspace_bind", "host_workspace_list"}.issubset(BIND_EXEMPT_TOOLS)
 
 
 def test_bind_works_under_enforce_without_any_prior_binding(

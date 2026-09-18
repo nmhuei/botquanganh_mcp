@@ -1114,6 +1114,60 @@ def test_launch_writes_pid_file_and_env_marker(monkeypatch, tmp_path):
     assert desktop_ui_pid_path(tmp_path).read_text(encoding="utf-8") == "4567\n"
 
 
+def test_launch_preserves_explicit_desktop_environment_overrides(monkeypatch, tmp_path):
+    import app.config
+
+    captured = {}
+
+    class Process:
+        pid = 4567
+
+    def fake_popen(_command, **kwargs):
+        captured.update(kwargs)
+        return Process()
+
+    overrides = {
+        "BQA_UI_LANGUAGE": "vi",
+        "HOST_WORKSPACE_DIR": "/explicit/workspace",
+        "HOST_DEFAULT_DIR": "/explicit/default",
+    }
+    monkeypatch.setattr(app.config, "_DOTENV_LOADED_VALUES", {})
+    for key, value in overrides.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setattr("app.cli.desktop_ui.subprocess.Popen", fake_popen)
+
+    launch_desktop_ui_detached(type("Context", (), {"repo_root": tmp_path})())
+
+    assert {key: captured["env"].get(key) for key in overrides} == overrides
+
+
+def test_launch_removes_values_inherited_from_dotenv_loader(monkeypatch, tmp_path):
+    import app.config
+
+    captured = {}
+
+    class Process:
+        pid = 4567
+
+    def fake_popen(_command, **kwargs):
+        captured.update(kwargs)
+        return Process()
+
+    inherited = {
+        "BQA_UI_LANGUAGE": "en",
+        "HOST_WORKSPACE_DIR": "/dotenv/workspace",
+        "HOST_DEFAULT_DIR": "/dotenv/default",
+    }
+    monkeypatch.setattr(app.config, "_DOTENV_LOADED_VALUES", dict(inherited))
+    for key, value in inherited.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setattr("app.cli.desktop_ui.subprocess.Popen", fake_popen)
+
+    launch_desktop_ui_detached(type("Context", (), {"repo_root": tmp_path})())
+
+    assert all(key not in captured["env"] for key in inherited)
+
+
 def test_launch_refuses_duplicate_while_detached_instance_is_live(monkeypatch, tmp_path):
     pid_path = desktop_ui_pid_path(tmp_path)
     pid_path.parent.mkdir(parents=True)

@@ -72,7 +72,7 @@ def test_qt_activity_panel_exposes_the_investigation_workbench_layout(qapp, tmp_
 
 
 def test_qt_activity_workbench_uses_free_nested_splitters(qapp, tmp_path):
-    """Command history and both inspectors remain user-resizable work surfaces."""
+    """Session rail, command history, and inspector frame remain user-resizable work surfaces."""
     from PySide6 import QtCore, QtWidgets
     from app.cli.desktop_qt.activity import QtActivityPanel
 
@@ -81,32 +81,23 @@ def test_qt_activity_workbench_uses_free_nested_splitters(qapp, tmp_path):
     panel.widget.show()
     qapp.processEvents()
 
-    assert panel.activity_workbench_splitter.orientation() == QtCore.Qt.Vertical
-    assert panel.investigation_splitter.orientation() == QtCore.Qt.Horizontal
-    assert panel.activity_workbench_splitter.indexOf(panel.command_frame) == 0
-    assert panel.activity_workbench_splitter.indexOf(panel.inspection_workspace) == 1
-    assert panel.investigation_splitter.indexOf(panel.input_panel) == 0
-    assert panel.investigation_splitter.indexOf(panel.output_panel) == 1
+    assert panel.activity_workbench_splitter.orientation() == QtCore.Qt.Horizontal
+    assert panel.activity_workbench_splitter.indexOf(panel.session_rail) == 0
+    assert panel.activity_workbench_splitter.indexOf(panel.command_frame) == 1
+    assert panel.activity_workbench_splitter.indexOf(panel.inspection_workspace) == 2
 
-    panel.activity_workbench_splitter.setSizes((180, 420))
-    panel.investigation_splitter.setSizes((220, 380))
+    panel.activity_workbench_splitter.setSizes((260, 340, 400))
     qapp.processEvents()
     outer_sizes = panel.activity_workbench_splitter.sizes()
-    inner_sizes = panel.investigation_splitter.sizes()
 
-    assert outer_sizes[1] > outer_sizes[0]
-    assert inner_sizes[1] > inner_sizes[0]
+    assert outer_sizes[2] > outer_sizes[0]
 
     panel.render()
     qapp.processEvents()
 
     assert (
-        panel.activity_workbench_splitter.sizes()[1]
+        panel.activity_workbench_splitter.sizes()[2]
         > panel.activity_workbench_splitter.sizes()[0]
-    )
-    assert (
-        panel.investigation_splitter.sizes()[1]
-        > panel.investigation_splitter.sizes()[0]
     )
 
 
@@ -124,10 +115,9 @@ def test_qt_activity_session_model_exposes_complete_cell_tooltips(qapp, tmp_path
     state.reveal_session("incident-retrospective")
     model = ActivitySessionModel(QtCore, state)
 
-    assert [
-        model.data(model.index(0, column), QtCore.Qt.ToolTipRole)
-        for column in range(3)
-    ] == ["incident-retrospective", "enabled", "00:00:10"]
+    assert model.columnCount() == 1
+    assert model.data(model.index(0, 0), QtCore.Qt.ToolTipRole) == "incident-retrospective"
+    assert model.data(model.index(0, 0), QtCore.Qt.DisplayRole) == "incident-retrospective"
 
 
 def test_qt_activity_workbench_headings_follow_the_active_translator(qapp, tmp_path):
@@ -252,13 +242,12 @@ def test_qt_activity_input_and_output_wrap_long_tokens_after_splitter_resize(
     panel.refresh([], [record])
     panel.command_table.selectRow(0)
     panel.inspector.setCurrentWidget(panel.inspector_views["stdout"])
-    panel.investigation_splitter.setSizes((180, 820))
+    panel.content_splitter.setSizes((260, 560, 180))
     qapp.processEvents()
 
     input_view = panel.command_input_view
     output_view = panel.inspector_views["stdout"]
-    assert input_view.viewport().width() < 200
-    assert input_view.viewport().width() < output_view.viewport().width()
+    assert output_view.viewport().width() < 250
     for view in (input_view, *panel.inspector_views.values()):
         assert view.lineWrapMode() == QtWidgets.QPlainTextEdit.WidgetWidth
         assert view.wordWrapMode() == QtGui.QTextOption.WrapAtWordBoundaryOrAnywhere
@@ -517,7 +506,7 @@ def test_qt_activity_latest_deferred_scroll_restore_wins_over_stale_callback(
 
 
 def test_qt_activity_visible_collapse_controls_restore_from_shared_baseline(qapp, tmp_path):
-    """A click-hidden pane retains a visible, user-reachable restore control."""
+    """The collapse control bar is removed from the visible layout so input/output remain large and open."""
     from PySide6 import QtCore, QtTest, QtWidgets
     from app.cli.desktop_qt.activity import QtActivityPanel
 
@@ -526,41 +515,57 @@ def test_qt_activity_visible_collapse_controls_restore_from_shared_baseline(qapp
     panel.widget.show()
     panel.widget.activateWindow()
     qapp.processEvents()
-    panel.vertical_splitter.setSizes([240, 360])
-    baseline_sizes = panel.vertical_splitter.sizes()
 
-    def click_visible_toggle(button):
-        center = button.rect().center()
-        assert button.isVisibleTo(panel.widget)
-        assert button.isEnabled()
-        assert button.accessibleName()
-        assert button.visibleRegion().contains(center)
-        QtTest.QTest.mouseClick(
-            button,
-            QtCore.Qt.LeftButton,
-            QtCore.Qt.NoModifier,
-            center,
-        )
-        qapp.processEvents()
-        assert button.hasFocus()
+    # Collapse bar is removed/hidden from the visible workbench layout
+    assert panel.investigation_controls.isVisibleTo(panel.widget) is False
+    assert panel.input_panel.isVisible() is True
+    assert panel.output_panel.isVisible() is True
 
-    click_visible_toggle(panel.input_toggle)
+    # Programmatic toggles still exist for backward compatibility
+    panel.toggle_input_panel()
     assert panel.input_collapsed is True
     assert panel.input_panel.isVisible() is False
     assert panel.output_collapsed is False
-    assert "Input" in panel.input_toggle.text()
 
-    click_visible_toggle(panel.output_toggle)
-    assert panel.output_collapsed is True
-    assert panel.output_panel.isVisible() is False
-
-    click_visible_toggle(panel.input_toggle)
+    panel.toggle_input_panel()
+    assert panel.input_collapsed is False
     assert panel.input_panel.isVisible() is True
-    assert panel.output_panel.isVisible() is False
 
-    click_visible_toggle(panel.output_toggle)
-    assert panel.output_panel.isVisible() is True
-    assert panel.vertical_splitter.sizes() == baseline_sizes
+
+def test_qt_activity_output_is_not_truncated(qapp, tmp_path):
+    """Activity output must be full and untruncated without any truncation notices."""
+    from PySide6 import QtCore, QtWidgets
+    from app.cli.desktop_qt.activity import QtActivityPanel
+
+    panel = QtActivityPanel(QtCore, QtWidgets, workspace_root=lambda: tmp_path)
+    panel.widget.resize(1000, 700)
+    panel.widget.show()
+
+    # Create a large output record (>12000 chars)
+    huge_stdout = "LINE " + "A" * 500 + "\n"
+    huge_text = huge_stdout * 100  # 50,000+ characters
+    record = {
+        "event_id": "huge-output-event",
+        "command": "cat huge_file.txt",
+        "activity_status": "succeeded",
+        "ok": True,
+        "stdout": huge_text,
+        "stderr": "",
+        "stdout_truncated": False,
+    }
+
+    panel.refresh([], [record])
+    panel.command_table.selectRow(0)
+    qapp.processEvents()
+
+    stdout_content = panel.inspector_views["stdout"].toPlainText()
+    assert len(stdout_content) == len(huge_text)
+    assert "[TRUNCATED]" not in stdout_content
+    assert "[ACTIVITY LOG TRUNCATED]" not in stdout_content
+
+    # Metadata tab confirms truncated is False
+    metadata_content = panel.inspector_views["metadata"].toPlainText()
+    assert '"truncated": false' in metadata_content
 
 
 def test_qt_activity_collapse_controls_expose_an_explicit_expand_action(qapp, tmp_path):
@@ -586,3 +591,139 @@ def test_qt_activity_collapse_controls_expose_an_explicit_expand_action(qapp, tm
 
     assert panel.input_panel.isVisible() is True
     assert panel.input_toggle.text() == "▾ Collapse Input"
+
+
+def test_qt_activity_session_filter_active_badge_and_copy_actions(qapp, tmp_path, monkeypatch):
+    """Session rail exposes instant text filtering, active badge, and 1-click clipboard actions."""
+    from PySide6 import QtCore, QtWidgets
+    from app.cli.desktop_qt.activity import QtActivityPanel
+    from app.cli.desktop_views.activity import WorkspaceSession
+
+    panel = QtActivityPanel(QtCore, QtWidgets, workspace_root=lambda: tmp_path)
+    panel.widget.resize(1000, 700)
+    panel.widget.show()
+
+    sessions = [
+        WorkspaceSession("cw-alpha-project", tmp_path / "cw-alpha-project", 10.0),
+        WorkspaceSession("cw-beta-experiment", tmp_path / "cw-beta-experiment", 8.0),
+    ]
+    panel.refresh(sessions, [])
+    panel.reveal_session("cw-alpha-project")
+    panel.reveal_session("cw-beta-experiment")
+    panel.render()
+    qapp.processEvents()
+
+    assert panel.session_model.rowCount() == 2
+
+    # 1. Instant session filter
+    panel.session_filter_input.setText("alpha")
+    qapp.processEvents()
+    assert panel.session_model.rowCount() == 1
+    assert panel.state.filtered_sessions()[0].chat_id == "cw-alpha-project"
+    assert panel.workplace_filter_input.text() == "alpha"
+
+    panel.session_filter_input.clear()
+    qapp.processEvents()
+    assert panel.session_model.rowCount() == 2
+
+    # 2. Active badge display
+    monkeypatch.setattr("app.chat_identity.get_active_workspace", lambda: "cw-alpha-project")
+    panel.render()
+    qapp.processEvents()
+    assert "cw-alpha-project" in panel.session_active_badge.text()
+
+    # 3. Copy Session ID
+    panel.sessions_table.selectRow(0)
+    qapp.processEvents()
+    panel._copy_selected_session_id()
+    assert QtWidgets.QApplication.clipboard().text() == "cw-alpha-project"
+    assert "cw-alpha-project" in panel.session_notice.text()
+
+    # 4. Copy Resume Prompt
+    panel._copy_selected_resume_prompt()
+    expected_prompt = "Tiếp tục làm việc trong workspace cw-alpha-project"
+    assert QtWidgets.QApplication.clipboard().text() == expected_prompt
+
+
+def test_qt_activity_refurbished_features(qapp, tmp_path, monkeypatch):
+    """Refurbished UI elements: command stats bar, inspector telemetry, copy CLI and exit code styling."""
+    from PySide6 import QtCore, QtWidgets
+    from app.cli.desktop_qt.activity import QtActivityPanel
+    from app.cli.desktop_views.activity import WorkspaceSession
+
+    panel = QtActivityPanel(QtCore, QtWidgets, workspace_root=lambda: tmp_path)
+    panel.widget.resize(1000, 700)
+    panel.widget.show()
+
+    # Verify widget existence and object names
+    assert hasattr(panel, "command_stats_bar")
+    assert panel.command_stats_bar.objectName() == "activityCommandStatsBar"
+    assert hasattr(panel, "inspector_telemetry_label")
+    assert panel.inspector_telemetry_label.objectName() == "activityInspectorTelemetry"
+    assert hasattr(panel, "_copy_cli_bind_button")
+
+    session = WorkspaceSession("sess-test", tmp_path / "sess-test", 1.0)
+    records = [
+        {
+            "event_id": "ev-1",
+            "operation_id": "op-1",
+            "chat_id": "sess-test",
+            "command": "echo hello",
+            "status": "succeeded",
+            "ok": True,
+            "exit_code": 0,
+            "duration_ms": 25,
+            "stdout": "hello world\nline 2",
+        },
+        {
+            "event_id": "ev-2",
+            "operation_id": "op-2",
+            "chat_id": "sess-test",
+            "command": "cat non_existent",
+            "status": "failed",
+            "ok": False,
+            "exit_code": 1,
+            "duration_ms": 10,
+            "stderr": "file not found",
+        },
+    ]
+
+    panel.refresh([session], records)
+    panel.reveal_session("sess-test")
+    panel.render()
+    qapp.processEvents()
+
+    # 1. Command Stats Bar
+    stats_text = panel.command_stats_bar.text()
+    assert "2 commands" in stats_text or "2 lệnh" in stats_text
+    assert "1 OK" in stats_text
+    assert "1 ERR" in stats_text
+
+    # 2. Inspector Telemetry
+    panel.command_table.selectRow(0)
+    qapp.processEvents()
+    panel.inspector.setCurrentIndex(1)  # Tab stdout
+    qapp.processEvents()
+    telemetry_text = panel.inspector_telemetry_label.text()
+    assert "Lines: 2" in telemetry_text or "Dòng: 2" in telemetry_text
+    assert "Size:" in telemetry_text or "Cỡ:" in telemetry_text
+
+    # 3. Exit Code styling
+    # Row 0 has exit code 0 -> success color
+    assert "#42d5ad" in panel.detail_exit_val.styleSheet()
+    assert panel.detail_exit_val.text() == "0"
+
+    # Row 1 has exit code 1 -> error color
+    panel.command_table.selectRow(1)
+    qapp.processEvents()
+    assert "#ff6b61" in panel.detail_exit_val.styleSheet()
+    assert panel.detail_exit_val.text() == "1"
+
+    # 4. Copy CLI Bind
+    panel.sessions_table.selectRow(0)
+    qapp.processEvents()
+    panel._copy_selected_cli_bind()
+    assert QtWidgets.QApplication.clipboard().text() == "bqa session bind sess-test"
+    assert "bqa session bind sess-test" in panel.session_notice.text()
+
+

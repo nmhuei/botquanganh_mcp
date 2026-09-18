@@ -132,6 +132,7 @@ wait_for_replacement() {
 }
 
 previous_pid=$(read_pid_file "$PID_FILE")
+ensure_server_port_available "$MCP_PORT" || exit 1
 supervisor_pid=$(active_supervisor_pid || true)
 stop_managed_pid_file "$PID_FILE" server "MCP Server"
 

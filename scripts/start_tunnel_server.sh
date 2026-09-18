@@ -136,6 +136,7 @@ public_health_ready() {
 
 start_server() {
     local existing=""
+    ensure_server_port_available "$MCP_PORT" || return 1
     existing=$(read_pid "$SERVER_PID_FILE")
     if pid_matches_kind "$existing" server; then
         MANAGED_SERVER_PID="$existing"

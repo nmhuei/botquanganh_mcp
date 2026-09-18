@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import secrets
 import shutil
 import stat
 import tempfile
@@ -61,6 +62,7 @@ DEFAULTS: dict[str, str] = {
     "HOST_CHAT_SWEEP_INTERVAL_MINUTES": "60",
     "HOST_CHAT_SWEEP_APPLY": "false",
     "BQA_UI_LANGUAGE": DEFAULT_UI_LANGUAGE,
+    "BQA_UI_THEME": "dark",
 }
 
 _BOOLEAN_KEYS = (
@@ -213,6 +215,71 @@ def set_desktop_ui_language(repo_root: Path, raw_language: str) -> dict[str, str
     )
 
 
+def set_desktop_ui_theme(repo_root: Path, raw_theme: str) -> dict[str, str]:
+    """Persist the desktop UI theme into .env."""
+    from app.cli.desktop_qt.theme import THEMES
+
+    theme = str(raw_theme or "dark").strip().lower()
+    if theme not in THEMES:
+        theme = "dark"
+    if "BQA_UI_THEME" in os.environ and not value_loaded_from_dotenv("BQA_UI_THEME"):
+        raise ValueError(
+            "BQA_UI_THEME is set in the current environment; unset it before "
+            "changing theme through the UI."
+        )
+    return _persist_env_updates(repo_root, {"BQA_UI_THEME": theme})
+
+
+def save_raw_env(repo_root: Path, content: str) -> bool:
+    """Atomically write raw .env content with mode 0o600."""
+    env_path = repo_root / ".env"
+    source_mode = 0o600
+
+    try:
+        descriptor, temporary = tempfile.mkstemp(prefix=".env.", dir=repo_root, text=True)
+        temporary_path = Path(temporary)
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                handle.write(content)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.chmod(temporary_path, source_mode)
+            os.replace(temporary_path, env_path)
+        except Exception:
+            temporary_path.unlink(missing_ok=True)
+            raise
+    except OSError as exc:
+        raise ValueError(f"Unable to save configuration file: {exc}") from exc
+    return True
+
+
+def load_raw_env(repo_root: Path) -> str:
+    """Read the existing .env or fallback to .env.example or empty string."""
+    env_path = repo_root / ".env"
+    if env_path.is_file():
+        try:
+            return env_path.read_text(encoding="utf-8")
+        except OSError:
+            pass
+    example_path = repo_root / ".env.example"
+    if example_path.is_file():
+        try:
+            return example_path.read_text(encoding="utf-8")
+        except OSError:
+            pass
+    return ""
+
+
+def generate_secure_token() -> str:
+    """Generate a high-entropy 64-character hex token suitable for GATEWAY_TOKEN."""
+    return secrets.token_hex(32)
+
+
+def save_env_key_values(repo_root: Path, updates: Mapping[str, str]) -> dict[str, str]:
+    """Persist arbitrary valid key-value pairs into .env atomically."""
+    return _persist_env_updates(repo_root, updates)
+
+
 def set_workspace_config(repo_root: Path, raw_workspace: str) -> dict[str, str]:
     """Persist a selected existing directory as the restricted host workspace.
 
@@ -302,6 +369,14 @@ def validate_config(
         "config_bqa_ui_language",
         "pass" if ui_language in SUPPORTED_UI_LANGUAGES else "fail",
         ui_language if ui_language in SUPPORTED_UI_LANGUAGES else f"{ui_language}; expected en or vi",
+    )
+
+    ui_theme = str(values.get("BQA_UI_THEME", "dark")).strip().lower()
+    from app.cli.desktop_qt.theme import THEMES
+    add(
+        "config_bqa_ui_theme",
+        "pass" if ui_theme in THEMES else "fail",
+        ui_theme if ui_theme in THEMES else f"{ui_theme}; unknown theme",
     )
 
     for key, (minimum, maximum) in _INTEGER_LIMITS.items():

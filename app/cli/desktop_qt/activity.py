@@ -168,7 +168,7 @@ class ActivityState:
 class ActivitySessionModel:
     """Qt model over activity workplaces visible in the session rail."""
 
-    HEADERS = ("SESSION", "STATE", "LAST")
+    HEADERS = ("SESSION",)
 
     def __new__(cls, QtCore: Any, state: ActivityState) -> Any:
         class _Model(QtCore.QAbstractTableModel):
@@ -187,23 +187,21 @@ class ActivitySessionModel:
                 ):
                     return None
                 session = state.filtered_sessions()[index.row()]
-                status = (
-                    state.translator.text("activity.running")
-                    if session.chat_id in state.running_session_ids
-                    else state.translator.text("status.disabled")
-                    if session.chat_id in state.disabled_session_ids
-                    else state.translator.text("status.enabled")
-                )
-                stream_time = format_stream_time(session.last_changed).split(" ")[-1]
-                full_values = (session.chat_id, status, stream_time)
                 if role == QtCore.Qt.ToolTipRole:
-                    return full_values[index.column()]
-                display_values = (clip_text(session.chat_id, 26), status, stream_time)
-                return display_values[index.column()]
+                    active_id = None
+                    try:
+                        from app.chat_identity import get_active_workspace
+                        active_id = get_active_workspace()
+                    except Exception:
+                        pass
+                    if active_id and session.chat_id == active_id:
+                        return f"{session.chat_id} (● ACTIVE)"
+                    return session.chat_id
+                return clip_text(session.chat_id, 32)
 
             def headerData(self, section: int, orientation: int, role: int = 0) -> Any:
                 if orientation == QtCore.Qt.Horizontal and role == QtCore.Qt.DisplayRole:
-                    return state.translator.text(("activity.session", "activity.state", "activity.last")[section])
+                    return state.translator.text("activity.session")
                 return None
 
         return _Model()
@@ -275,6 +273,8 @@ class QtActivityPanel:
         layout = self.QtWidgets.QVBoxLayout(self.widget)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
+
+        # 1. Page Heading (Top)
         self.page_heading = self.QtWidgets.QFrame()
         self.page_heading.setObjectName("pageHeader")
         self.page_heading.setSizePolicy(
@@ -293,73 +293,8 @@ class QtActivityPanel:
         page_heading_layout.addWidget(self.page_title_label)
         page_heading_layout.addWidget(self.page_subtitle_label)
         layout.addWidget(self.page_heading)
-        self.content_splitter = self.QtWidgets.QSplitter(self.QtCore.Qt.Horizontal)
-        self.content_splitter.setChildrenCollapsible(False)
-        self.content_splitter.setHandleWidth(8)
-        layout.addWidget(self.content_splitter)
 
-        self.session_rail = self.QtWidgets.QFrame()
-        self.session_rail.setObjectName("activitySessionRail")
-        self.session_rail.setProperty("role", "card")
-        self.session_rail.setFixedWidth(260)
-        rail_layout = self.QtWidgets.QVBoxLayout(self.session_rail)
-        rail_layout.setContentsMargins(12, 12, 12, 12)
-        rail_layout.setSpacing(8)
-        self.session_heading = self.QtWidgets.QLabel(
-            self.state.translator.text("activity.workplaces")
-        )
-        self.session_heading.setProperty("role", "sectionEyebrow")
-        rail_layout.addWidget(self.session_heading)
-        self.session_source = self.QtWidgets.QLabel(
-            self.state.translator.text("activity.folder_source")
-        )
-        self.session_source.setWordWrap(True)
-        self.session_source.setProperty("role", "footerStatus")
-        rail_layout.addWidget(self.session_source)
-        self.workplace_filter_input = self.QtWidgets.QLineEdit()
-        self.workplace_filter_input.setPlaceholderText(self.state.translator.text("field.chat_filter"))
-        self.workplace_filter_input.setClearButtonEnabled(True)
-        self.workplace_filter_input.textChanged.connect(self._set_workplace_filter)
-        rail_layout.addWidget(self.workplace_filter_input)
-        self.session_notice = self.QtWidgets.QLabel()
-        self.session_notice.setProperty("role", "footerStatus")
-        self.session_notice.setWordWrap(True)
-        rail_layout.addWidget(self.session_notice)
-        self.sessions_table = self.QtWidgets.QTableView()
-        self.sessions_table.setModel(self.session_model)
-        self.sessions_table.setSelectionBehavior(self.QtWidgets.QAbstractItemView.SelectRows)
-        self.sessions_table.setSelectionMode(self.QtWidgets.QAbstractItemView.SingleSelection)
-        self.sessions_table.setAlternatingRowColors(True)
-        self.sessions_table.verticalHeader().setDefaultSectionSize(28)
-        self.sessions_table.verticalHeader().hide()
-        self.sessions_table.setHorizontalScrollBarPolicy(
-            self.QtCore.Qt.ScrollBarAlwaysOff
-        )
-        session_header = self.sessions_table.horizontalHeader()
-        session_header.setStretchLastSection(False)
-        for section, width in enumerate((91, 70, 71)):
-            session_header.setSectionResizeMode(
-                section, self.QtWidgets.QHeaderView.Fixed
-            )
-            session_header.resizeSection(section, width)
-        self.sessions_table.selectionModel().selectionChanged.connect(self._select_session)
-        rail_layout.addWidget(self.sessions_table, 1)
-        session_actions = self.QtWidgets.QGridLayout()
-        session_actions.setHorizontalSpacing(6)
-        session_actions.setVerticalSpacing(6)
-        for index, (key, callback) in enumerate((("action.all", self.show_all_sessions), ("action.enable_tracking", self._enable_selected), ("action.disable_tracking", self._disable_selected), ("action.close_tab", self._close_selected))):
-            button = self.QtWidgets.QPushButton(self.state.translator.text(key))
-            button.clicked.connect(callback)
-            button.setProperty("role", "compactAction")
-            session_actions.addWidget(button, index // 2, index % 2)
-            setattr(self, f"_{key.split('.')[-1]}_button", button)
-        rail_layout.addLayout(session_actions)
-        self.content_splitter.addWidget(self.session_rail)
-
-        self.activity_main = self.QtWidgets.QWidget()
-        main_layout = self.QtWidgets.QVBoxLayout(self.activity_main)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(8)
+        # 2. Command Toolbar (full width like Workspace Logs)
         self.command_toolbar = self.QtWidgets.QFrame()
         self.command_toolbar.setObjectName("activityCommandToolbar")
         self.command_toolbar.setProperty("role", "card")
@@ -367,100 +302,271 @@ class QtActivityPanel:
         toolbar = self.QtWidgets.QHBoxLayout(self.command_toolbar)
         toolbar.setContentsMargins(12, 8, 12, 8)
         toolbar.setSpacing(8)
+
+        self.workplace_filter_label = self.QtWidgets.QLabel(
+            self.state.translator.text("field.chat_filter")
+        )
+        self.workplace_filter_label.setProperty("role", "detailLabel")
+        toolbar.addWidget(self.workplace_filter_label)
+
+        self.workplace_filter_input = self.QtWidgets.QLineEdit()
+        self.workplace_filter_input.setPlaceholderText(
+            self.state.translator.text("field.chat_filter")
+        )
+        self.workplace_filter_input.setClearButtonEnabled(True)
+        self.workplace_filter_input.textChanged.connect(self._set_workplace_filter)
+        self.workplace_filter_input.setMaximumWidth(220)
+        toolbar.addWidget(self.workplace_filter_input)
+
         self.command_filter_input = self.QtWidgets.QLineEdit()
-        self.command_filter_input.setPlaceholderText(self.state.translator.text("activity.command_input"))
+        self.command_filter_input.setPlaceholderText(
+            self.state.translator.text("activity.command_input")
+        )
         self.command_filter_input.setClearButtonEnabled(True)
         self.command_filter_input.textChanged.connect(self._set_command_filter)
         toolbar.addWidget(self.command_filter_input, 1)
-        self.clear_button = self.QtWidgets.QPushButton(self.state.translator.text("action.clear"))
+
+        self.clear_button = self.QtWidgets.QPushButton(
+            self.state.translator.text("action.clear")
+        )
         self.clear_button.clicked.connect(self.clear_filters)
         self.clear_button.setProperty("role", "compactAction")
         toolbar.addWidget(self.clear_button)
-        self.copy_tab_button = self.QtWidgets.QPushButton(self.state.translator.text("action.copy_tab"))
+
+        self.copy_tab_button = self.QtWidgets.QPushButton(
+            self.state.translator.text("action.copy_tab")
+        )
         self.copy_tab_button.clicked.connect(self.copy_active_tab)
         self.copy_tab_button.setProperty("role", "compactAction")
         toolbar.addWidget(self.copy_tab_button)
+
         self.filter_summary = self.QtWidgets.QLabel()
         self.filter_summary.setProperty("role", "footerStatus")
         toolbar.addWidget(self.filter_summary)
-        main_layout.addWidget(self.command_toolbar)
+        layout.addWidget(self.command_toolbar)
 
-        self.activity_workbench_splitter = self.QtWidgets.QSplitter(
-            self.QtCore.Qt.Vertical
-        )
-        self.activity_workbench_splitter.setObjectName("activityWorkbenchSplitter")
-        self.activity_workbench_splitter.setChildrenCollapsible(False)
-        self.activity_workbench_splitter.setHandleWidth(8)
+        # 3. Main Content Splitter (Horizontal splitter dividing 3 full-height vertical columns)
+        self.content_splitter = self.QtWidgets.QSplitter(self.QtCore.Qt.Horizontal)
+        self.content_splitter.setObjectName("activityContentSplitter")
+        self.content_splitter.setChildrenCollapsible(False)
+        self.content_splitter.setHandleWidth(8)
 
-        self.investigation_controls = self.QtWidgets.QFrame()
-        self.investigation_controls.setObjectName("activityInvestigationControls")
-        self.investigation_controls.setProperty("role", "card")
-        investigation_controls_layout = self.QtWidgets.QHBoxLayout(
-            self.investigation_controls
+        # Column 1 (Left): Session Rail (Workplace list, full vertical height)
+        self.session_rail = self.QtWidgets.QFrame()
+        self.session_rail.setObjectName("activitySessionRail")
+        self.session_rail.setProperty("role", "card")
+        self.session_rail.setMinimumWidth(260)
+        self.session_rail.setMaximumWidth(340)
+        rail_layout = self.QtWidgets.QVBoxLayout(self.session_rail)
+        rail_layout.setContentsMargins(10, 10, 10, 10)
+        rail_layout.setSpacing(6)
+
+        self.session_heading = self.QtWidgets.QLabel(
+            self.state.translator.text("activity.workplaces")
         )
-        investigation_controls_layout.setContentsMargins(12, 6, 12, 6)
-        investigation_controls_layout.setSpacing(8)
-        investigation_controls_layout.addStretch(1)
-        self.input_toggle = self.QtWidgets.QPushButton()
-        self.input_toggle.clicked.connect(self.toggle_input_panel)
-        self.input_toggle.setFocusPolicy(self.QtCore.Qt.StrongFocus)
-        self.input_toggle.setProperty("role", "compactAction")
-        self.input_collapse_button = self.input_toggle
-        investigation_controls_layout.addWidget(self.input_toggle)
-        self.output_toggle = self.QtWidgets.QPushButton()
-        self.output_toggle.clicked.connect(self.toggle_output_panel)
-        self.output_toggle.setFocusPolicy(self.QtCore.Qt.StrongFocus)
-        self.output_toggle.setProperty("role", "compactAction")
-        self.output_collapse_button = self.output_toggle
-        investigation_controls_layout.addWidget(self.output_toggle)
-        self.investigation_splitter = self.QtWidgets.QSplitter(
-            self.QtCore.Qt.Horizontal
+        self.session_heading.setProperty("role", "sectionEyebrow")
+        rail_layout.addWidget(self.session_heading)
+
+        self.session_source = self.QtWidgets.QLabel(
+            self.state.translator.text("activity.folder_source")
         )
-        self.investigation_splitter.setObjectName("activityInvestigationSplitter")
-        self.investigation_splitter.setChildrenCollapsible(False)
-        self.investigation_splitter.setHandleWidth(8)
-        self.vertical_splitter = self.investigation_splitter
+        self.session_source.setWordWrap(True)
+        self.session_source.setProperty("role", "footerStatus")
+        rail_layout.addWidget(self.session_source)
+
+        self.session_active_badge = self.QtWidgets.QLabel()
+        self.session_active_badge.setObjectName("activitySessionActiveBadge")
+        self.session_active_badge.setProperty("role", "detailLabel")
+        self.session_active_badge.setWordWrap(True)
+        rail_layout.addWidget(self.session_active_badge)
+
+        self.session_filter_input = self.QtWidgets.QLineEdit()
+        self.session_filter_input.setObjectName("activitySessionFilterInput")
+        self.session_filter_input.setPlaceholderText(
+            self.state.translator.text("activity.filter_sessions")
+        )
+        self.session_filter_input.setClearButtonEnabled(True)
+        self.session_filter_input.textChanged.connect(self._set_session_filter)
+        rail_layout.addWidget(self.session_filter_input)
+
+        self.session_notice = self.QtWidgets.QLabel()
+        self.session_notice.setProperty("role", "footerStatus")
+        self.session_notice.setWordWrap(True)
+        rail_layout.addWidget(self.session_notice)
+
+        self.sessions_table = self.QtWidgets.QTableView()
+        self.sessions_table.setObjectName("activitySessionsTable")
+        self.sessions_table.setModel(self.session_model)
+        self.sessions_table.setSelectionBehavior(
+            self.QtWidgets.QAbstractItemView.SelectRows
+        )
+        self.sessions_table.setSelectionMode(
+            self.QtWidgets.QAbstractItemView.SingleSelection
+        )
+        self.sessions_table.setAlternatingRowColors(True)
+        self.sessions_table.verticalHeader().setDefaultSectionSize(28)
+        self.sessions_table.verticalHeader().hide()
+        self.sessions_table.setHorizontalScrollBarPolicy(
+            self.QtCore.Qt.ScrollBarAlwaysOff
+        )
+        session_header = self.sessions_table.horizontalHeader()
+        session_header.setStretchLastSection(True)
+        session_header.setSectionResizeMode(
+            0, self.QtWidgets.QHeaderView.Stretch
+        )
+        self.sessions_table.selectionModel().selectionChanged.connect(
+            self._select_session
+        )
+        rail_layout.addWidget(self.sessions_table, 1)
+
+        session_actions = self.QtWidgets.QGridLayout()
+        session_actions.setHorizontalSpacing(6)
+        session_actions.setVerticalSpacing(6)
+        for index, (key, callback) in enumerate((
+            ("action.all", self.show_all_sessions),
+            ("action.enable_tracking", self._enable_selected),
+            ("action.disable_tracking", self._disable_selected),
+            ("action.close_tab", self._close_selected),
+            ("action.copy_session_id", self._copy_selected_session_id),
+            ("action.copy_resume_prompt", self._copy_selected_resume_prompt),
+            ("action.copy_cli_bind", self._copy_selected_cli_bind),
+        )):
+            button = self.QtWidgets.QPushButton(self.state.translator.text(key))
+            button.clicked.connect(callback)
+            button.setProperty("role", "compactAction")
+            if index == 6:
+                session_actions.addWidget(button, 3, 0, 1, 2)
+            else:
+                session_actions.addWidget(button, index // 2, index % 2)
+            setattr(self, f"_{key.split('.')[-1]}_button", button)
+        rail_layout.addLayout(session_actions)
+        self.content_splitter.addWidget(self.session_rail)
+
+        # Column 2 (Middle): Command Frame (Table, full vertical height)
         self.command_frame = self.QtWidgets.QFrame()
         self.command_frame.setObjectName("activityCommandFrame")
         self.command_frame.setProperty("role", "card")
-        input_layout = self.QtWidgets.QVBoxLayout(self.command_frame)
-        input_layout.setContentsMargins(12, 10, 12, 12)
-        input_layout.setSpacing(8)
+        cmd_layout = self.QtWidgets.QVBoxLayout(self.command_frame)
+        cmd_layout.setContentsMargins(10, 10, 10, 10)
+        cmd_layout.setSpacing(6)
         self.command_heading = self.QtWidgets.QLabel(
             self.state.translator.text("activity.commands")
         )
         self.command_heading.setProperty("role", "sectionEyebrow")
-        input_layout.addWidget(self.command_heading)
+        cmd_layout.addWidget(self.command_heading)
+
+        self.command_stats_bar = self.QtWidgets.QLabel()
+        self.command_stats_bar.setObjectName("activityCommandStatsBar")
+        self.command_stats_bar.setProperty("role", "detailLabel")
+        cmd_layout.addWidget(self.command_stats_bar)
+
         self.command_table = self.QtWidgets.QTableView()
+        self.command_table.setObjectName("activityCommandTable")
         self.command_table.setModel(self.command_model)
-        self.command_table.setSelectionBehavior(self.QtWidgets.QAbstractItemView.SelectRows)
-        self.command_table.setSelectionMode(self.QtWidgets.QAbstractItemView.SingleSelection)
+        self.command_table.setSelectionBehavior(
+            self.QtWidgets.QAbstractItemView.SelectRows
+        )
+        self.command_table.setSelectionMode(
+            self.QtWidgets.QAbstractItemView.SingleSelection
+        )
         self.command_table.setAlternatingRowColors(True)
-        self.command_table.verticalHeader().setDefaultSectionSize(30)
+        self.command_table.verticalHeader().setDefaultSectionSize(32)
         self.command_table.verticalHeader().hide()
         self.command_table.setHorizontalScrollBarPolicy(
             self.QtCore.Qt.ScrollBarAlwaysOff
         )
-        self.command_table.selectionModel().selectionChanged.connect(self._show_selected_command)
-        self.command_table.horizontalHeader().sectionClicked.connect(self._sort_records)
+        self.command_table.selectionModel().selectionChanged.connect(
+            self._show_selected_command
+        )
+        self.command_table.horizontalHeader().sectionClicked.connect(
+            self._sort_records
+        )
         command_header = self.command_table.horizontalHeader()
         command_header.setStretchLastSection(False)
-        for section, width in enumerate((142, 108, 70, 250, 48, 48)):
+        for section, width in enumerate((52, 84, 92, 120, 56, 38)):
             command_header.setSectionResizeMode(
                 section, self.QtWidgets.QHeaderView.Fixed
             )
             command_header.resizeSection(section, width)
         command_header.setSectionResizeMode(3, self.QtWidgets.QHeaderView.Stretch)
-        input_layout.addWidget(self.command_table)
+        cmd_layout.addWidget(self.command_table, 1)
+        self.content_splitter.addWidget(self.command_frame)
 
-        self.input_inspector_panel = InspectorFrame(
-            self.QtWidgets, self.state.translator.text("action.input")
+        # Column 3 (Right): Inspector Frame (Full vertical height, Input & Outputs)
+        mono_font = QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.FixedFont)
+        mono_font.setPointSize(11)
+
+        self.inspector_panel = InspectorFrame(
+            self.QtWidgets, self.state.translator.text("activity.output")
         )
-        self.input_panel = self.input_inspector_panel.widget
+        self.inspector_frame = self.inspector_panel.widget
+        self.inspector_frame.setObjectName("inspectorSurface")
+        self.inspector_frame.setProperty("role", "inspectorSurface")
+        self.output_panel = self.inspector_frame
+        self.inspection_workspace = self.inspector_frame
+        inspector_layout = self.inspector_panel.layout
+        self.inspector_heading = self.inspector_panel.title
+        self.input_heading = self.inspector_panel.title
+
+        # Detail grid at top of Inspector
+        self.inspector_detail_grid = self.QtWidgets.QFrame()
+        self.inspector_detail_grid.setObjectName("workspaceInspectorDetailGrid")
+        detail_grid = self.QtWidgets.QGridLayout(self.inspector_detail_grid)
+        detail_grid.setContentsMargins(10, 6, 10, 6)
+        detail_grid.setHorizontalSpacing(12)
+        detail_grid.setVerticalSpacing(4)
+
+        self.detail_workplace_name = self.QtWidgets.QLabel(
+            self.state.translator.text("activity.workplace") + ":"
+        )
+        self.detail_workplace_name.setProperty("role", "detailLabel")
+        self.detail_workplace_val = self.QtWidgets.QLabel("—")
+        self.detail_workplace_val.setProperty("role", "inspectorValue")
+        detail_grid.addWidget(self.detail_workplace_name, 0, 0)
+        detail_grid.addWidget(self.detail_workplace_val, 0, 1)
+
+        self.detail_status_name = self.QtWidgets.QLabel(
+            self.state.translator.text("activity.status") + ":"
+        )
+        self.detail_status_name.setProperty("role", "detailLabel")
+        self.detail_status_val = self.QtWidgets.QLabel("—")
+        self.detail_status_val.setProperty("role", "inspectorValue")
+        detail_grid.addWidget(self.detail_status_name, 0, 2)
+        detail_grid.addWidget(self.detail_status_val, 0, 3)
+
+        self.detail_exit_name = self.QtWidgets.QLabel(
+            self.state.translator.text("activity.exit") + ":"
+        )
+        self.detail_exit_name.setProperty("role", "detailLabel")
+        self.detail_exit_val = self.QtWidgets.QLabel("—")
+        self.detail_exit_val.setProperty("role", "inspectorValue")
+        detail_grid.addWidget(self.detail_exit_name, 1, 0)
+        detail_grid.addWidget(self.detail_exit_val, 1, 1)
+
+        self.detail_duration_name = self.QtWidgets.QLabel(
+            self.state.translator.text("activity.milliseconds") + ":"
+        )
+        self.detail_duration_name.setProperty("role", "detailLabel")
+        self.detail_duration_val = self.QtWidgets.QLabel("—")
+        self.detail_duration_val.setProperty("role", "inspectorValue")
+        detail_grid.addWidget(self.detail_duration_name, 1, 2)
+        detail_grid.addWidget(self.detail_duration_val, 1, 3)
+
+        inspector_layout.addWidget(self.inspector_detail_grid)
+
+        # Tabs inside Inspector
+        self.inspector = self.QtWidgets.QTabWidget()
+        self.inspector.setObjectName("activityInspectorTabs")
+
+        # Tab 0: Input
+        self.input_panel = self.QtWidgets.QFrame()
         self.input_panel.setObjectName("activityInputSurface")
-        self.input_heading = self.input_inspector_panel.title
+        input_panel_layout = self.QtWidgets.QVBoxLayout(self.input_panel)
+        input_panel_layout.setContentsMargins(0, 0, 0, 0)
+        input_panel_layout.setSpacing(0)
         self.command_input_view = self.QtWidgets.QPlainTextEdit()
         self.command_input_view.setObjectName("activityCommandInput")
+        self.command_input_view.setFont(mono_font)
         self.command_input_view.setReadOnly(True)
         self.command_input_view.setLineWrapMode(
             self.QtWidgets.QPlainTextEdit.WidgetWidth
@@ -474,52 +580,73 @@ class QtActivityPanel:
         self.command_input_view.setVerticalScrollBarPolicy(
             self.QtCore.Qt.ScrollBarAsNeeded
         )
-        self.input_inspector_panel.layout.addWidget(self.command_input_view, 1)
-        self.investigation_splitter.addWidget(self.input_panel)
-
-        self.inspector_panel = InspectorFrame(
-            self.QtWidgets, self.state.translator.text("activity.output")
+        input_panel_layout.addWidget(self.command_input_view)
+        self.inspector.addTab(
+            self.input_panel, self.state.translator.text("action.input")
         )
-        self.inspector_frame = self.inspector_panel.widget
-        self.inspector_frame.setProperty("role", "inspectorSurface")
-        self.output_panel = self.inspector_frame
-        output_layout = self.inspector_panel.layout
-        self.inspector_heading = self.inspector_panel.title
-        self.inspector = self.QtWidgets.QTabWidget()
+
+        # Tabs 1-4: Stdout, Stderr, Human, Metadata
         self.inspector_views: dict[str, Any] = {}
-        for key, label_key in (("metadata", "activity.metadata"), ("stdout", "activity.stdout"), ("stderr", "activity.stderr"), ("human", "activity.human")):
+        for key, label_key in (
+            ("stdout", "activity.stdout"),
+            ("stderr", "activity.stderr"),
+            ("human", "activity.human"),
+            ("metadata", "activity.metadata"),
+        ):
             view = self.QtWidgets.QPlainTextEdit()
+            view.setObjectName(f"activityInspector_{key}")
+            view.setFont(mono_font)
             view.setReadOnly(True)
             view.setLineWrapMode(self.QtWidgets.QPlainTextEdit.WidgetWidth)
-            view.setWordWrapMode(QtGui.QTextOption.WrapAtWordBoundaryOrAnywhere)
-            view.setHorizontalScrollBarPolicy(self.QtCore.Qt.ScrollBarAlwaysOff)
-            view.setVerticalScrollBarPolicy(self.QtCore.Qt.ScrollBarAsNeeded)
+            view.setWordWrapMode(
+                QtGui.QTextOption.WrapAtWordBoundaryOrAnywhere
+            )
+            view.setHorizontalScrollBarPolicy(
+                self.QtCore.Qt.ScrollBarAlwaysOff
+            )
+            view.setVerticalScrollBarPolicy(
+                self.QtCore.Qt.ScrollBarAsNeeded
+            )
             self.inspector.addTab(view, self.state.translator.text(label_key))
             self.inspector_views[key] = view
-        output_layout.addWidget(self.inspector, 1)
-        self.investigation_splitter.addWidget(self.inspector_frame)
-        self.investigation_splitter.setStretchFactor(0, 1)
-        self.investigation_splitter.setStretchFactor(1, 1)
-        self.investigation_splitter.setSizes((360, 360))
 
-        self.inspection_workspace = self.QtWidgets.QWidget()
-        self.inspection_workspace.setObjectName("activityInspectionWorkspace")
-        inspection_workspace_layout = self.QtWidgets.QVBoxLayout(
-            self.inspection_workspace
+        self.inspector.currentChanged.connect(self._update_inspector_telemetry)
+        inspector_layout.addWidget(self.inspector, 1)
+
+        self.inspector_telemetry_label = self.QtWidgets.QLabel("Lines: 0 · Size: 0 B")
+        self.inspector_telemetry_label.setObjectName("activityInspectorTelemetry")
+        self.inspector_telemetry_label.setProperty("role", "footerStatus")
+        inspector_layout.addWidget(self.inspector_telemetry_label)
+
+        self.content_splitter.addWidget(self.inspector_frame)
+
+        self.content_splitter.setStretchFactor(0, 24)
+        self.content_splitter.setStretchFactor(1, 46)
+        self.content_splitter.setStretchFactor(2, 30)
+        self.content_splitter.setSizes((260, 500, 320))
+        layout.addWidget(self.content_splitter, 1)
+
+        # Compatibility references for existing APIs and test fixtures
+        self.activity_workbench_splitter = self.content_splitter
+        self.investigation_splitter = self.QtWidgets.QSplitter(
+            self.QtCore.Qt.Horizontal
         )
-        inspection_workspace_layout.setContentsMargins(0, 0, 0, 0)
-        inspection_workspace_layout.setSpacing(8)
-        inspection_workspace_layout.addWidget(self.investigation_controls)
-        inspection_workspace_layout.addWidget(self.investigation_splitter, 1)
+        self.investigation_splitter.setObjectName("activityInvestigationSplitter")
+        self.vertical_splitter = self.investigation_splitter
+        self.investigation_splitter.hide()
 
-        self.activity_workbench_splitter.addWidget(self.command_frame)
-        self.activity_workbench_splitter.addWidget(self.inspection_workspace)
-        self.activity_workbench_splitter.setStretchFactor(0, 0)
-        self.activity_workbench_splitter.setStretchFactor(1, 1)
-        self.activity_workbench_splitter.setSizes((220, 340))
-        main_layout.addWidget(self.activity_workbench_splitter, 1)
-        self.content_splitter.addWidget(self.activity_main)
-        self.content_splitter.setStretchFactor(1, 1)
+        self.investigation_controls = self.QtWidgets.QFrame()
+        self.investigation_controls.setObjectName("activityInvestigationControls")
+        self.investigation_controls.hide()
+        self.input_toggle = self.QtWidgets.QPushButton()
+        self.input_toggle.clicked.connect(self.toggle_input_panel)
+        self.input_toggle.setFocusPolicy(self.QtCore.Qt.StrongFocus)
+        self.input_collapse_button = self.input_toggle
+        self.output_toggle = self.QtWidgets.QPushButton()
+        self.output_toggle.clicked.connect(self.toggle_output_panel)
+        self.output_toggle.setFocusPolicy(self.QtCore.Qt.StrongFocus)
+        self.output_collapse_button = self.output_toggle
+
         self._shortcuts = (
             self._make_shortcut("/", self.focus_command_filter),
             self._make_shortcut("Esc", self.clear_filters),
@@ -551,15 +678,56 @@ class QtActivityPanel:
         self.command_model.layoutChanged.emit()
         visible = len(self.state.filtered_sessions())
         self.session_notice.setText(self.state.translator.text("activity.session_notice", visible=visible, total=len(self.state.sessions), closed=len(self.state.closed_session_ids), root=self.state.workspace_root().name))
+        if hasattr(self, "session_active_badge"):
+            try:
+                from app.chat_identity import get_active_workspace
+                active_ws = get_active_workspace()
+            except Exception:
+                active_ws = None
+            if active_ws:
+                self.session_active_badge.setText(
+                    self.state.translator.text("activity.active_session", session=clip_text(active_ws, 26))
+                )
+                self.session_active_badge.setToolTip(f"Active workspace: {active_ws}")
+            else:
+                self.session_active_badge.setText(
+                    self.state.translator.text("activity.no_active_session")
+                )
+                self.session_active_badge.setToolTip("")
         selected_name = self.state.session_selected_id or self.state.translator.text("activity.all_workplaces")
+        records = self.state.filtered_records()
         summary = self.state.translator.text(
             "activity.filter_summary",
             workplace=selected_name,
-            count=len(self.state.filtered_records()),
+            count=len(records),
         )
         self.filter_summary.setText(summary)
         self.page_subtitle_label.setText(summary)
+        if hasattr(self, "command_stats_bar"):
+            total_cmd = len(records)
+            ok_cmd = sum(
+                1 for r in records
+                if r.get("activity_status") == "succeeded" or r.get("exit_code") == 0
+            )
+            err_cmd = sum(
+                1 for r in records
+                if r.get("activity_status") in ("failed", "timed_out")
+                or (r.get("exit_code") is not None and r.get("exit_code") != 0 and r.get("activity_status") != "running")
+            )
+            running_cmd = sum(1 for r in records if r.get("activity_status") == "running")
+            err_text = f" · {err_cmd} ERR" if err_cmd > 0 else ""
+            if running_cmd > 0:
+                err_text += f" · {running_cmd} RUNNING"
+            self.command_stats_bar.setText(
+                self.state.translator.text(
+                    "activity.command_stats",
+                    count=total_cmd,
+                    ok_count=ok_cmd,
+                    err_text=err_text,
+                )
+            )
         self._select_rows(selected_command_id, scroll_position)
+        self._update_inspector_telemetry()
         self._restore_command_scroll_after_deferred_layout(scroll_position)
 
     def _restore_command_scroll_after_deferred_layout(
@@ -604,6 +772,11 @@ class QtActivityPanel:
             self.command_table.clearSelection()
             self.command_table.setCurrentIndex(self.QtCore.QModelIndex())
             self._inspected_command_id = None
+            self.detail_workplace_val.setText("—")
+            self.detail_status_val.setText("—")
+            self.detail_exit_val.setText("—")
+            self.detail_exit_val.setStyleSheet("")
+            self.detail_duration_val.setText("—")
             empty = self.state.translator.text("activity.no_commands")
             self._set_editor_text_preserving_scroll(
                 self.command_input_view, empty, preserve_scroll=False
@@ -720,6 +893,18 @@ class QtActivityPanel:
 
     def _set_workplace_filter(self, value: str) -> None:
         self.state.workplace_filter = value
+        if hasattr(self, "session_filter_input") and self.session_filter_input.text() != value:
+            self.session_filter_input.blockSignals(True)
+            self.session_filter_input.setText(value)
+            self.session_filter_input.blockSignals(False)
+        self.render()
+
+    def _set_session_filter(self, value: str) -> None:
+        self.state.workplace_filter = value
+        if hasattr(self, "workplace_filter_input") and self.workplace_filter_input.text() != value:
+            self.workplace_filter_input.blockSignals(True)
+            self.workplace_filter_input.setText(value)
+            self.workplace_filter_input.blockSignals(False)
         self.render()
 
     def _set_command_filter(self, value: str) -> None:
@@ -730,6 +915,10 @@ class QtActivityPanel:
         self.state.workplace_filter = self.state.command_filter = ""
         self.workplace_filter_input.setText("")
         self.command_filter_input.setText("")
+        if hasattr(self, "session_filter_input"):
+            self.session_filter_input.blockSignals(True)
+            self.session_filter_input.setText("")
+            self.session_filter_input.blockSignals(False)
         self.render()
 
     def show_all_sessions(self) -> None:
@@ -747,6 +936,56 @@ class QtActivityPanel:
         index = self.sessions_table.currentIndex()
         sessions = self.state.filtered_sessions()
         return sessions[index.row()].chat_id if index.isValid() and index.row() < len(sessions) else ""
+
+    def _get_selected_or_active_chat_id(self) -> str | None:
+        selected = self._selected_session_id()
+        if selected:
+            return selected
+        if self.state.session_selected_id:
+            return self.state.session_selected_id
+        try:
+            from app.chat_identity import get_active_workspace
+            return get_active_workspace()
+        except Exception:
+            return None
+
+    def _copy_selected_session_id(self) -> None:
+        chat_id = self._get_selected_or_active_chat_id()
+        if not chat_id:
+            self.session_notice.setText(self.state.translator.text("activity.select_to_copy"))
+            return
+        clipboard = self.QtWidgets.QApplication.clipboard()
+        if clipboard:
+            clipboard.setText(chat_id)
+        self.session_notice.setText(
+            self.state.translator.text("activity.copied_session_id", session=chat_id)
+        )
+
+    def _copy_selected_resume_prompt(self) -> None:
+        chat_id = self._get_selected_or_active_chat_id()
+        if not chat_id:
+            self.session_notice.setText(self.state.translator.text("activity.select_to_copy"))
+            return
+        prompt = f"Tiếp tục làm việc trong workspace {chat_id}"
+        clipboard = self.QtWidgets.QApplication.clipboard()
+        if clipboard:
+            clipboard.setText(prompt)
+        self.session_notice.setText(
+            self.state.translator.text("activity.copied_resume_prompt", session=chat_id)
+        )
+
+    def _copy_selected_cli_bind(self) -> None:
+        chat_id = self._get_selected_or_active_chat_id()
+        if not chat_id:
+            self.session_notice.setText(self.state.translator.text("activity.select_to_copy"))
+            return
+        cmd = f"bqa session bind {chat_id}"
+        clipboard = self.QtWidgets.QApplication.clipboard()
+        if clipboard:
+            clipboard.setText(cmd)
+        self.session_notice.setText(
+            self.state.translator.text("activity.copied_cli_bind", cmd=cmd)
+        )
 
     def _enable_selected(self) -> None:
         if self.state.enable_session(self._selected_session_id()):
@@ -769,6 +1008,28 @@ class QtActivityPanel:
             self.state.sort_descending = False
         self.render()
 
+    def _update_inspector_telemetry(self, *_args: Any) -> None:
+        if not hasattr(self, "inspector_telemetry_label"):
+            return
+        current_widget = self.inspector.currentWidget()
+        if current_widget == self.input_panel:
+            text = self.command_input_view.toPlainText()
+        elif hasattr(current_widget, "toPlainText"):
+            text = current_widget.toPlainText()
+        else:
+            text = ""
+        line_count = len(text.splitlines()) if text else 0
+        byte_size = len(text.encode("utf-8")) if text else 0
+        if byte_size >= 1024 * 1024:
+            size_str = f"{byte_size / (1024 * 1024):.1f} MB"
+        elif byte_size >= 1024:
+            size_str = f"{byte_size / 1024:.1f} KB"
+        else:
+            size_str = f"{byte_size} B"
+        self.inspector_telemetry_label.setText(
+            self.state.translator.text("activity.telemetry", lines=line_count, size=size_str)
+        )
+
     def _show_selected_command(self, *_args: Any) -> None:
         index = self.command_table.currentIndex()
         records = self.state.filtered_records()
@@ -779,6 +1040,24 @@ class QtActivityPanel:
         preserve_scroll = command_id == self._inspected_command_id
         self.selected_command_id = command_id
         self._inspected_command_id = command_id
+        status = str(record.get("activity_status") or "failed")
+        self.detail_workplace_val.setText(str(record.get("chat_id") or "shared"))
+        self.detail_status_val.setText(activity_status_label(status, self.state.translator))
+        exit_code = record.get("exit_code")
+        if status == "running":
+            self.detail_exit_val.setText("-")
+            self.detail_exit_val.setStyleSheet("")
+        else:
+            self.detail_exit_val.setText(str(exit_code if exit_code is not None else "-"))
+            if exit_code == 0:
+                self.detail_exit_val.setStyleSheet("color: #42d5ad; font-weight: 600;")
+            elif exit_code is not None:
+                self.detail_exit_val.setStyleSheet("color: #ff6b61; font-weight: 600;")
+            else:
+                self.detail_exit_val.setStyleSheet("")
+        self.detail_duration_val.setText(
+            f"{record.get('duration_ms', '-')} ms" if record.get("duration_ms") is not None else "-"
+        )
         self._set_editor_text_preserving_scroll(
             self.command_input_view,
             str(record.get("command") or ""),
@@ -788,10 +1067,17 @@ class QtActivityPanel:
             self._set_editor_text_preserving_scroll(
                 self.inspector_views[key], content, preserve_scroll=preserve_scroll
             )
+        self._update_inspector_telemetry()
 
     def copy_active_tab(self) -> None:
-        view = self.inspector.widget(self.inspector.currentIndex())
-        self.QtWidgets.QApplication.clipboard().setText(view.toPlainText())
+        current_widget = self.inspector.currentWidget()
+        if current_widget == self.input_panel:
+            text = self.command_input_view.toPlainText()
+        elif hasattr(current_widget, "toPlainText"):
+            text = current_widget.toPlainText()
+        else:
+            text = ""
+        self.QtWidgets.QApplication.clipboard().setText(text)
 
     def focus_command_filter(self) -> None:
         self.command_filter_input.setFocus()
@@ -801,6 +1087,9 @@ class QtActivityPanel:
         self.page_title_label.setText(translator.text("nav.gpt_activity"))
         self.session_heading.setText(translator.text("activity.workplaces"))
         self.session_source.setText(translator.text("activity.folder_source"))
+        if hasattr(self, "session_filter_input"):
+            self.session_filter_input.setPlaceholderText(translator.text("activity.filter_sessions"))
+        self.workplace_filter_label.setText(translator.text("field.chat_filter"))
         self.workplace_filter_input.setPlaceholderText(translator.text("field.chat_filter"))
         self.command_filter_input.setPlaceholderText(translator.text("activity.command_input"))
         self.clear_button.setText(translator.text("action.clear"))
@@ -809,10 +1098,24 @@ class QtActivityPanel:
         self.command_heading.setText(translator.text("activity.commands"))
         self.input_heading.setText(translator.text("action.input"))
         self.inspector_heading.setText(translator.text("activity.output"))
-        for attr, key in (("_all_button", "action.all"), ("_enable_tracking_button", "action.enable_tracking"), ("_disable_tracking_button", "action.disable_tracking"), ("_close_tab_button", "action.close_tab")):
-            getattr(self, attr).setText(translator.text(key))
-        for index, key in enumerate(("activity.metadata", "activity.stdout", "activity.stderr", "activity.human")):
+        self.detail_workplace_name.setText(translator.text("activity.workplace") + ":")
+        self.detail_status_name.setText(translator.text("activity.status") + ":")
+        self.detail_exit_name.setText(translator.text("activity.exit") + ":")
+        self.detail_duration_name.setText(translator.text("activity.milliseconds") + ":")
+        for attr, key in (
+            ("_all_button", "action.all"),
+            ("_enable_tracking_button", "action.enable_tracking"),
+            ("_disable_tracking_button", "action.disable_tracking"),
+            ("_close_tab_button", "action.close_tab"),
+            ("_copy_session_id_button", "action.copy_session_id"),
+            ("_copy_resume_prompt_button", "action.copy_resume_prompt"),
+            ("_copy_cli_bind_button", "action.copy_cli_bind"),
+        ):
+            if hasattr(self, attr):
+                getattr(self, attr).setText(translator.text(key))
+        tab_keys = ("action.input", "activity.stdout", "activity.stderr", "activity.human", "activity.metadata")
+        for index, key in enumerate(tab_keys):
             self.inspector.setTabText(index, translator.text(key))
-        self.session_model.headerDataChanged.emit(self.QtCore.Qt.Horizontal, 0, 2)
+        self.session_model.headerDataChanged.emit(self.QtCore.Qt.Horizontal, 0, 0)
         self.command_model.headerDataChanged.emit(self.QtCore.Qt.Horizontal, 0, 5)
         self.render()

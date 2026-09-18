@@ -26,6 +26,10 @@ pid_command_line() {
 pid_matches_kind() {
     local pid="${1:-}" kind="${2:-}" command_line=""
     command_line=$(pid_command_line "$pid") || return 1
+    # A matching binary from another checkout is not ours to adopt or stop.
+    if [ -n "${ROOT_DIR:-}" ]; then
+        [ "$(readlink -f "/proc/$pid/cwd" 2>/dev/null)" = "$(readlink -f "$ROOT_DIR")" ] || return 1
+    fi
     case "$kind" in
         supervisor|launcher)
             [[ "$command_line" == *"start_tunnel_server.sh"* ]]
@@ -89,6 +93,17 @@ listening_pids_on_port() {
 
     echo "[-] Neither lsof nor ss is available to inspect listening ports." >&2
     return 127
+}
+
+ensure_server_port_available() {
+    local port="$1" listeners="" pid=""
+    listeners=$(listening_pids_on_port "$port") || return 1
+    for pid in $listeners; do
+        if ! pid_matches_kind "$pid" server; then
+            echo "[-] Port $port is occupied by another runtime (PID $pid); refusing to start or stop its server. Use that checkout or select a different MCP_PORT." >&2
+            return 1
+        fi
+    done
 }
 
 stop_managed_pid() {

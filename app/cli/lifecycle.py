@@ -38,10 +38,16 @@ def process_command_line(pid: int | None) -> str:
     return raw.replace(b"\0", b" ").decode("utf-8", errors="replace").strip()
 
 
-def process_matches(pid: int | None, kind: str) -> bool:
+def process_matches(pid: int | None, kind: str, repo_root: Path | None = None) -> bool:
     command_line = process_command_line(pid)
     if not command_line:
         return False
+    if repo_root is not None:
+        try:
+            if Path(f"/proc/{pid}/cwd").resolve(strict=True) != repo_root.resolve():
+                return False
+        except OSError:
+            return False
     if kind in {"supervisor", "launcher"}:
         return "start_tunnel_server.sh" in command_line
     if kind == "server":
@@ -84,24 +90,52 @@ def bridge_ready(values: dict[str, str], timeout: float = 0.25) -> bool:
         return False
 
 
+def server_owns_port(pid: int | None, values: dict[str, str]) -> bool:
+    """A reachable port alone may belong to a different checkout's server."""
+    if not pid:
+        return False
+    try:
+        port = int(values.get("MCP_PORT", "18427"))
+        inodes = set()
+        for fd in Path(f"/proc/{pid}/fd").iterdir():
+            try:
+                link = os.readlink(fd)
+            except OSError:
+                continue  # A request may close its fd while we inspect it.
+            if link.startswith("socket:["):
+                inodes.add(link[8:-1])
+        for family in ("tcp", "tcp6"):
+            table = Path(f"/proc/{pid}/net/{family}")
+            if not table.exists():
+                continue
+            for line in table.read_text().splitlines()[1:]:
+                fields = line.split()
+                if len(fields) > 9 and fields[3] == "0A" and fields[9] in inodes:
+                    if int(fields[1].rsplit(":", 1)[1], 16) == port:
+                        return True
+    except (OSError, ValueError):
+        return False
+    return False
+
+
 def status_data(repo_root: Path, values: dict[str, str]) -> dict[str, Any]:
     logs = repo_root / "logs"
     watchdog_pid = read_pid(logs / "watchdog.pid")
     launcher_pid = read_pid(logs / "launcher.pid")
     supervisor_pid = (
         watchdog_pid
-        if process_matches(watchdog_pid, "supervisor")
+        if process_matches(watchdog_pid, "supervisor", repo_root)
         else launcher_pid
-        if process_matches(launcher_pid, "launcher")
+        if process_matches(launcher_pid, "launcher", repo_root)
         else None
     )
     server_pid = read_pid(logs / "server.pid")
     tunnel_pid = read_pid(logs / "tunnel.pid")
-    server_running = process_matches(server_pid, "server")
-    tunnel_running = process_matches(tunnel_pid, "tunnel")
+    server_running = process_matches(server_pid, "server", repo_root)
+    tunnel_running = process_matches(tunnel_pid, "tunnel", repo_root)
     last_known_url = connector_url(repo_root, values)
     url = last_known_url if tunnel_running else None
-    bridge = "ready" if server_running and bridge_ready(values) else "starting" if server_running else "stopped"
+    bridge = "ready" if server_running and server_owns_port(server_pid, values) and bridge_ready(values) else "starting" if server_running else "stopped"
     workspace = resolve_config_path(
         repo_root, values.get("HOST_WORKSPACE_DIR", str(Path.home()))
     )

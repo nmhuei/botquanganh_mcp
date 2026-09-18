@@ -240,15 +240,15 @@ def test_runtime_command_center_uses_metric_strip_detail_cards_and_action_dock(q
 
         assert panel.metric_strip.objectName() == "runtimeMetricStrip"
         assert len(panel.service_cards) == 3
-        assert all(card.detail_row_count == 3 for card in panel.service_cards)
+        assert all(card.detail_row_count == 2 for card in panel.service_cards)
         assert panel.metric_cells[2].label.text() == "Status summary"
         assert [
-            card.detail_rows[2].label.text() for card in panel.service_cards
-        ] == ["Endpoint", "Status summary", "Status summary"]
+            card.detail_rows[1].label.text() for card in panel.service_cards
+        ] == ["Authentication", "Status summary", "Status summary"]
         assert [
-            card.detail_rows[2].value.text() for card in panel.service_cards
+            card.detail_rows[1].value.text() for card in panel.service_cards
         ] == [
-            "https://example.trycloudflare.com/mcp",
+            "enabled",
             "MCP bridge and Cloudflare tunnel are running.",
             "MCP bridge and Cloudflare tunnel are running.",
         ]
@@ -574,7 +574,7 @@ def test_full_shell_and_route_compositions_match_the_goal_geometry(qapp, tmp_pat
         assert runtime.page_title_label.height() >= 24
         assert runtime.metric_strip.width() >= runtime.widget.width() * 0.95
         assert runtime.metric_strip.height() >= 92
-        assert runtime.endpoint_value.wordWrap() is False
+        assert runtime.endpoint_value.wordWrap() is True
         assert len(runtime.service_icon_labels) == 3
         assert all(not label.pixmap().isNull() for label in runtime.service_icon_labels)
         assert runtime.stop_button.property("variant") == "danger"
@@ -609,23 +609,19 @@ def test_full_shell_and_route_compositions_match_the_goal_geometry(qapp, tmp_pat
         assert_table_headers_fit_without_horizontal_scroll(activity.sessions_table)
         assert_table_headers_fit_without_horizontal_scroll(activity.command_table)
         expected_session_rows = (
-            ("investigation-alpha", "enabled", "00:00:10"),
-            ("security-review", "enabled", "00:00:09"),
-            ("ops-remediation", "enabled", "00:00:08"),
-            ("finance-audit", "enabled", "00:00:07"),
-            ("release-validation", "enabled", "00:00:06"),
-            ("incident-retrospective", "enabled", "00:00:05"),
+            "investigation-alpha",
+            "security-review",
+            "ops-remediation",
+            "finance-audit",
+            "release-validation",
+            "incident-retrospective",
         )
-        for row, expected_values in enumerate(expected_session_rows):
-            for column, expected in enumerate(expected_values):
-                assert_table_cell_exposes_full_text(
-                    activity.sessions_table, row, column, expected
-                )
-            assert_table_cell_displays_full_text(
-                activity.sessions_table, row, 1, expected_values[1]
+        for row, expected in enumerate(expected_session_rows):
+            assert_table_cell_exposes_full_text(
+                activity.sessions_table, row, 0, expected
             )
             assert_table_cell_displays_full_text(
-                activity.sessions_table, row, 2, expected_values[2]
+                activity.sessions_table, row, 0, expected
             )
         assert (
             activity.input_panel.width()
@@ -657,8 +653,11 @@ def test_fullscreen_gpt_activity_keeps_inspectors_in_the_primary_work_area(
         inspection_height = activity.inspection_workspace.height()
 
         assert activity.page_heading.height() <= 64
-        assert command_height <= 260
-        assert inspection_height >= command_height * 1.8
+        assert activity.content_splitter.orientation() == dashboard.QtCore.Qt.Horizontal
+        assert command_height >= 600
+        assert inspection_height >= 600
+        assert activity.command_frame.width() > 0
+        assert activity.inspection_workspace.width() > 0
     finally:
         dashboard.close()
         qapp.processEvents()
@@ -728,7 +727,6 @@ def test_all_populated_routes_fit_the_ucs_visual_frame_at_1180x740(qapp, tmp_pat
                 (
                     dashboard.activity_panel.session_rail,
                     dashboard.activity_panel.command_toolbar,
-                    dashboard.activity_panel.investigation_controls,
                     dashboard.activity_panel.command_frame,
                     dashboard.activity_panel.inspector_frame,
                 ),

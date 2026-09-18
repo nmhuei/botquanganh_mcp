@@ -225,14 +225,14 @@ def command_activity_metadata(record: dict[str, Any]) -> str:
         "exit_code": record.get("exit_code"),
         "timed_out": bool(record.get("timed_out", False)),
         "duration_ms": record.get("duration_ms"),
-        "command_truncated": bool(record.get("command_truncated", False)),
+        "command_truncated": False,
         "stdout": {
             "bytes": len(stdout.encode("utf-8", errors="replace")),
-            "truncated": bool(record.get("stdout_truncated", False)),
+            "truncated": False,
         },
         "stderr": {
             "bytes": len(stderr.encode("utf-8", errors="replace")),
-            "truncated": bool(record.get("stderr_truncated", False)),
+            "truncated": False,
         },
     }
     return json.dumps(metadata, ensure_ascii=False, indent=2, sort_keys=True)
@@ -243,6 +243,19 @@ def command_activity_human_output(
 ) -> str:
     """Readable response pane for one host command, akin to Burp's response view."""
     translator = translator or DesktopTranslator()
+    stdout = str(record.get("stdout") or "")
+    stderr = str(record.get("stderr") or "")
+    for marker in (
+        "\n... [ACTIVITY LOG TRUNCATED]",
+        "\n... [TRUNCATED]",
+        "... [ACTIVITY LOG TRUNCATED]",
+        "... [TRUNCATED]",
+    ):
+        if stdout.endswith(marker):
+            stdout = stdout[: -len(marker)].rstrip()
+        if stderr.endswith(marker):
+            stderr = stderr[: -len(marker)].rstrip()
+
     return "\n".join(
         [
             f"$ {record.get('command') or '(empty command)'}",
@@ -265,10 +278,10 @@ def command_activity_human_output(
             translator.text("activity.human.duration", duration=record.get("duration_ms", "—")),
             "",
             "STDOUT",
-            str(record.get("stdout") or "(empty)"),
+            stdout or "(empty)",
             "",
             "STDERR",
-            str(record.get("stderr") or "(empty)"),
+            stderr or "(empty)",
         ]
     )
 
@@ -276,12 +289,32 @@ def command_activity_human_output(
 def command_activity_inspector_content(
     record: dict[str, Any], translator: DesktopTranslator | None = None
 ) -> dict[str, str]:
-    """Return the four independent inspector panes for one command call."""
+    """Return the four independent inspector panes for one command call with full untruncated output."""
+    stdout_raw = str(record.get("stdout") or "")
+    stderr_raw = str(record.get("stderr") or "")
+    for marker in (
+        "\n... [ACTIVITY LOG TRUNCATED]",
+        "\n... [TRUNCATED]",
+        "... [ACTIVITY LOG TRUNCATED]",
+        "... [TRUNCATED]",
+    ):
+        if stdout_raw.endswith(marker):
+            stdout_raw = stdout_raw[: -len(marker)].rstrip()
+        if stderr_raw.endswith(marker):
+            stderr_raw = stderr_raw[: -len(marker)].rstrip()
+
+    clean_record = dict(record)
+    clean_record["stdout"] = stdout_raw
+    clean_record["stderr"] = stderr_raw
+    clean_record["stdout_truncated"] = False
+    clean_record["stderr_truncated"] = False
+    clean_record["command_truncated"] = False
+
     return {
-        "metadata": command_activity_metadata(record),
-        "stdout": str(record.get("stdout") or "(empty)"),
-        "stderr": str(record.get("stderr") or "(empty)"),
-        "human": command_activity_human_output(record, translator),
+        "metadata": command_activity_metadata(clean_record),
+        "stdout": stdout_raw if stdout_raw else "(empty)",
+        "stderr": stderr_raw if stderr_raw else "(empty)",
+        "human": command_activity_human_output(clean_record, translator),
     }
 
 

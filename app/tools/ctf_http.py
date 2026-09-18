@@ -185,7 +185,6 @@ def ctf_fetch_url(
             "ctf_fetch_url",
             validated,
             {"url": url},
-            ok=isinstance(result, dict) and bool(result.get("ok", False)),
         )
         return result
     except Exception as exc:

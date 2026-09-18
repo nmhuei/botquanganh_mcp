@@ -266,10 +266,12 @@ def test_qt_dashboard_composes_the_command_shell(tmp_path):
         assert dashboard.icon_rail.maximumWidth() == 76
         assert dashboard.content_stack is dashboard.stack
         assert dashboard.footer_bar.objectName() == "footerBar"
-        assert list(dashboard.navigation_items) == ["runtime", "workspace", "gpt"]
+        assert list(dashboard.navigation_items) == ["runtime", "workspace", "gpt", "about", "settings"]
         assert dashboard.navigation_items["runtime"].button.property("active") == "true"
         assert dashboard.navigation_items["workspace"].button.property("active") == "false"
         assert dashboard.navigation_items["gpt"].button.property("active") == "false"
+        assert dashboard.navigation_items["about"].button.property("active") == "false"
+        assert dashboard.navigation_items["settings"].button.property("active") == "false"
         stylesheet = build_stylesheet()
         assert "QFrame#contentCanvas" in stylesheet
         assert f"background: {COLORS['surface']};" in stylesheet
@@ -281,18 +283,40 @@ def test_qt_dashboard_composes_the_command_shell(tmp_path):
         assert dashboard.navigation_items["runtime"].button.property("active") == "true"
         assert dashboard.navigation_items["workspace"].button.property("active") == "false"
         assert dashboard.navigation_items["gpt"].button.property("active") == "false"
+        assert dashboard.navigation_items["about"].button.property("active") == "false"
+        assert dashboard.navigation_items["settings"].button.property("active") == "false"
 
         dashboard.navigation_items["workspace"].button.click()
         assert dashboard.content_stack.currentWidget() is dashboard.workspace_logs_panel.widget
         assert dashboard.navigation_items["runtime"].button.property("active") == "false"
         assert dashboard.navigation_items["workspace"].button.property("active") == "true"
         assert dashboard.navigation_items["gpt"].button.property("active") == "false"
+        assert dashboard.navigation_items["about"].button.property("active") == "false"
+        assert dashboard.navigation_items["settings"].button.property("active") == "false"
 
         dashboard.navigation_items["gpt"].button.click()
         assert dashboard.content_stack.currentWidget() is dashboard.activity_panel.widget
         assert dashboard.navigation_items["runtime"].button.property("active") == "false"
         assert dashboard.navigation_items["workspace"].button.property("active") == "false"
         assert dashboard.navigation_items["gpt"].button.property("active") == "true"
+        assert dashboard.navigation_items["about"].button.property("active") == "false"
+        assert dashboard.navigation_items["settings"].button.property("active") == "false"
+
+        dashboard.navigation_items["about"].button.click()
+        assert dashboard.content_stack.currentWidget() is dashboard.about_panel.widget
+        assert dashboard.navigation_items["runtime"].button.property("active") == "false"
+        assert dashboard.navigation_items["workspace"].button.property("active") == "false"
+        assert dashboard.navigation_items["gpt"].button.property("active") == "false"
+        assert dashboard.navigation_items["about"].button.property("active") == "true"
+        assert dashboard.navigation_items["settings"].button.property("active") == "false"
+
+        dashboard.navigation_items["settings"].button.click()
+        assert dashboard.content_stack.currentWidget() is dashboard.settings_panel.widget
+        assert dashboard.navigation_items["runtime"].button.property("active") == "false"
+        assert dashboard.navigation_items["workspace"].button.property("active") == "false"
+        assert dashboard.navigation_items["gpt"].button.property("active") == "false"
+        assert dashboard.navigation_items["about"].button.property("active") == "false"
+        assert dashboard.navigation_items["settings"].button.property("active") == "true"
 
         dashboard.change_language("Tiếng Việt")
         workspace_label = "Nhật ký Workspace"
@@ -300,12 +324,22 @@ def test_qt_dashboard_composes_the_command_shell(tmp_path):
         assert workspace_item.accessibleName() == workspace_label
         assert workspace_item.toolTip() == workspace_label
         assert dashboard.navigation_labels["workspace"].text() == workspace_label
+        about_label = "About"
+        about_item = dashboard.navigation_items["about"].button
+        assert about_item.accessibleName() == about_label
+        assert about_item.toolTip() == about_label
+        assert dashboard.navigation_labels["about"].text() == about_label
+        settings_label = "Cài đặt"
+        settings_item = dashboard.navigation_items["settings"].button
+        assert settings_item.accessibleName() == settings_label
+        assert settings_item.toolTip() == settings_label
+        assert dashboard.navigation_labels["settings"].text() == settings_label
     finally:
         dashboard.close()
         application.processEvents()
 
 
-def test_qt_dashboard_three_routes_fill_the_desktop_command_shell(tmp_path):
+def test_qt_dashboard_four_routes_fill_the_desktop_command_shell(tmp_path):
     """The desktop shell keeps every route usable at its supported viewport."""
     from PySide6 import QtCore
 
@@ -325,6 +359,7 @@ def test_qt_dashboard_three_routes_fill_the_desktop_command_shell(tmp_path):
             "runtime": dashboard.runtime_panel.widget,
             "workspace": dashboard.workspace_logs_panel.widget,
             "gpt": dashboard.activity_panel.widget,
+            "about": dashboard.about_panel.widget,
         }
         for route, page in routes.items():
             dashboard.navigation_items[route].button.click()
@@ -624,4 +659,34 @@ def test_qt_dashboard_failed_workspace_apply_keeps_dirty_selection(
         assert dashboard.runtime_panel.workspace_value.text() == str(pending_workspace)
     finally:
         action_release.set()
+        dashboard.close()
+
+
+def test_qt_dashboard_header_has_copy_endpoint_button(tmp_path):
+    """The main window header includes a fast Copy Endpoint button."""
+    from PySide6 import QtWidgets
+
+    application, dashboard = _qt_dashboard(tmp_path)
+    try:
+        assert hasattr(dashboard, "copy_endpoint_button")
+        assert dashboard.copy_endpoint_button.objectName() == "headerCopyEndpointButton"
+        assert dashboard.copy_endpoint_button.text() == "Copy Endpoint"
+
+        # Click when no endpoint
+        dashboard.latest_status_data = {}
+        dashboard.copy_endpoint_button.click()
+        application.processEvents()
+        assert dashboard.message_label.text() != ""
+
+        # Click when endpoint is present
+        dashboard.latest_status_data = {"url": "https://mcp.custom-edge.dev"}
+        dashboard.copy_endpoint_button.click()
+        application.processEvents()
+        assert QtWidgets.QApplication.clipboard().text() == "https://mcp.custom-edge.dev"
+
+        # Change language
+        dashboard.change_language("vi")
+        application.processEvents()
+        assert dashboard.copy_endpoint_button.text() == "Chép Endpoint"
+    finally:
         dashboard.close()

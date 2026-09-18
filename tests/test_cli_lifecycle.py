@@ -20,8 +20,9 @@ def test_status_data_reads_pid_files(monkeypatch, tmp_path):
     monkeypatch.setattr(
         lifecycle,
         "process_matches",
-        lambda pid, kind: (pid, kind) in {(10, "supervisor"), (20, "server"), (30, "tunnel")},
+        lambda pid, kind, root: (pid, kind) in {(10, "supervisor"), (20, "server"), (30, "tunnel")},
     )
+    monkeypatch.setattr(lifecycle, "server_owns_port", lambda pid, values: pid == 20)
     monkeypatch.setattr(lifecycle, "bridge_ready", lambda values: True)
     result = lifecycle.status_data(
         tmp_path,
@@ -71,7 +72,7 @@ def test_dead_tunnel_preserves_last_known_url_as_stale(monkeypatch, tmp_path):
     (logs / "tunnel.pid").write_text("30")
     (logs / "tunnel_url.txt").write_text("https://stale.trycloudflare.com\n")
     monkeypatch.setattr(
-        lifecycle, "process_matches", lambda pid, kind: (pid, kind) == (20, "server")
+        lifecycle, "process_matches", lambda pid, kind, root: (pid, kind) == (20, "server")
     )
     monkeypatch.setattr(lifecycle, "bridge_ready", lambda values: True)
     result = lifecycle.status_data(

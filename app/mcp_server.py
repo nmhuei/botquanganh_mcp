@@ -341,7 +341,10 @@ class MetricsMiddleware:
             finish_once()
 
 
-_original_http_app = FastMCP.http_app
+if not hasattr(FastMCP, "_bqa_original_http_app"):
+    FastMCP._bqa_original_http_app = FastMCP.http_app
+
+_original_http_app = FastMCP._bqa_original_http_app
 
 
 def _chatgpt_http_app(self, *args, **kwargs):
@@ -394,8 +397,15 @@ mcp = FastMCP(
     "BotQuangAnh Host MCP",
     version=VERSION,
     instructions=(
-        "Host-only MCP server. Use host_knowledge before unfamiliar host work, "
-        "then use the host filesystem and command tools. "
+        "Host-only MCP server. "
+        "MANDATORY PRE-FLIGHT REQUIREMENT: Before executing any commands or accessing files, "
+        "you MUST check whether to resume a previous workspace or start a new workspace. "
+        "Step 1: Call 'host_workspace_list()' to check existing workspaces. "
+        "Step 2: If continuing past work, call 'host_workspace_bind(resume_id=\"latest\")' "
+        "(or 'host_workspace_bind(resume_id=...)'). If starting fresh, call "
+        "'host_workspace_bind()' (or 'host_workspace_bind(label=\"optional_name\")'). "
+        "Step 3: Only after binding or creating a workspace may you use host_run_command and file tools. "
+        "Use host_knowledge before unfamiliar host work, then use the host filesystem and command tools. "
         f"By default, all operations (files, directories, command executions) "
         f"MUST be relative to or run within the default directory: '{HOST_DEFAULT_DIR}'. "
         f"Operations are allowed and restricted to the workspace boundary: '{HOST_WORKSPACE_DIR}'. "

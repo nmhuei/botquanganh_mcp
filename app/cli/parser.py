@@ -36,7 +36,7 @@ class GroupedHelpFormatter(argparse.RawDescriptionHelpFormatter):
     COMMAND_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ("Lifecycle", ("start", "stop", "restart", "server", "url")),
         ("Interface", ("ui", "tui")),
-        ("Inspection", ("status", "health", "capabilities", "knowledge", "logs", "chats")),
+        ("Inspection", ("status", "health", "capabilities", "knowledge", "logs", "chats", "session")),
         ("Files & commands", ("fs", "cmd")),
         ("Diagnostics", ("doctor",)),
         ("Config & help", ("config", "completion", "version", "help")),
@@ -511,6 +511,43 @@ Output modes:
         "--grep", dest="grep_text", help="Only lines containing TEXT"
     )
 
+    session = commands.add_parser(
+        "session",
+        help="List, bind, and inspect agent sessions",
+        epilog="""Examples:
+  bqa session list
+  bqa session new --label my-project
+  bqa session bind <session-id>
+  bqa session bind latest
+  bqa session current""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    session_sub = session.add_subparsers(dest="session_command")
+    sess_new = session_sub.add_parser("new", aliases=["create"], help="Create and bind a new session")
+    sess_new.add_argument(
+        "--label", "-l", default=None, help="Optional human-readable label for the new session"
+    )
+    sess_list = session_sub.add_parser("list", help="List previous sessions")
+    sess_list.add_argument(
+        "--limit", type=int, default=15, help="Maximum sessions to display (default: 15)"
+    )
+    sess_list.add_argument(
+        "--all", action="store_true", help="Include archived sessions"
+    )
+    sess_list.add_argument(
+        "--query", default="", help="Filter sessions by ID or label"
+    )
+
+    sess_bind = session_sub.add_parser("bind", help="Bind to an existing session")
+    sess_bind.add_argument(
+        "session_id",
+        nargs="?",
+        default="latest",
+        help="Session ID to bind (default: latest)",
+    )
+
+    session_sub.add_parser("current", help="Display the currently bound active session")
+
     chats = commands.add_parser(
         "chats",
         help="Inspect local chat workspaces",
@@ -573,6 +610,14 @@ Output modes:
     chats_prune = chats_commands.add_parser("prune", help="Plan or apply lifecycle sweep actions")
     chats_prune.add_argument("--apply", action="store_true", help="Apply planned archive/delete actions")
     chats_commands.add_parser("stats", help="Show workspace counts and storage usage")
+    chats_resume = chats_commands.add_parser("resume", help="Generate ChatGPT resume prompt for a workspace")
+    chats_resume.add_argument("chat_id", nargs="?", default="latest", help="Chat identifier to resume (default: latest)")
+    chats_unlock = chats_commands.add_parser("unlock", help="Remove session token lock to make workspace public to trust_gateway")
+    chats_unlock.add_argument("chat_id", nargs="?", default="latest", help="Chat identifier to unlock (default: latest)")
+    chats_token = chats_commands.add_parser("token", help="Display or rotate token for a workspace")
+    chats_token.add_argument("chat_id", nargs="?", default="latest", help="Chat identifier (default: latest)")
+    chats_token.add_argument("--rotate", action="store_true", help="Rotate and generate a new token")
+
 
     config = commands.add_parser("config", help="Inspect and validate .env")
     config_commands = config.add_subparsers(dest="config_command", required=True)

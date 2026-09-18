@@ -35,6 +35,7 @@ HOST_TOOLS = [
     "ctf_triage_artifact",
     "host_knowledge",
     "host_workspace_bind",
+    "host_workspace_list",
     "host_save_note",
 ]
 

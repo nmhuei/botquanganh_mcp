@@ -43,22 +43,28 @@ NAVIGATION_GLYPHS = {
     "runtime": "⌁",
     "workspace": "▤",
     "gpt": "✦",
+    "about": "ℹ",
+    "settings": "⚙",
 }
 
 NAVIGATION_TRANSLATION_KEYS = {
     "runtime": "runtime",
     "workspace": "workspace_logs",
     "gpt": "gpt_activity",
+    "about": "about",
+    "settings": "settings",
 }
 
 
-def _route_icon(QtCore: Any, QtGui: Any, route: str) -> Any:
+def _route_icon(QtCore: Any, QtGui: Any, route: str, color: str | None = None) -> Any:
     """Draw compact route line art without relying on font glyph availability."""
+    import math
+
     pixmap = QtGui.QPixmap(28, 28)
     pixmap.fill(QtCore.Qt.transparent)
     painter = QtGui.QPainter(pixmap)
     painter.setRenderHint(QtGui.QPainter.Antialiasing)
-    pen = QtGui.QPen(QtGui.QColor(COLORS["lime"]), 2)
+    pen = QtGui.QPen(QtGui.QColor(color or COLORS["lime"]), 2)
     pen.setCapStyle(QtCore.Qt.RoundCap)
     pen.setJoinStyle(QtCore.Qt.RoundJoin)
     painter.setPen(pen)
@@ -75,12 +81,27 @@ def _route_icon(QtCore: Any, QtGui: Any, route: str) -> Any:
         painter.drawRoundedRect(6, 3, 16, 22, 2, 2)
         for y in (9, 14, 19):
             painter.drawLine(10, y, 18, y)
-    else:
+    elif route == "gpt":
         painter.drawEllipse(8, 8, 12, 12)
         painter.drawLine(14, 2, 14, 7)
         painter.drawLine(14, 21, 14, 26)
         painter.drawLine(2, 14, 7, 14)
         painter.drawLine(21, 14, 26, 14)
+    elif route == "settings":
+        painter.drawEllipse(9, 9, 10, 10)
+        for angle in (0, 45, 90, 135, 180, 225, 270, 315):
+            rad = math.radians(angle)
+            x1 = 14 + int(5.5 * math.cos(rad))
+            y1 = 14 + int(5.5 * math.sin(rad))
+            x2 = 14 + int(9.5 * math.cos(rad))
+            y2 = 14 + int(9.5 * math.sin(rad))
+            painter.drawLine(x1, y1, x2, y2)
+    else:
+        painter.drawEllipse(5, 5, 18, 18)
+        painter.drawPoint(14, 9)
+        painter.drawLine(14, 12, 14, 18)
+        painter.drawLine(12, 12, 14, 12)
+        painter.drawLine(12, 18, 16, 18)
     painter.end()
     return QtGui.QIcon(pixmap)
 
@@ -117,7 +138,9 @@ class QtDesktopDashboard:
         workspace_log_stream_reader: WorkspaceLogStreamReader | None,
     ) -> None:
         from app.cli.desktop_qt.activity import QtActivityPanel
+        from app.cli.desktop_qt.about import QtAboutPanel
         from app.cli.desktop_qt.runtime import RuntimeCallbacks, RuntimePanel
+        from app.cli.desktop_qt.settings import QtSettingsPanel
         from app.cli.desktop_qt.workspace_logs import QtWorkspaceLogsPanel
 
         self.QtCore = bindings.QtCore
@@ -151,8 +174,8 @@ class QtDesktopDashboard:
         self.window = _DashboardWindow()
         self.window.setWindowTitle(DESKTOP_APP_NAME)
         self.window.resize(1180, 740)
-        self.window.setMinimumSize(980, 680)
-        self.window.setStyleSheet(build_stylesheet())
+        self.current_theme = str(ctx.values.get("BQA_UI_THEME", "dark")).strip().lower() or "dark"
+        self.window.setStyleSheet(build_stylesheet(self.current_theme))
         pixmap = load_logo_pixmap(self.QtGui, 52)
         if pixmap is not None:
             self.window.setWindowIcon(self.QtGui.QIcon(pixmap))
@@ -186,6 +209,27 @@ class QtDesktopDashboard:
             stream_reader=stream_reader,
             on_message=self._set_message,
             on_status_change=self._set_sse_status,
+        )
+        self.about_panel = QtAboutPanel(
+            self.QtCore,
+            self.QtWidgets,
+            self.translator,
+            on_copy_endpoint=self.copy_endpoint,
+            get_endpoint=self._current_endpoint_url,
+            on_message=self._set_message,
+        )
+        self.current_theme = str(ctx.values.get("BQA_UI_THEME", "dark")).strip().lower() or "dark"
+        self.settings_panel = QtSettingsPanel(
+            self.QtCore,
+            self.QtWidgets,
+            self.translator,
+            current_theme=self.current_theme,
+            on_change_language=self.change_language,
+            on_change_theme=self.change_theme,
+            get_workspace=lambda: str(self.runtime_panel.workspace_value.text() or ""),
+            on_message=self._set_message,
+            repo_root=self.ctx.repo_root,
+            on_save_env=self._on_env_updated,
         )
         self._build()
 
@@ -234,6 +278,14 @@ class QtDesktopDashboard:
             self.QtWidgets, self.translator.text("status.loading")
         )
         header.addWidget(self.status_pill.widget)
+        self.copy_endpoint_button = self.QtWidgets.QPushButton(
+            self.translator.text("action.copy_endpoint")
+        )
+        self.copy_endpoint_button.setObjectName("headerCopyEndpointButton")
+        self.copy_endpoint_button.setProperty("role", "compactAction")
+        self.copy_endpoint_button.setToolTip(self.translator.text("about.action.copy_endpoint"))
+        self.copy_endpoint_button.clicked.connect(self.copy_endpoint)
+        header.addWidget(self.copy_endpoint_button)
         self.language_label = self.QtWidgets.QLabel(
             self.translator.text("label.language")
         )
@@ -242,6 +294,8 @@ class QtDesktopDashboard:
         self._refresh_language_selector()
         self.language_combo.currentTextChanged.connect(self.change_language)
         header.addWidget(self.language_combo)
+        self.language_label.hide()
+        self.language_combo.hide()
         self.close_button = self.QtWidgets.QPushButton(
             self.translator.text("action.close")
         )
@@ -269,18 +323,15 @@ class QtDesktopDashboard:
         self.content_canvas = self.QtWidgets.QFrame()
         self.content_canvas.setObjectName("contentCanvas")
         content_layout = self.QtWidgets.QVBoxLayout(self.content_canvas)
-        content_layout.setContentsMargins(
-            20,
-            LAYOUT["space_lg"],
-            20,
-            LAYOUT["space_lg"],
-        )
+        content_layout.setContentsMargins(12, 10, 12, 10)
         self.content_stack = self.QtWidgets.QStackedWidget()
         self.stack = self.content_stack
         self.panels = {
             "runtime": self.runtime_panel.widget,
             "workspace": self.workspace_logs_panel.widget,
             "gpt": self.activity_panel.widget,
+            "about": self.about_panel.widget,
+            "settings": self.settings_panel.widget,
         }
         self.navigation_items: dict[str, IconRailItem] = {}
         self.navigation_labels: dict[str, Any] = {}
@@ -381,7 +432,9 @@ class QtDesktopDashboard:
         self.language_combo.blockSignals(False)
 
     def change_language(self, selection: str) -> None:
-        language = self.language_choices.get(selection)
+        language = self.language_choices.get(selection) or (
+            selection if selection in ("en", "vi") else None
+        )
         if language is None or language == self.translator.language:
             return
         try:
@@ -397,6 +450,9 @@ class QtDesktopDashboard:
         self.subtitle_label.setText(self.translator.text("app.subtitle"))
         self.language_label.setText(self.translator.text("label.language"))
         self.close_button.setText(self.translator.text("action.close"))
+        if hasattr(self, "copy_endpoint_button"):
+            self.copy_endpoint_button.setText(self.translator.text("action.copy_endpoint"))
+            self.copy_endpoint_button.setToolTip(self.translator.text("about.action.copy_endpoint"))
         for route, navigation in self.navigation_items.items():
             label = self.translator.text(
                 f"nav.{NAVIGATION_TRANSLATION_KEYS[route]}"
@@ -414,6 +470,8 @@ class QtDesktopDashboard:
         )
         self.workspace_logs_panel.set_translator(self.translator)
         self.activity_panel.set_translator(self.translator)
+        self.about_panel.set_translator(self.translator)
+        self.settings_panel.set_translator(self.translator)
         self._refresh_language_selector()
         self._set_message(
             "success",
@@ -422,6 +480,58 @@ class QtDesktopDashboard:
                 language=self.translator.text(f"language.{self.translator.language}"),
             ),
         )
+
+    def change_theme(self, theme: str) -> None:
+        self.current_theme = theme
+        try:
+            from app.cli.config_view import set_desktop_ui_theme
+            set_desktop_ui_theme(self.ctx.repo_root, theme)
+            self.ctx.values["BQA_UI_THEME"] = theme
+        except Exception:
+            pass
+
+        from app.cli.desktop_qt.theme import THEMES
+        theme_colors = THEMES.get(theme, COLORS)
+        accent = theme_colors["lime"]
+
+        stylesheet = build_stylesheet(theme)
+        app = self.QtWidgets.QApplication.instance()
+        if app is not None:
+            app.setStyleSheet(stylesheet)
+        self.window.setStyleSheet(stylesheet)
+        self.settings_panel.set_theme(theme)
+
+        # Dynamically refresh all navigation rail icons with current theme accent
+        for route, navigation in self.navigation_items.items():
+            navigation.button.setIcon(_route_icon(self.QtCore, self.QtGui, route, color=accent))
+
+        # Dynamically refresh header status pill
+        if hasattr(self, "status_pill"):
+            self.status_pill.set_theme_accent(accent)
+
+        # Dynamically refresh runtime panel cards, clock, diagram with theme colors
+        if hasattr(self, "runtime_panel") and hasattr(self.runtime_panel, "set_theme"):
+            self.runtime_panel.set_theme(theme)
+
+        theme_key = f"settings.theme_{theme}"
+        theme_label = self.translator.text(theme_key)
+        if theme_label == theme_key:
+            theme_label = theme.replace("_", " ").title()
+        self._set_message(
+            "success",
+            self.translator.text("settings.theme_changed", theme=theme_label),
+        )
+
+    def _on_env_updated(self, updated: dict[str, str]) -> None:
+        self.ctx.values.update(updated)
+        if "BQA_UI_LANGUAGE" in updated and updated["BQA_UI_LANGUAGE"] != self.translator.language:
+            self.change_language(updated["BQA_UI_LANGUAGE"])
+        if "BQA_UI_THEME" in updated and updated["BQA_UI_THEME"] != self.current_theme:
+            self.change_theme(updated["BQA_UI_THEME"])
+        if "HOST_WORKSPACE_DIR" in updated:
+            ws = updated["HOST_WORKSPACE_DIR"]
+            self.runtime_panel.workspace_value.setText(ws)
+            self.workspace_label.setText(ws)
 
     def chat_workspaces_root(self) -> Path:
         configured = self.ctx.values.get("HOST_CHAT_ROOT", "").strip()
@@ -638,14 +748,17 @@ class QtDesktopDashboard:
         self.workspace_selection_dirty = False
         self.workspace_label.setText(selected)
 
+    def _current_endpoint_url(self) -> str:
+        if self.latest_status_data is None:
+            return ""
+        return str(
+            self.latest_status_data.get("url")
+            or self.latest_status_data.get("last_known_url")
+            or ""
+        )
+
     def copy_endpoint(self) -> None:
-        endpoint = ""
-        if self.latest_status_data is not None:
-            endpoint = str(
-                self.latest_status_data.get("url")
-                or self.latest_status_data.get("last_known_url")
-                or ""
-            )
+        endpoint = self._current_endpoint_url()
         if not endpoint:
             self._set_message("warn", self.translator.text("message.no_endpoint"))
             return

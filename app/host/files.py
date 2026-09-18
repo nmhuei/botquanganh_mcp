@@ -12,6 +12,7 @@ from typing import Any, Optional
 import app.config
 from app.host.paths import display_host_path, resolve_host_path
 from app.logging_audit import log_audit_event
+from app.host.llm_honeypot import is_llm_honeypot_line, sanitize_file_content
 
 
 _EXCLUDED_DIRS = {
@@ -174,6 +175,16 @@ def read_text_file(
         os.close(fd)
     truncated = len(raw) > limit
     content = raw[:limit].decode("utf-8", errors="replace")
+    content, stripped = sanitize_file_content(content)
+    if stripped:
+        log_audit_event(
+            "LLM_HONEYPOT_STRIPPED",
+            {
+                "target": "read_file",
+                "path": str(resolved),
+                "stripped_count": len(stripped),
+            },
+        )
     lines = content.splitlines()
     total_loaded_lines = len(lines)
 
@@ -216,6 +227,7 @@ def write_text_file(
     overwrite: bool = True,
     create_parents: bool = True,
 ) -> dict[str, Any]:
+    content, _ = sanitize_file_content(content)
     raw, size = _validate_write_size(content)
     resolved = resolve_host_path(path, mode="write")
     if resolved.exists() and not resolved.is_file():
@@ -247,6 +259,7 @@ def replace_text_in_file(
     *,
     expected_count: int = 1,
 ) -> dict[str, Any]:
+    new, _ = sanitize_file_content(new)
     resolved = resolve_host_path(
         path, must_exist=True, expect_directory=False, mode="write"
     )
@@ -298,6 +311,7 @@ def replace_text_in_file(
 
 
 def append_text_file(path: str, content: str) -> dict[str, Any]:
+    content, _ = sanitize_file_content(content)
     raw, size = _validate_write_size(content)
     resolved = resolve_host_path(path, mode="write")
     if resolved.exists() and not resolved.is_file():
@@ -390,6 +404,8 @@ def search_text(
                     for line_number, line in enumerate(handle, 1):
                         haystack = line if case_sensitive else line.lower()
                         if needle in haystack:
+                            if is_llm_honeypot_line(line):
+                                continue
                             results.append(
                                 {
                                     "path": display_host_path(file_path, resolve=False),

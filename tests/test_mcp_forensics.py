@@ -116,3 +116,14 @@ def test_debug_transport_rejects_proxy_and_non_loopback_requests():
     )
     assert remote[0]["status"] == 404
     assert proxied[0]["status"] == 404
+
+
+def test_mcp_server_reload_does_not_cause_recursion_error():
+    import importlib
+
+    # Reload twice to simulate live development or repeated import cycles
+    importlib.reload(mcp_server)
+    importlib.reload(mcp_server)
+    app = mcp_server.mcp.http_app()
+    assert app is not None
+

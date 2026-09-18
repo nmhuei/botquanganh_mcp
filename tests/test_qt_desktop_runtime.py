@@ -72,7 +72,7 @@ def test_runtime_panel_exposes_command_center_layout_contract(qapp):
         == len(panel.service_pills)
         == 3
     )
-    assert all(card.detail_row_count == 3 for card in panel.service_cards)
+    assert all(card.detail_row_count == 2 for card in panel.service_cards)
     assert [panel.service_grid.columnStretch(column) for column in range(3)] == [1, 1, 1]
     assert [
         panel.service_grid.itemAtPosition(0, column).widget()
@@ -174,3 +174,129 @@ def test_runtime_panel_translator_refreshes_initial_runtime_text(qapp):
     assert panel.bridge_value.text() == translator.text("status.not_available")
     assert panel.server_value.text() == translator.text("status.not_available")
     assert panel.tunnel_value.text() == translator.text("status.not_available")
+
+
+def test_status_pill_widget_breathing_and_icons(qapp):
+    from PySide6 import QtWidgets
+    from app.cli.desktop_qt.widgets import StatusPill, StatusPillWidget
+
+    pill = StatusPill(QtWidgets, "Đang nạp…")
+    assert isinstance(pill.widget, StatusPillWidget)
+    assert pill.widget.text() == "Đang nạp…"
+    assert pill.widget.property("state") == "loading"
+    assert pill.widget.timer.isActive() is True
+
+    # Ready -> ChatGPT icon & green beacon
+    pill.set_state("Sẵn sàng", "ready")
+    assert pill.widget.text() == "Sẵn sàng"
+    assert pill.widget.property("state") == "ready"
+    assert pill.widget.beacon.color.name() == "#42d5ad"
+    assert not pill.widget.icon_label.pixmap().isNull()
+
+    # Stopped -> Hazard car emergency icon & red beacon
+    pill.set_state("Đã dừng", "stopped")
+    assert pill.widget.text() == "Đã dừng"
+    assert pill.widget.property("state") == "stopped"
+    assert pill.widget.beacon.color.name() == "#ff4d4d"
+    assert not pill.widget.icon_label.pixmap().isNull()
+
+    # Malfunction/Needs attention -> Repair tool icon & gold beacon
+    pill.set_state("Cần chú ý", "warning")
+    assert pill.widget.text() == "Cần chú ý"
+    assert pill.widget.property("state") == "warning"
+    assert pill.widget.beacon.color.name() == "#f4b942"
+    assert not pill.widget.icon_label.pixmap().isNull()
+
+    # Breathing timer ticks
+    prev_phase = pill.widget.phase
+    pill.widget._on_tick()
+    assert pill.widget.phase > prev_phase
+    assert pill.widget.beacon.phase == pill.widget.phase
+
+
+def test_runtime_panel_set_theme(qapp):
+    from PySide6 import QtCore, QtWidgets
+    from app.cli.desktop_qt.runtime import RuntimeCallbacks, RuntimePanel
+    from app.cli.desktop_qt.theme import THEMES
+    from app.cli.desktop_views.i18n import DesktopTranslator
+
+    callbacks = RuntimeCallbacks(
+        copy_endpoint=lambda: None,
+        choose_workspace=lambda: None,
+        apply_workspace=lambda: None,
+        start=lambda: None,
+        stop=lambda: None,
+        restart=lambda: None,
+        refresh=lambda: None,
+    )
+    panel = RuntimePanel(QtCore, QtWidgets, DesktopTranslator("en"), callbacks)
+    panel.render(
+        {
+            "ok": True,
+            "bridge": "ready",
+            "server": {"running": True, "pid": 123},
+            "tunnel": {"running": True},
+            "url": "https://example.trycloudflare.com/mcp",
+            "auth_required": True,
+            "workspace": "/work",
+        }
+    )
+
+    # Change to synthwave theme
+    panel.set_theme("synthwave")
+    synth_accent = THEMES["synthwave"]["lime"]
+    assert panel.topology_diagram.active_color == synth_accent
+    assert panel.live_clock.accent_color == synth_accent
+
+    # Change to dracula theme
+    panel.set_theme("dracula")
+    dracula_accent = THEMES["dracula"]["lime"]
+    assert panel.topology_diagram.active_color == dracula_accent
+    assert panel.live_clock.accent_color == dracula_accent
+
+
+def test_mcp_virtual_status_diagram_bar(qapp):
+    from PySide6 import QtCore, QtWidgets
+    from app.cli.desktop_qt.runtime import (
+        McpStatusDiagramBarCard,
+        McpVirtualSpectrumBar,
+        RuntimeCallbacks,
+        RuntimePanel,
+    )
+    from app.cli.desktop_views.i18n import DesktopTranslator
+
+    callbacks = RuntimeCallbacks(
+        copy_endpoint=lambda: None,
+        choose_workspace=lambda: None,
+        apply_workspace=lambda: None,
+        start=lambda: None,
+        stop=lambda: None,
+        restart=lambda: None,
+        refresh=lambda: None,
+    )
+    panel = RuntimePanel(QtCore, QtWidgets, DesktopTranslator("vi"), callbacks)
+    assert isinstance(panel.live_clock, McpStatusDiagramBarCard)
+    assert isinstance(panel.live_clock.spectrum_bar, McpVirtualSpectrumBar)
+
+    # Render running state
+    panel.render(
+        {
+            "ok": True,
+            "bridge": "ready",
+            "server": {"running": True, "pid": 123},
+            "tunnel": {"running": True},
+            "url": "https://example.trycloudflare.com/mcp",
+            "auth_required": True,
+            "workspace": "/work",
+        }
+    )
+    assert panel.live_clock.spectrum_bar.is_online is True
+    assert panel.live_clock.spectrum_bar.health_pct == 100
+    assert panel.live_clock.live_badge.text() == "● LIVE"
+    assert panel.live_clock.title_label.text() == "SƠ ĐỒ TRẠNG THÁI TOÀN MCP"
+
+    # Offline state
+    panel.live_clock.update_state(False)
+    assert panel.live_clock.spectrum_bar.is_online is False
+    assert panel.live_clock.spectrum_bar.health_pct == 0
+    assert panel.live_clock.live_badge.text() == "○ OFFLINE"

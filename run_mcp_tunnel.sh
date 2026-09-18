@@ -165,6 +165,7 @@ case "$action" in
 esac
 
 existing_supervisor=$(supervisor_pid || true)
+ensure_server_port_available "$(runtime_value MCP_PORT 18427)" || exit 1
 if pid_matches_kind "$existing_supervisor" supervisor; then
     echo "[i] Host MCP tunnel is already supervised (PID $existing_supervisor)."
     connector_url || true

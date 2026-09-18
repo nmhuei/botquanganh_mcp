@@ -15,6 +15,7 @@ from collections.abc import Callable
 from typing import Any
 
 from app.activity_log import read_mcp_command_activity
+from app.config import value_loaded_from_dotenv
 from app.cli.config_view import set_desktop_ui_language, set_workspace_config
 from app.cli.context import CLIContext
 from app.cli.desktop_identity import DESKTOP_APP_NAME, desktop_app_icon_path
@@ -194,13 +195,16 @@ def launch_desktop_ui_detached(ctx: CLIContext) -> int:
     # launcher process already loaded from dotenv makes the child believe they
     # were shell overrides, which blocks in-UI settings changes (language,
     # workspace) with a misleading "set in the current environment" error.
-    # Only explicitly exported variables survive into the child.
+    # Explicit shell overrides survive into the child; only values written into
+    # the parent environment by app.config's dotenv loader are removed.
     for key in (
         "BQA_UI_LANGUAGE",
+        "BQA_UI_THEME",
         "HOST_WORKSPACE_DIR",
         "HOST_DEFAULT_DIR",
     ):
-        child_env.pop(key, None)
+        if value_loaded_from_dotenv(key):
+            child_env.pop(key, None)
     try:
         with (log_dir / "desktop-ui.log").open("ab", buffering=0) as log_file:
             process = subprocess.Popen(  # nosec B603 - fixed local CLI invocation
