@@ -861,6 +861,18 @@
       </div>
 
       <div class="flex-1 overflow-y-auto p-4 space-y-3.5 text-xs font-mono">
+        <!-- Section: Hero Intent Card (Visible when agent specifies an intent) -->
+        <div id="inspectIntentHero" class="border p-3 rounded-xl transition hidden shadow-xs" style="background-color: var(--bg-base); border-color: var(--border);">
+          <div class="flex items-center justify-between gap-1 mb-1">
+            <span style="color: var(--accent);" class="text-[10.5px] font-sans font-bold uppercase tracking-wider flex items-center gap-1.5">
+              <span class="text-sm">🎯</span>
+              <span>Mục tiêu thao tác (Agent Intent)</span>
+            </span>
+            <span class="px-1.5 py-0.5 rounded text-[9px] font-sans font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">Active Context</span>
+          </div>
+          <div id="inspectIntentHeroText" style="color: var(--text-main);" class="text-xs font-sans leading-relaxed select-text font-medium mt-0.5"></div>
+        </div>
+
         <!-- Section: Overview badges (always visible) -->
         <div class="grid grid-cols-3 gap-2.5">
           <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-2.5 rounded-lg min-w-0">
@@ -882,7 +894,7 @@
         <!-- Section: Output Tab View -->
         <div id="inspViewOutput" class="flex flex-col flex-1 min-h-[220px]">
           <div style="color: var(--text-dim);" class="flex items-center justify-between text-[10px] uppercase font-sans mb-1 whitespace-nowrap">
-            <span>Terminal Console Output</span>
+            <span>Terminal Console Output (ANSI Colorized)</span>
             <span>UTF-8</span>
           </div>
           <pre id="inspectOutput" style="background-color: var(--bg-console); border-color: var(--border); color: var(--mint);" class="flex-1 border rounded-xl p-3.5 text-[11px] leading-relaxed overflow-auto select-text font-mono whitespace-pre-wrap"></pre>
@@ -897,7 +909,7 @@
                 <span style="color: var(--text-dim);" class="text-[10px] uppercase font-sans font-semibold whitespace-nowrap">Session Context</span>
                 <span class="px-1.5 py-0.5 rounded text-[9px] font-sans font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">Bridge Auto-sync</span>
               </div>
-              <button onclick="copySessionBind(activeChatId, this)" style="color: var(--accent);" class="btn-action w-[78px] h-[24px] px-2 py-0.5 rounded text-[11px] font-sans whitespace-nowrap flex items-center justify-center gap-1 shrink-0 select-none leading-none" title="Copy Session ID">
+              <button onclick="copySessionBind(activeChatId, this)" style="color: var(--accent);" class="btn-action w-[84px] h-[24px] px-2 py-0.5 rounded text-[11px] font-sans whitespace-nowrap flex items-center justify-center gap-1 shrink-0 select-none leading-none" title="Copy Session ID">
                 <svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                 <span class="btn-copy-text whitespace-nowrap">Copy ID</span>
               </button>
@@ -907,6 +919,22 @@
               <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"></span>
               <span class="truncate">Tự động trao đổi ngữ cảnh & đồng bộ qua MCP Bridge</span>
             </div>
+          </div>
+
+          <!-- Target File Context Card (Dynamically shown for file operations) -->
+          <div id="inspectTargetFileCard" style="background-color: var(--bg-base); border-color: var(--border);" class="border p-3 rounded-lg min-w-0 hidden">
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <div class="flex items-center gap-1.5 min-w-0">
+                <span style="color: var(--text-dim);" class="text-[10px] uppercase font-sans font-semibold whitespace-nowrap">Tệp thao tác (Target File)</span>
+                <span id="inspectTargetFileBadge" class="px-1.5 py-0.5 rounded text-[9px] font-sans font-bold bg-sky-500/15 text-sky-400 border border-sky-500/30">FILE</span>
+              </div>
+              <button onclick="copyTargetFilePath(this)" style="color: var(--accent);" class="btn-action w-[84px] h-[24px] px-2 py-0.5 rounded text-[11px] font-sans whitespace-nowrap flex items-center justify-center gap-1 shrink-0 select-none leading-none" title="Copy File Path">
+                <svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                <span class="btn-copy-text whitespace-nowrap">Copy File</span>
+              </button>
+            </div>
+            <div id="inspectTargetFilePath" style="color: var(--text-main);" class="select-text break-all font-mono text-xs mb-1 font-semibold">--</div>
+            <div id="inspectTargetFileDetails" style="color: var(--text-dim);" class="text-[10.5px] font-sans"></div>
           </div>
 
           <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-3 rounded-lg min-w-0">
@@ -920,8 +948,14 @@
           </div>
 
           <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-3 rounded-lg min-w-0">
-            <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans mb-1 whitespace-nowrap">Thư mục (CWD)</span>
-            <div id="inspectCwd" style="color: var(--text-sub);" class="select-text break-all font-mono">/home/light/GitHub/botquanganh_mcp</div>
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <span style="color: var(--text-dim);" class="text-[10px] uppercase font-sans font-semibold whitespace-nowrap">Thư mục làm việc (CWD)</span>
+              <button onclick="copyCwdPath(this)" style="color: var(--accent);" class="btn-action w-[84px] h-[24px] px-2 py-0.5 rounded text-[11px] font-sans whitespace-nowrap flex items-center justify-center gap-1 shrink-0 select-none leading-none" title="Copy Working Directory Path">
+                <svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                <span class="btn-copy-text whitespace-nowrap">Copy CWD</span>
+              </button>
+            </div>
+            <div id="inspectCwd" style="color: var(--text-sub);" class="select-text break-all font-mono text-[11px]">/home/light/GitHub/botquanganh_mcp</div>
           </div>
         </div>
 
@@ -2645,6 +2679,201 @@
       }
     }
 
+    // ==================== ANSI & RICH CONTEXT UTILITIES ====================
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function renderAnsi(text) {
+      if (!text) return '';
+      if (!text.includes('\u001b') && !text.includes('\x1b')) {
+        return escapeHtml(text);
+      }
+
+      const safe = escapeHtml(text);
+      let openSpans = 0;
+      const ansiRegex = /(?:\u001b|\x1b)\[([0-9;]*)([a-zA-Z])/g;
+
+      const colorMap = {
+        '30': 'color: var(--text-dim);',
+        '31': 'color: #ff6b61;',
+        '32': 'color: var(--mint);',
+        '33': 'color: #e5c07b;',
+        '34': 'color: #61afef;',
+        '35': 'color: #c678dd;',
+        '36': 'color: #56b6c2;',
+        '37': 'color: var(--text-main);',
+        '90': 'color: var(--text-dim);',
+        '91': 'color: #ff857d;',
+        '92': 'color: #4ade80;',
+        '93': 'color: #fde047;',
+        '94': 'color: #93c5fd;',
+        '95': 'color: #e879f9;',
+        '96': 'color: #67e8f9;',
+        '97': 'color: #ffffff;',
+        '40': 'background-color: #1e1e1e;',
+        '41': 'background-color: rgba(239, 68, 68, 0.25);',
+        '42': 'background-color: rgba(16, 185, 129, 0.25);',
+        '43': 'background-color: rgba(245, 158, 11, 0.25);',
+        '44': 'background-color: rgba(59, 130, 246, 0.25);',
+        '45': 'background-color: rgba(168, 85, 247, 0.25);',
+        '46': 'background-color: rgba(6, 182, 212, 0.25);',
+        '47': 'background-color: rgba(255, 255, 255, 0.2);'
+      };
+
+      const formatted = safe.replace(ansiRegex, (match, codes, command) => {
+        if (command !== 'm') return '';
+        if (!codes || codes === '0') {
+          let close = '';
+          while (openSpans > 0) {
+            close += '</span>';
+            openSpans--;
+          }
+          return close;
+        }
+
+        const codeList = codes.split(';');
+        const styles = [];
+
+        for (let i = 0; i < codeList.length; i++) {
+          const code = codeList[i];
+          if (code === '0') {
+            let close = '';
+            while (openSpans > 0) {
+              close += '</span>';
+              openSpans--;
+            }
+            styles.push(close);
+          } else if (code === '1') {
+            styles.push('font-weight: 700;');
+          } else if (code === '2') {
+            styles.push('opacity: 0.7;');
+          } else if (code === '3') {
+            styles.push('font-style: italic;');
+          } else if (code === '4') {
+            styles.push('text-decoration: underline;');
+          } else if (colorMap[code]) {
+            styles.push(colorMap[code]);
+          }
+        }
+
+        if (styles.length === 0) return '';
+        openSpans++;
+        return `<span style="${styles.join(' ')}">`;
+      });
+
+      let trailingClose = '';
+      while (openSpans > 0) {
+        trailingClose += '</span>';
+        openSpans--;
+      }
+
+      return formatted + trailingClose;
+    }
+
+    function extractTargetFileInfo(c) {
+      if (!c) return null;
+      const tool = (c.tool || '').toLowerCase();
+      let targetPath = null;
+      let opType = null;
+      let details = '';
+
+      let payload = null;
+      if (c.raw_json) {
+        try {
+          const parsed = typeof c.raw_json === 'string' ? JSON.parse(c.raw_json) : c.raw_json;
+          payload = parsed.payload || (parsed.started && parsed.started.payload) || parsed.args || null;
+        } catch (_) {}
+      }
+
+      if (payload) {
+        if (payload.path) targetPath = payload.path;
+        else if (payload.target_path) targetPath = payload.target_path;
+        else if (payload.file) targetPath = payload.file;
+        else if (payload.filename) targetPath = payload.filename;
+
+        if (payload.pattern) details += `Mẫu tìm kiếm: "${payload.pattern}" `;
+        if (payload.expected_count != null) details += `· Kỳ vọng thay thế: ${payload.expected_count} vị trí `;
+        if (payload.offset_lines != null || payload.limit_lines != null) {
+          details += `· Dòng: ${payload.offset_lines || 1} -> ${(payload.offset_lines || 1) + (payload.limit_lines || 0)} `;
+        }
+      }
+
+      if (tool.includes('write_file')) {
+        opType = 'WRITE';
+        if (!details) details = 'Ghi đè hoặc tạo mới toàn bộ tệp tin';
+      } else if (tool.includes('replace_text')) {
+        opType = 'REPLACE';
+        if (!details) details = 'Thay thế văn bản trong tệp tin';
+      } else if (tool.includes('append_file')) {
+        opType = 'APPEND';
+        if (!details) details = 'Nối nội dung vào cuối tệp tin';
+      } else if (tool.includes('read_file')) {
+        opType = 'READ';
+        if (!details) details = 'Đọc nội dung tệp tin';
+      } else if (tool.includes('mkdir')) {
+        opType = 'MKDIR';
+        if (!details) details = 'Tạo thư mục mới';
+      } else if (tool.includes('search_text')) {
+        opType = 'SEARCH';
+        if (!details) details = 'Tìm kiếm chuỗi văn bản đệ quy';
+      }
+
+      if (!targetPath && opType && c.cmd) {
+        const parts = c.cmd.split(/\s+/);
+        if (parts.length > 1) targetPath = parts[1];
+      }
+
+      if (targetPath || opType) {
+        return {
+          path: targetPath || '(Đường dẫn trong tham số)',
+          opType: opType || 'FILE',
+          details: details.trim() || 'Thao tác tệp tin qua Host MCP'
+        };
+      }
+      return null;
+    }
+
+    function copyCwdPath(btn) {
+      const cwd = document.getElementById('inspectCwd')?.innerText || '';
+      if (!cwd || cwd === '(Không xác định)') {
+        showToast('⚠️ Không có đường dẫn CWD');
+        return;
+      }
+      copyTextToClipboard(cwd, () => {
+        showToast('✓ Đã sao chép đường dẫn CWD');
+        if (btn) {
+          const label = btn.querySelector('.btn-copy-text');
+          if (label) {
+            label.innerText = 'Copied!';
+            setTimeout(() => { label.innerText = 'Copy CWD'; }, 1500);
+          }
+        }
+      });
+    }
+
+    function copyTargetFilePath(btn) {
+      const path = document.getElementById('inspectTargetFilePath')?.innerText || '';
+      if (!path || path.startsWith('(')) {
+        showToast('⚠️ Không có đường dẫn tệp');
+        return;
+      }
+      copyTextToClipboard(path, () => {
+        showToast('✓ Đã sao chép đường dẫn tệp');
+        if (btn) {
+          const label = btn.querySelector('.btn-copy-text');
+          if (label) {
+            label.innerText = 'Copied!';
+            setTimeout(() => { label.innerText = 'Copy File'; }, 1500);
+          }
+        }
+      });
+    }
+
     function updateInspectorNonDestructive(c) {
       if (!c) {
         clearInspector();
@@ -2663,6 +2892,20 @@
         const inspectStderrBadge = document.getElementById('inspectStderrBadge');
         const inspectRawJson = document.getElementById('inspectRawJson');
 
+        // Hero Intent Card at the top of Inspector
+        const inspectIntentHero = document.getElementById('inspectIntentHero');
+        const inspectIntentHeroText = document.getElementById('inspectIntentHeroText');
+        const intentStr = (c.intent != null) ? String(c.intent) : '';
+        const hasIntent = intentStr.trim().length > 0 && intentStr !== c.cmd;
+        if (inspectIntentHero && inspectIntentHeroText) {
+          if (hasIntent) {
+            inspectIntentHeroText.innerText = intentStr;
+            inspectIntentHero.classList.remove('hidden');
+          } else {
+            inspectIntentHero.classList.add('hidden');
+          }
+        }
+
         const toolVal = String(c.tool || 'unknown');
         if (inspectTool && inspectTool.innerText !== toolVal) inspectTool.innerText = toolVal;
 
@@ -2678,13 +2921,14 @@
           inspectExit.style.color = isSuccess ? 'var(--mint)' : '#ff6b61';
         }
 
-        // Tab 1: Output - Preserve user scroll position!
+        // Tab 1: Output - ANSI colorized rendering while preserving scroll position!
         if (inspectOutput) {
           const rawOut = (c.output != null) ? String(c.output) : '';
           const newOutput = rawOut.trim().length > 0 ? rawOut : '(Không có kết quả STDOUT)';
-          if (inspectOutput.innerText !== newOutput) {
+          if (inspectOutput._lastRaw !== newOutput) {
+            inspectOutput._lastRaw = newOutput;
             const prevScroll = inspectOutput.scrollTop;
-            inspectOutput.innerText = newOutput;
+            inspectOutput.innerHTML = renderAnsi(newOutput);
             inspectOutput.scrollTop = prevScroll;
           }
         }
@@ -2696,11 +2940,27 @@
         const cmdStr = (c.cmd != null) ? String(c.cmd) : '(Trống)';
         if (inspectCommand && inspectCommand.innerText !== cmdStr) inspectCommand.innerText = cmdStr;
 
+        // Target File Card
+        const inspectTargetFileCard = document.getElementById('inspectTargetFileCard');
+        const inspectTargetFilePath = document.getElementById('inspectTargetFilePath');
+        const inspectTargetFileBadge = document.getElementById('inspectTargetFileBadge');
+        const inspectTargetFileDetails = document.getElementById('inspectTargetFileDetails');
+        const fileInfo = extractTargetFileInfo(c);
+        if (inspectTargetFileCard && inspectTargetFilePath) {
+          if (fileInfo) {
+            inspectTargetFilePath.innerText = fileInfo.path;
+            if (inspectTargetFileBadge) inspectTargetFileBadge.innerText = fileInfo.opType;
+            if (inspectTargetFileDetails) inspectTargetFileDetails.innerText = fileInfo.details;
+            inspectTargetFileCard.classList.remove('hidden');
+          } else {
+            inspectTargetFileCard.classList.add('hidden');
+          }
+        }
+
         const inspectIntentCard = document.getElementById('inspectIntentCard');
         const inspectIntent = document.getElementById('inspectIntent');
         if (inspectIntentCard && inspectIntent) {
-          const intentStr = (c.intent != null) ? String(c.intent) : '';
-          if (intentStr.trim().length > 0 && intentStr !== c.cmd) {
+          if (hasIntent) {
             if (inspectIntent.innerText !== intentStr) inspectIntent.innerText = intentStr;
             inspectIntentCard.classList.remove('hidden');
           } else {
@@ -2710,13 +2970,14 @@
         const cwdStr = (c.cwd != null) ? String(c.cwd) : '(Không xác định)';
         if (inspectCwd && inspectCwd.innerText !== cwdStr) inspectCwd.innerText = cwdStr;
 
-        // Tab 3: STDERR - Preserve user scroll position!
+        // Tab 3: STDERR - ANSI colorized rendering while preserving scroll position!
         const rawErr = (c.stderr != null) ? String(c.stderr) : '';
         if (inspectStderr) {
           const newStderr = rawErr.trim().length > 0 ? rawErr : 'Không có lỗi phát sinh (Exit Code 0).';
-          if (inspectStderr.innerText !== newStderr) {
+          if (inspectStderr._lastRaw !== newStderr) {
+            inspectStderr._lastRaw = newStderr;
             const prevScroll = inspectStderr.scrollTop;
-            inspectStderr.innerText = newStderr;
+            inspectStderr.innerHTML = renderAnsi(newStderr);
             inspectStderr.scrollTop = prevScroll;
           }
         }
@@ -2778,12 +3039,22 @@
       if (inspectTool) inspectTool.innerText = 'None';
       if (inspectTimestamp) inspectTimestamp.innerText = 'N/A';
       if (inspectExit) inspectExit.innerText = 'N/A';
-      if (inspectOutput) inspectOutput.innerText = '(Không có dữ liệu)';
+      if (inspectOutput) {
+        inspectOutput._lastRaw = '';
+        inspectOutput.innerText = '(Không có dữ liệu)';
+      }
       if (inspectCommand) inspectCommand.innerText = '(Trống)';
+      const inspectIntentHero = document.getElementById('inspectIntentHero');
+      if (inspectIntentHero) inspectIntentHero.classList.add('hidden');
       const inspectIntentCard = document.getElementById('inspectIntentCard');
       if (inspectIntentCard) inspectIntentCard.classList.add('hidden');
+      const inspectTargetFileCard = document.getElementById('inspectTargetFileCard');
+      if (inspectTargetFileCard) inspectTargetFileCard.classList.add('hidden');
       if (inspectCwd) inspectCwd.innerText = '(Trống)';
-      if (inspectStderr) inspectStderr.innerText = '(Trống)';
+      if (inspectStderr) {
+        inspectStderr._lastRaw = '';
+        inspectStderr.innerText = '(Trống)';
+      }
       if (inspectStderrBadge) {
         inspectStderrBadge.innerText = 'None';
         inspectStderrBadge.style.color = 'var(--mint)';
