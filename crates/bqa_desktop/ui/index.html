@@ -2220,13 +2220,6 @@
         opsBadge.className = `session-ops-badge text-[10px] whitespace-nowrap ${isActive ? 'font-bold' : ''}`;
         opsBadge.textContent = `${w.ops_count || 0} ops`;
 
-        if (w.active) {
-          const boundBadge = document.createElement('span');
-          boundBadge.className = 'px-1 py-0.5 rounded text-[9px] font-sans font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0 select-none';
-          boundBadge.title = 'Active Bound Session (quản lý bởi .last_session)';
-          boundBadge.textContent = 'ACTIVE';
-          rightDiv.appendChild(boundBadge);
-        }
 
         const delBtn = document.createElement('button');
         delBtn.setAttribute('draggable', 'false');
@@ -2319,7 +2312,38 @@
     }
 
     // ==================== COMMAND JOURNAL RENDERING ====================
-    // ==================== COMMAND JOURNAL RENDERING ====================
+    let viewedCommandKeys = new Set();
+    try {
+      const savedViewed = safeGetStorage('bqa_viewed_commands');
+      if (savedViewed) {
+        const parsed = JSON.parse(savedViewed);
+        if (Array.isArray(parsed)) viewedCommandKeys = new Set(parsed);
+      }
+    } catch (e) {
+      viewedCommandKeys = new Set();
+    }
+
+    function markCommandAsViewed(cmdKey, rowEl = null) {
+      if (!cmdKey) return;
+      if (!viewedCommandKeys.has(cmdKey)) {
+        viewedCommandKeys.add(cmdKey);
+        if (viewedCommandKeys.size > 1000) {
+          const arr = Array.from(viewedCommandKeys);
+          viewedCommandKeys = new Set(arr.slice(arr.length - 800));
+        }
+        safeSetStorage('bqa_viewed_commands', JSON.stringify(Array.from(viewedCommandKeys)));
+      }
+      if (rowEl) {
+        if (rowEl._commandData) rowEl._commandData.is_latest = false;
+        const b = rowEl.querySelector('.badge-latest');
+        if (b) b.classList.add('hidden');
+      }
+      const inMem = currentCommands.find(x => (x.id || `${x.timestamp}_${x.cmd}`) === cmdKey);
+      if (inMem) inMem.is_latest = false;
+    }
+
+    const sessionKnownKeys = new Map();
+
     let fastPollDebounce = null;
     window.__triggerFastPoll = function() {
       if (fastPollDebounce) return;
@@ -2354,6 +2378,24 @@
       if (chatId && activeChatId && chatId !== activeChatId) return;
 
       const newCommands = Array.isArray(commands) ? commands : [];
+      const getCmdKey = (c) => (c && (c.id || `${c.timestamp}_${c.cmd}`)) || '';
+
+      // Track newly arrived commands for this session
+      if (!sessionKnownKeys.has(chatId)) {
+        const s = new Set();
+        newCommands.forEach(c => s.add(getCmdKey(c)));
+        sessionKnownKeys.set(chatId, s);
+      } else {
+        const known = sessionKnownKeys.get(chatId);
+        newCommands.forEach(c => {
+          const k = getCmdKey(c);
+          if (!known.has(k)) {
+            c.is_latest = true;
+            known.add(k);
+          }
+        });
+      }
+
       const hash = computeCommandsHash(chatId, newCommands);
       const streamContainer = document.getElementById('commandStreamContainer');
       const sessionSwitched = currentRenderedChatId !== chatId;
@@ -2368,8 +2410,6 @@
       lastCommandsHash[chatId] = hash;
       currentCommands = newCommands;
       currentRenderedChatId = chatId;
-
-      const getCmdKey = (c) => (c && (c.id || `${c.timestamp}_${c.cmd}`)) || '';
 
       // Determine which command should remain selected / inspected
       let commandToSelect = null;
@@ -2406,12 +2446,13 @@
 
       const timeDisplay = formatLocalTime(c.timestamp || c.time_short, 'short');
       const hasIntent = c.intent && c.intent.trim().length > 0 && c.intent !== c.cmd;
+      const isNew = Boolean(c.is_latest) && !viewedCommandKeys.has(key);
 
       row.innerHTML = `
         <div class="flex items-center justify-between gap-1 text-[11px] min-w-0 overflow-hidden">
           <div class="flex items-center gap-1 min-w-0 truncate">
             <span style="color: var(--accent);" class="font-bold text-[11px] truncate whitespace-nowrap tool-name">${(c.tool || 'cmd').replace('host_', '')}</span>
-            <span class="badge-latest ${c.is_latest ? '' : 'hidden'}" style="color: var(--mint); background-color: var(--accent-soft); font-size: 8.5px; padding: 0 4px; border-radius: 4px;">Mới</span>
+            <span class="badge-latest ${isNew ? '' : 'hidden'}" style="color: var(--mint); background-color: var(--accent-soft); font-size: 8.5px; padding: 0 4px; border-radius: 4px; font-weight: 600; letter-spacing: 0.02em;" title="Lệnh mới chưa xem">NEW</span>
           </div>
           <div class="flex items-center gap-1 shrink-0 whitespace-nowrap text-[10px]">
             <span style="color: var(--text-dim);" class="time-display whitespace-nowrap">${timeDisplay}</span>
@@ -2433,6 +2474,7 @@
       row._commandData = c;
       row.onclick = () => {
         userPinnedCommandKey = key;
+        markCommandAsViewed(key, row);
         if (activeActionRowEl && activeActionRowEl !== row) {
           activeActionRowEl.style.backgroundColor = 'var(--bg-header)';
           activeActionRowEl.style.borderColor = 'var(--border)';
@@ -2511,6 +2553,7 @@
           row._commandData = c;
           row.onclick = () => {
             userPinnedCommandKey = key;
+            markCommandAsViewed(key, row);
             if (activeActionRowEl && activeActionRowEl !== row) {
               activeActionRowEl.style.backgroundColor = 'var(--bg-header)';
               activeActionRowEl.style.borderColor = 'var(--border)';
@@ -2525,7 +2568,8 @@
 
           const badgeLatest = row.querySelector('.badge-latest');
           if (badgeLatest) {
-            if (c.is_latest) badgeLatest.classList.remove('hidden');
+            const isNew = Boolean(c.is_latest) && !viewedCommandKeys.has(key);
+            if (isNew) badgeLatest.classList.remove('hidden');
             else badgeLatest.classList.add('hidden');
           }
           const statusEl = row.querySelector('.status-display');
