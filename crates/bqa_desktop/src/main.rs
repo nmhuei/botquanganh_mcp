@@ -1,14 +1,23 @@
 pub mod backend;
 pub mod db;
 pub mod frontend;
+pub mod mcp;
 
 use std::sync::Arc;
 use crate::backend::paths::AppPaths;
 use crate::db::Database;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args: Vec<String> = std::env::args().collect();
     let paths = Arc::new(AppPaths::new());
     let db = Arc::new(Database::open(&paths.db_path)?);
+
+    if args.iter().any(|a| a == "--mcp" || a == "mcp") {
+        let rt = tokio::runtime::Runtime::new()?;
+        return rt.block_on(async {
+            mcp::run_stdio_server(paths, db).await
+        });
+    }
 
     frontend::run_app(paths, db)
 }

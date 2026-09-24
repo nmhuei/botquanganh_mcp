@@ -18,5 +18,23 @@ if [ -z "$PYTHON" ]; then
     exit 1
 fi
 
+if [ "${1:-}" = "rust-mcp" ] || [ "${1:-}" = "mcp-rust" ]; then
+    shift
+    RUST_BIN="$ROOT_DIR/crates/bqa_desktop/target/release/bqa-mcp"
+    if [ ! -f "$RUST_BIN" ]; then
+        cargo build --release --manifest-path "$ROOT_DIR/crates/bqa_desktop/Cargo.toml" --bin bqa-mcp >&2
+    fi
+    exec "$RUST_BIN" "$@"
+fi
+
+if [ "${1:-}" = "studio" ] || [ "${1:-}" = "desktop" ]; then
+    shift
+    RUST_BIN="$ROOT_DIR/crates/bqa_desktop/target/release/bqa-desktop"
+    if [ ! -f "$RUST_BIN" ]; then
+        cargo build --release --manifest-path "$ROOT_DIR/crates/bqa_desktop/Cargo.toml" --bin bqa-desktop >&2
+    fi
+    exec "$RUST_BIN" "$@"
+fi
+
 export PYTHONPATH="$ROOT_DIR${PYTHONPATH:+:$PYTHONPATH}"
 exec "$PYTHON" -m app.cli.main "$@"

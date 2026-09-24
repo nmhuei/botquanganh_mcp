@@ -14,5 +14,19 @@ tokio = { version = "1.38", features = ["full"] }
 chrono = "0.4"
 notify = "6.1"
 reqwest = { version = "0.12", features = ["json"] }
+base64 = "0.22"
+sha2 = "0.10"
 libc = "0.2"
 rusqlite = { version = "0.31", features = ["bundled"] }
+
+[lib]
+name = "bqa_core"
+path = "src/lib.rs"
+
+[[bin]]
+name = "bqa-desktop"
+path = "src/main.rs"
+
+[[bin]]
+name = "bqa-mcp"
+path = "src/bin/mcp_server.rs"

@@ -104,6 +104,7 @@ dependencies = [
 name = "bqa-desktop"
 version = "1.0.0"
 dependencies = [
+ "base64",
  "chrono",
  "libc",
  "notify",
@@ -111,6 +112,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "sha2",
  "tao",
  "tokio",
  "wry",
