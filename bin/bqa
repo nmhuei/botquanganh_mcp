@@ -27,11 +27,18 @@ if [ "${1:-}" = "rust-mcp" ] || [ "${1:-}" = "mcp-rust" ]; then
     exec "$RUST_BIN" "$@"
 fi
 
-if [ "${1:-}" = "studio" ] || [ "${1:-}" = "desktop" ]; then
-    shift
+if [ "${1:-}" = "studio" ] || [ "${1:-}" = "desktop" ] || [ "${1:-}" = "ui" ] || [ "${1:-}" = "gui" ]; then
+    shift || true
     RUST_BIN="$ROOT_DIR/crates/bqa_desktop/target/release/bqa-desktop"
     if [ ! -f "$RUST_BIN" ]; then
         cargo build --release --manifest-path "$ROOT_DIR/crates/bqa_desktop/Cargo.toml" --bin bqa-desktop >&2
+    fi
+    export WEBKIT_DISABLE_COMPOSITING_MODE=1
+    if [ -z "${WAYLAND_DISPLAY:-}" ] && [ -e "/run/user/$(id -u)/wayland-0" ]; then
+        export WAYLAND_DISPLAY="wayland-0"
+    fi
+    if [ -z "${DISPLAY:-}" ]; then
+        export DISPLAY=":0"
     fi
     exec "$RUST_BIN" "$@"
 fi

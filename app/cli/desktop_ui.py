@@ -850,13 +850,25 @@ def run_desktop_ui(
     activity_reader: ActivityReader = read_mcp_command_activity,
     workspace_log_stream_reader: WorkspaceLogStreamReader | None = None,
 ) -> int:
-    """Route the public desktop launcher directly to the Qt implementation."""
+    """Route the desktop launcher directly to the native Rust implementation."""
+    rust_bin = Path(ctx.repo_root) / "crates/bqa_desktop/target/release/bqa-desktop"
+    if rust_bin.is_file():
+        env = dict(os.environ)
+        env.setdefault("WEBKIT_DISABLE_COMPOSITING_MODE", "1")
+        if not env.get("DISPLAY") and not env.get("WAYLAND_DISPLAY"):
+            env["DISPLAY"] = ":0"
+        try:
+            res = subprocess.run([str(rust_bin)], env=env)
+            return res.returncode
+        except Exception:
+            pass
+
     try:
         from app.cli.desktop_qt.app import run_qt_desktop_ui
         from app.cli.desktop_qt.compat import QtBindingError
     except ImportError as exc:
         raise DesktopUIUnavailable(
-            "Cannot launch UCS-SecretAgent because the Qt desktop UI could not be imported."
+            "Cannot launch desktop UI because Qt desktop UI could not be imported and Rust desktop binary was unavailable."
         ) from exc
     try:
         return run_qt_desktop_ui(
