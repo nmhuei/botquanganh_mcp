@@ -514,19 +514,73 @@ pub async fn handle_host_run_command(
     }))
 }
 
+fn resolve_scoped_path(
+    paths: &Arc<AppPaths>,
+    path_str: &str,
+    chat_id: Option<&str>,
+    is_write: bool,
+) -> Result<PathBuf, String> {
+    let p = Path::new(path_str);
+    let root = &paths.workspace_root;
+
+    let target_path = if let Some(cid) = chat_id {
+        let ws_dir = root.join(cid);
+        if p.is_absolute() {
+            let abs_p = p.to_path_buf();
+            if abs_p.starts_with(root) && !abs_p.starts_with(&ws_dir) {
+                if let Ok(rel) = abs_p.strip_prefix(root) {
+                    let first_comp = rel.components().next().map(|c| c.as_os_str().to_string_lossy());
+                    if let Some(comp) = first_comp {
+                        if comp == "script" || comp == "challenge" || comp == "solver" {
+                            ws_dir.join(rel)
+                        } else {
+                            abs_p
+                        }
+                    } else {
+                        abs_p
+                    }
+                } else {
+                    abs_p
+                }
+            } else {
+                abs_p
+            }
+        } else {
+            ws_dir.join(p)
+        }
+    } else {
+        if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            root.join(p)
+        }
+    };
+
+    if is_write {
+        for reserved in &["script", "challenge", "solver"] {
+            let reserved_dir = root.join(reserved);
+            if target_path == reserved_dir || target_path.starts_with(&reserved_dir) {
+                return Err(format!(
+                    "Policy BQA: Cấm tạo file/thư mục ('{}') trực tiếp tại thư mục gốc '{:?}'. Mọi tệp phải nằm bên trong thư mục workspace của challenge cụ thể.",
+                    reserved, root
+                ));
+            }
+        }
+    }
+
+    Ok(target_path)
+}
+
 pub fn handle_host_read_file(
     paths: &Arc<AppPaths>,
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     let path_str = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
+    let chat_id = args.get("chat_id").and_then(|v| v.as_str());
     let start_line = args.get("start_line").and_then(|v| v.as_i64()).unwrap_or(1).max(1) as usize;
     let end_line = args.get("end_line").and_then(|v| v.as_i64()).unwrap_or(200).max(start_line as i64) as usize;
 
-    let target_path = if Path::new(path_str).is_absolute() {
-        PathBuf::from(path_str)
-    } else {
-        paths.workspace_root.join(path_str)
-    };
+    let target_path = resolve_scoped_path(paths, path_str, chat_id, false)?;
 
     if !target_path.is_file() {
         return Err(format!("Tệp không tồn tại: {}", target_path.display()));
@@ -555,12 +609,9 @@ pub fn handle_host_write_file(
 ) -> Result<serde_json::Value, String> {
     let path_str = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
     let content = args.get("content").and_then(|v| v.as_str()).unwrap_or("");
+    let chat_id = args.get("chat_id").and_then(|v| v.as_str());
 
-    let target_path = if Path::new(path_str).is_absolute() {
-        PathBuf::from(path_str)
-    } else {
-        paths.workspace_root.join(path_str)
-    };
+    let target_path = resolve_scoped_path(paths, path_str, chat_id, true)?;
 
     if let Some(parent) = target_path.parent() {
         let _ = fs::create_dir_all(parent);
@@ -907,6 +958,47 @@ print("Got shell! Output: FLAG{canary_master_leak_win_1337}")
         assert!(!flags.is_empty());
         assert_eq!(flags[0].flag, "FLAG{canary_master_leak_win_1337}");
         assert!(flags[0].verified);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_root_protection_and_scoped_path_resolution() {
+        let temp_dir = std::env::temp_dir().join(format!("bqa_test_scope_{}", std::process::id()));
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let mut paths = AppPaths::new();
+        paths.workspace_root = temp_dir.join("BQA");
+        let _ = fs::create_dir_all(&paths.workspace_root);
+        let paths_arc = Arc::new(paths);
+
+        // 1. Ghi file với chat_id -> Tự động scope vào workspace của session
+        let write_res = handle_host_write_file(&paths_arc, &serde_json::json!({
+            "path": "script/ida_xrefs.py",
+            "content": "# ida script",
+            "chat_id": "rev_atarude"
+        })).unwrap();
+
+        assert_eq!(write_res["ok"], true);
+        let expected_file = paths_arc.workspace_root.join("rev_atarude").join("script").join("ida_xrefs.py");
+        assert!(expected_file.is_file());
+        assert!(!paths_arc.workspace_root.join("script").exists(), "Thư mục script rác đã bị tạo ở root!");
+
+        // 2. Đọc file với relative path và chat_id
+        let read_res = handle_host_read_file(&paths_arc, &serde_json::json!({
+            "path": "script/ida_xrefs.py",
+            "chat_id": "rev_atarude"
+        })).unwrap();
+        assert_eq!(read_res["ok"], true);
+        assert!(read_res["content"].as_str().unwrap().contains("# ida script"));
+
+        // 3. Cố tình ghi vào root/script không có chat_id -> Bị Policy chặn
+        let blocked = handle_host_write_file(&paths_arc, &serde_json::json!({
+            "path": paths_arc.workspace_root.join("script").join("bad.py").to_string_lossy().to_string(),
+            "content": "bad"
+        }));
+        assert!(blocked.is_err());
+        assert!(blocked.unwrap_err().contains("Policy BQA"));
 
         let _ = fs::remove_dir_all(&temp_dir);
     }

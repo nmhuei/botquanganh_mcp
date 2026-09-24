@@ -185,3 +185,60 @@ async def test_workspace_bind_reuses_canonical_folder_without_clutter(tmp_path, 
     assert not any("_v" in d for d in all_dirs)
 
 
+@pytest.mark.anyio
+async def test_root_protection_and_chat_workspace_auto_scoping(tmp_path, monkeypatch):
+    import app.config
+    from app.tools.workspace_tools import host_workspace_bind
+    from app.tools.host import host_write_file, host_read_file
+
+    monkeypatch.setattr(app.config, "HOST_CHAT_WORKSPACES", True, raising=False)
+    monkeypatch.setattr(app.config, "HOST_WORKSPACE_DIR", tmp_path, raising=False)
+    monkeypatch.setattr(app.config, "HOST_CHAT_ROOT", tmp_path, raising=False)
+
+    # 1. Bind session
+    res = await host_workspace_bind(label="pwn_babybof")
+    chat_id = res["chat_id"]
+    ws_dir = tmp_path / chat_id
+
+    # 2. Write file with relative path "script/exploit.py" -> MUST land inside session folder
+    write_res = host_write_file(path="script/exploit.py", content="#!/usr/bin/env python3\nprint('poc')", chat_id=chat_id)
+    assert write_res["ok"] is True
+    assert (ws_dir / "script" / "exploit.py").is_file()
+    assert not (tmp_path / "script").exists(), "Lỗi: Thư mục script rác đã bị tạo ở root!"
+
+    # 3. Read file with relative path -> MUST read from session folder
+    read_res = host_read_file(path="script/exploit.py", chat_id=chat_id)
+    assert read_res["ok"] is True
+    assert "print('poc')" in read_res["content"]
+
+    # 4. Attempt to write absolute path into root/script while in session -> MUST redirect to session folder
+    bad_root_script = str(tmp_path / "script" / "redirected.py")
+    write_res2 = host_write_file(path=bad_root_script, content="print('safe')", chat_id=chat_id)
+    assert write_res2["ok"] is True
+    assert (ws_dir / "script" / "redirected.py").is_file()
+    assert not (tmp_path / "script").exists(), "Lỗi: Thư mục script rác vẫn bị tạo ở root!"
+
+    # 5. Direct attempt to write into root/script or root/challenge WITHOUT session -> MUST be blocked by BIND_REQUIRED
+    (tmp_path / ".last_session").unlink(missing_ok=True)
+    from app.chat_identity import _CHAT_ID, _REGISTRY, _REGISTRY_LOCK
+    _CHAT_ID.set(None)
+    with _REGISTRY_LOCK:
+        _REGISTRY.clear()
+
+    blocked_script = host_write_file(path=str(tmp_path / "script" / "hacker.py"), content="evil", chat_id=None)
+    assert blocked_script["ok"] is False
+    assert "BIND_REQUIRED" in str(blocked_script)
+
+    # 6. Direct call to _resolve_scoped_file_path with root reserved dirs -> MUST raise PermissionError
+    from app.tools.host import _resolve_scoped_file_path
+    with pytest.raises(PermissionError, match="Policy BQA"):
+        _resolve_scoped_file_path(path=str(tmp_path / "script" / "evil.py"), chat_id=None, mode="write")
+
+    with pytest.raises(PermissionError, match="Policy BQA"):
+        _resolve_scoped_file_path(path=str(tmp_path / "challenge" / "evil.bin"), chat_id=None, mode="write")
+
+    with pytest.raises(PermissionError, match="Policy BQA"):
+        _resolve_scoped_file_path(path=str(tmp_path / "solver" / "evil.py"), chat_id=None, mode="write")
+
+
+

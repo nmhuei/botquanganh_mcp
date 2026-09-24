@@ -69,6 +69,9 @@ BIND_EXEMPT_TOOLS = frozenset({
     "host_workspace_bind",
     "host_workspace_list",
     "auto_download_ctf_challenge",
+    "ctf_transform",
+    "ctf_pattern",
+    "ctf_hash_tool",
 })
 
 
@@ -336,6 +339,66 @@ def _normalize_intent(intent: Optional[str]) -> Optional[str]:
     return cleaned[:200] or None
 
 
+def _resolve_scoped_file_path(
+    path: str,
+    chat_id: Optional[str],
+    mode: str = "read",
+) -> str:
+    """Resolve a file path scoped to the active chat workspace and protect the root directory.
+
+    Rules:
+    1. If chat_id is present and maps to an existing workspace directory, relative paths resolve inside it.
+    2. If an absolute path points directly to <workspace_root>/script, <workspace_root>/challenge, <workspace_root>/solver,
+       and chat_id is present with an existing workspace, it is redirected into the workspace folder.
+    3. Root Policy Lockdown: Any direct write or creation inside <workspace_root>/script,
+       <workspace_root>/challenge, <workspace_root>/solver is strictly forbidden.
+    """
+    from app import config as config_module
+    if not getattr(config_module, "HOST_CHAT_WORKSPACES", False):
+        return path
+
+    root_raw = getattr(config_module, "HOST_WORKSPACE_DIR", None)
+    if root_raw is None:
+        root_val = getattr(config_module, "HOST_CHAT_ROOT", "")
+        root = Path(root_val).resolve() if root_val else None
+    else:
+        root = Path(root_raw).resolve()
+
+    if root is None:
+        return path
+
+    raw_path = Path(path).expanduser()
+    resolved_path = raw_path
+
+    if chat_id:
+        ws_dir = (root / chat_id).resolve()
+        if ws_dir.is_dir():
+            if not raw_path.is_absolute():
+                resolved_path = (ws_dir / raw_path).resolve()
+            else:
+                abs_p = raw_path.resolve()
+                if abs_p.is_relative_to(root) and not abs_p.is_relative_to(ws_dir):
+                    try:
+                        rel = abs_p.relative_to(root)
+                        first_part = rel.parts[0] if rel.parts else ""
+                        if first_part in {"script", "challenge", "solver"}:
+                            resolved_path = (ws_dir / rel).resolve()
+                    except ValueError:
+                        pass
+
+    if mode == "write":
+        check_p = resolved_path.resolve() if resolved_path.is_absolute() else (root / resolved_path).resolve()
+        for reserved in ("script", "challenge", "solver"):
+            reserved_dir = root / reserved
+            if check_p == reserved_dir or check_p.is_relative_to(reserved_dir):
+                raise PermissionError(
+                    f"Policy BQA: Cấm tạo file/thư mục ('{reserved}') trực tiếp tại thư mục gốc '{root}'. "
+                    f"Mọi tệp phải nằm bên trong thư mục workspace của challenge (ví dụ: {root}/<challenge_name>/...)."
+                )
+
+    return str(resolved_path)
+
+
 @mcp.tool(
     name="host_list_directory",
     description=(
@@ -351,12 +414,16 @@ def host_list_directory(
     validated, rejection = _guard_chat_id("host_list_directory", chat_id)
     if rejection is not None:
         return rejection
-    journal_details = {"path": path, "max_entries": max_entries}
+    try:
+        scoped_path = _resolve_scoped_file_path(path, validated, mode="read")
+    except Exception as exc:
+        return format_error_response(exc)
+    journal_details = {"path": scoped_path, "max_entries": max_entries}
     journal_op = _begin_workspace_journal(
         "host_list_directory", validated, journal_details
     )
     try:
-        result = list_directory(path, max_entries=max_entries)
+        result = list_directory(scoped_path, max_entries=max_entries)
     except Exception as exc:
         result = format_error_response(exc)
     _record_tool_call("host_list_directory", validated)
@@ -388,8 +455,12 @@ def host_read_file(
     validated, rejection = _guard_chat_id("host_read_file", chat_id)
     if rejection is not None:
         return rejection
+    try:
+        scoped_path = _resolve_scoped_file_path(path, validated, mode="read")
+    except Exception as exc:
+        return format_error_response(exc)
     journal_details = {
-        "path": path,
+        "path": scoped_path,
         "start_line": start_line,
         "end_line": end_line,
         "max_bytes": max_bytes,
@@ -397,7 +468,7 @@ def host_read_file(
     journal_op = _begin_workspace_journal("host_read_file", validated, journal_details)
     try:
         result = read_text_file(
-            path,
+            scoped_path,
             start_line=start_line,
             end_line=end_line,
             max_bytes=max_bytes,
@@ -433,8 +504,12 @@ def host_write_file(
     validated, rejection = _guard_chat_id("host_write_file", chat_id)
     if rejection is not None:
         return rejection
+    try:
+        scoped_path = _resolve_scoped_file_path(path, validated, mode="write")
+    except Exception as exc:
+        return format_error_response(exc)
     journal_details = {
-        "path": path,
+        "path": scoped_path,
         "size_bytes": len(content.encode("utf-8")),
         "overwrite": overwrite,
         "create_parents": create_parents,
@@ -442,7 +517,7 @@ def host_write_file(
     journal_op = _begin_workspace_journal("host_write_file", validated, journal_details)
     try:
         result = write_text_file(
-            path,
+            scoped_path,
             content,
             overwrite=overwrite,
             create_parents=create_parents,
@@ -477,13 +552,17 @@ def host_replace_in_file(
     validated, rejection = _guard_chat_id("host_replace_in_file", chat_id)
     if rejection is not None:
         return rejection
-    journal_details = {"path": path, "expected_count": expected_count}
+    try:
+        scoped_path = _resolve_scoped_file_path(path, validated, mode="write")
+    except Exception as exc:
+        return format_error_response(exc)
+    journal_details = {"path": scoped_path, "expected_count": expected_count}
     journal_op = _begin_workspace_journal(
         "host_replace_in_file", validated, journal_details
     )
     try:
         result = replace_text_in_file(
-            path,
+            scoped_path,
             old,
             new,
             expected_count=expected_count,
@@ -513,10 +592,14 @@ def host_append_file(
     validated, rejection = _guard_chat_id("host_append_file", chat_id)
     if rejection is not None:
         return rejection
-    journal_details = {"path": path, "size_bytes": len(content.encode("utf-8"))}
+    try:
+        scoped_path = _resolve_scoped_file_path(path, validated, mode="write")
+    except Exception as exc:
+        return format_error_response(exc)
+    journal_details = {"path": scoped_path, "size_bytes": len(content.encode("utf-8"))}
     journal_op = _begin_workspace_journal("host_append_file", validated, journal_details)
     try:
-        result = append_text_file(path, content)
+        result = append_text_file(scoped_path, content)
     except Exception as exc:
         result = format_error_response(exc)
     _record_tool_call("host_append_file", validated)
@@ -546,12 +629,16 @@ def host_make_directory(
     validated, rejection = _guard_chat_id("host_make_directory", chat_id)
     if rejection is not None:
         return rejection
-    journal_details = {"path": path, "parents": parents}
+    try:
+        scoped_path = _resolve_scoped_file_path(path, validated, mode="write")
+    except Exception as exc:
+        return format_error_response(exc)
+    journal_details = {"path": scoped_path, "parents": parents}
     journal_op = _begin_workspace_journal(
         "host_make_directory", validated, journal_details
     )
     try:
-        result = make_directory(path, parents=parents)
+        result = make_directory(scoped_path, parents=parents)
     except Exception as exc:
         result = format_error_response(exc)
     _record_tool_call("host_make_directory", validated)
@@ -582,9 +669,13 @@ def host_search_text(
     validated, rejection = _guard_chat_id("host_search_text", chat_id)
     if rejection is not None:
         return rejection
+    try:
+        scoped_path = _resolve_scoped_file_path(path, validated, mode="read")
+    except Exception as exc:
+        return format_error_response(exc)
     journal_details = {
         "query": query,
-        "path": path,
+        "path": scoped_path,
         "case_sensitive": case_sensitive,
         "max_results": max_results,
     }
@@ -592,7 +683,7 @@ def host_search_text(
     try:
         result = search_text(
             query,
-            path=path,
+            path=scoped_path,
             case_sensitive=case_sensitive,
             max_results=max_results,
         )
