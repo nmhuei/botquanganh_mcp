@@ -26,15 +26,33 @@ pub fn scaffold_ctf_harness(
         .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
         .collect::<String>();
 
+    let session_id = format!("cw-{}-{}", chrono::Utc::now().format("%Y%m%d%H%M%S"), clean_name);
+    let session_dir = paths.workspace_root.join(&session_id);
+
+    scaffold_ctf_harness_into(&session_dir, &session_id, paths, db, config)?;
+    Ok(session_dir)
+}
+
+pub fn scaffold_ctf_harness_into(
+    session_dir: &std::path::Path,
+    session_id: &str,
+    paths: &AppPaths,
+    db: Option<&Database>,
+    config: &HarnessConfig,
+) -> Result<(), std::io::Error> {
+    let clean_name = config
+        .name
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect::<String>();
+
     let category = match config.category.to_lowercase().as_str() {
         "pwn" | "reverse" | "crypto" | "web" | "forensics" | "misc" | "ai-ml" | "osint" => {
             config.category.to_lowercase()
         }
         _ => "misc".to_string(),
     };
-
-    let session_id = format!("cw-{}-{}", chrono::Utc::now().format("%Y%m%d%H%M%S"), clean_name);
-    let session_dir = paths.workspace_root.join(&session_id);
 
     let chal_dir = session_dir.join("challenge");
     let script_dir = session_dir.join("script");
@@ -44,9 +62,11 @@ pub fn scaffold_ctf_harness(
     fs::create_dir_all(&script_dir)?;
     fs::create_dir_all(&solver_dir)?;
 
-    // 1. Write challenge/NOTE.md
-    let note_content = format!(
-        r#"# Challenge: {name}
+    // 1. Write challenge/NOTE.md (only if not exists)
+    let note_path = chal_dir.join("NOTE.md");
+    if !note_path.exists() {
+        let note_content = format!(
+            r#"# Challenge: {name}
 - Category: {category}
 - Created: {created}
 - Target: {target}
@@ -58,21 +78,24 @@ pub fn scaffold_ctf_harness(
 3. The final reproducible exploit must reside in `solver/solve.py`.
 4. No automated submission. Flag verification must be evidence-first.
 "#,
-        name = clean_name,
-        category = category,
-        created = chrono::Utc::now().to_rfc3339(),
-        target = config
-            .target_url
-            .as_deref()
-            .or(config.target_host.as_deref())
-            .unwrap_or("N/A"),
-        desc = config.description.as_deref().unwrap_or("No description provided.")
-    );
-    fs::write(chal_dir.join("NOTE.md"), note_content)?;
+            name = clean_name,
+            category = category,
+            created = chrono::Utc::now().to_rfc3339(),
+            target = config
+                .target_url
+                .as_deref()
+                .or(config.target_host.as_deref())
+                .unwrap_or("N/A"),
+            desc = config.description.as_deref().unwrap_or("No description provided.")
+        );
+        fs::write(note_path, note_content)?;
+    }
 
-    // 2. Write script/analysis.md
-    let analysis_content = format!(
-        r#"# Analysis & Hypotheses for {name} ({category})
+    // 2. Write script/analysis.md (only if not exists)
+    let analysis_path = script_dir.join("analysis.md");
+    if !analysis_path.exists() {
+        let analysis_content = format!(
+            r#"# Analysis & Hypotheses for {name} ({category})
 
 ## 1. Initial Triage & Recon
 - File signatures / Architecture:
@@ -86,15 +109,18 @@ pub fn scaffold_ctf_harness(
 ## 3. Disproven / Dead Paths
 (Record failing payloads and discarded ideas here to avoid repeating work)
 "#,
-        name = clean_name,
-        category = category
-    );
-    fs::write(script_dir.join("analysis.md"), analysis_content)?;
+            name = clean_name,
+            category = category
+        );
+        fs::write(analysis_path, analysis_content)?;
+    }
 
-    // 3. Write solver/solve.py based on category
-    let solver_code = match category.as_str() {
-        "pwn" => format!(
-            r#"#!/usr/bin/env python3
+    // 3. Write solver/solve.py based on category (only if not exists)
+    let solve_path = solver_dir.join("solve.py");
+    if !solve_path.exists() {
+        let solver_code = match category.as_str() {
+            "pwn" => format!(
+                r#"#!/usr/bin/env python3
 """Deterministic exploit script for {name} ({category})."""
 
 import os
@@ -129,14 +155,14 @@ def exploit():
 if __name__ == "__main__":
     exploit()
 "#,
-            name = clean_name,
-            category = category,
-            target_host = config.target_host.as_deref().unwrap_or(""),
-            target_port = config.target_port.unwrap_or(0),
-            binary_name = clean_name
-        ),
-        "crypto" => format!(
-            r#"#!/usr/bin/env python3
+                name = clean_name,
+                category = category,
+                target_host = config.target_host.as_deref().unwrap_or(""),
+                target_port = config.target_port.unwrap_or(0),
+                binary_name = clean_name
+            ),
+            "crypto" => format!(
+                r#"#!/usr/bin/env python3
 """Deterministic cryptographic solver for {name} ({category})."""
 
 import sys
@@ -154,11 +180,11 @@ def solve():
 if __name__ == "__main__":
     solve()
 "#,
-            name = clean_name,
-            category = category
-        ),
-        "web" => format!(
-            r#"#!/usr/bin/env python3
+                name = clean_name,
+                category = category
+            ),
+            "web" => format!(
+                r#"#!/usr/bin/env python3
 """Deterministic web exploit harness for {name} ({category})."""
 
 import requests
@@ -174,12 +200,12 @@ def exploit():
 if __name__ == "__main__":
     exploit()
 "#,
-            name = clean_name,
-            category = category,
-            target_url = config.target_url.as_deref().unwrap_or("http://localhost:8080")
-        ),
-        "reverse" => format!(
-            r#"#!/usr/bin/env python3
+                name = clean_name,
+                category = category,
+                target_url = config.target_url.as_deref().unwrap_or("http://localhost:8080")
+            ),
+            "reverse" => format!(
+                r#"#!/usr/bin/env python3
 """Reverse engineering keygen / logic inverter for {name} ({category})."""
 
 import sys
@@ -192,11 +218,11 @@ def solve():
 if __name__ == "__main__":
     solve()
 "#,
-            name = clean_name,
-            category = category
-        ),
-        _ => format!(
-            r#"#!/usr/bin/env python3
+                name = clean_name,
+                category = category
+            ),
+            _ => format!(
+                r#"#!/usr/bin/env python3
 """Deterministic solver for {name} ({category})."""
 
 import sys
@@ -208,30 +234,38 @@ def solve():
 if __name__ == "__main__":
     solve()
 "#,
-            name = clean_name,
-            category = category
-        ),
-    };
-    fs::write(solver_dir.join("solve.py"), solver_code)?;
-    fs::write(
-        solver_dir.join("requirements.txt"),
-        "# Python dependencies for standalone solve script\nrequests>=2.28.0\n",
-    )?;
+                name = clean_name,
+                category = category
+            ),
+        };
+        fs::write(&solve_path, solver_code)?;
+    }
 
-    // 4. Write meta.json
+    let reqs_path = solver_dir.join("requirements.txt");
+    if !reqs_path.exists() {
+        fs::write(
+            reqs_path,
+            "# Python dependencies for standalone solve script\nrequests>=2.28.0\n",
+        )?;
+    }
+
+    // 4. Write meta.json (only if not exists)
+    let meta_path = session_dir.join("meta.json");
     let now_str = chrono::Utc::now().to_rfc3339();
-    let meta_json = serde_json::json!({
-        "chat_id": session_id,
-        "label": format!("ctf_{}_{}", category, clean_name),
-        "category": category,
-        "created_at": now_str,
-        "target_host": config.target_host,
-        "target_port": config.target_port,
-        "target_url": config.target_url,
-        "description": config.description,
-        "status": "active"
-    });
-    fs::write(session_dir.join("meta.json"), serde_json::to_string_pretty(&meta_json)?)?;
+    if !meta_path.exists() {
+        let meta_json = serde_json::json!({
+            "chat_id": session_id,
+            "label": format!("ctf_{}_{}", category, clean_name),
+            "category": category,
+            "created_at": now_str,
+            "target_host": config.target_host,
+            "target_port": config.target_port,
+            "target_url": config.target_url,
+            "description": config.description,
+            "status": "active"
+        });
+        fs::write(meta_path, serde_json::to_string_pretty(&meta_json)?)?;
+    }
 
     // 5. Update .last_session pointer
     let pointer = serde_json::json!({ "chat_id": session_id });
@@ -240,8 +274,8 @@ if __name__ == "__main__":
     // 6. Record to SQLite Database if provided
     if let Some(database) = db {
         let session_item = SessionItem {
-            id: session_id.clone(),
-            chat_id: session_id.clone(),
+            id: session_id.to_string(),
+            chat_id: session_id.to_string(),
             label: format!("ctf_{}_{}", category, clean_name),
             ops: 0,
             ops_count: 0,
@@ -257,5 +291,5 @@ if __name__ == "__main__":
         );
     }
 
-    Ok(session_dir)
+    Ok(())
 }

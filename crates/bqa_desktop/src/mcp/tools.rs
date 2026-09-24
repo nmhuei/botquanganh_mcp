@@ -5,9 +5,9 @@ use std::time::Instant;
 use base64::prelude::*;
 use sha2::{Digest, Sha256};
 
-use crate::backend::ctf_harness::{scaffold_ctf_harness, HarnessConfig};
+use crate::backend::ctf_harness::{scaffold_ctf_harness, scaffold_ctf_harness_into, HarnessConfig};
 use crate::backend::paths::AppPaths;
-use crate::db::{CommandItem, Database, SessionItem};
+use crate::db::{CommandItem, Database};
 
 pub async fn handle_auto_download_ctf_challenge(
     paths: &Arc<AppPaths>,
@@ -299,42 +299,64 @@ pub fn handle_host_workspace_bind(
         .unwrap_or_else(|| format!("cw-{}-{}", chrono::Utc::now().format("%Y%m%d%H%M%S"), label));
 
     let ws_dir = paths.workspace_root.join(&session_id);
-    let _ = fs::create_dir_all(&ws_dir);
+    fs::create_dir_all(&ws_dir).map_err(|e| format!("Failed to create workspace directory: {}", e))?;
 
-    // If CTF session, scaffold harness
-    if label.to_lowercase().contains("ctf") {
-        let cfg = HarnessConfig {
-            name: label.replace("ctf_", "").replace("ctf-", ""),
-            category: "pwn".to_string(),
-            target_host: None,
-            target_port: None,
-            target_url: None,
-            description: None,
-        };
-        let _ = scaffold_ctf_harness(paths, Some(db), &cfg);
-    } else {
-        let session_item = SessionItem {
-            id: session_id.clone(),
-            chat_id: session_id.clone(),
-            label: label.to_string(),
-            ops: 0,
-            ops_count: 0,
-            created_at: chrono::Utc::now().to_rfc3339(),
-            created_ts: chrono::Utc::now().timestamp().max(0) as u64,
-            active: true,
-        };
-        let _ = db.upsert_session(&session_item, None, None, None);
+    // Detect category from label
+    let lower_lbl = label.to_lowercase();
+    let mut detected_cat = "misc".to_string();
+    for cat in &["pwn", "crypto", "web", "reverse", "forensics", "ai-ml", "osint"] {
+        if lower_lbl.contains(cat) {
+            detected_cat = cat.to_string();
+            break;
+        }
+    }
+
+    let clean_name = label
+        .replace("ctf_", "")
+        .replace("ctf-", "")
+        .replace("ctf", "")
+        .trim_matches('_')
+        .trim_matches('-')
+        .to_string();
+    let clean_name = if clean_name.is_empty() { "chal".to_string() } else { clean_name };
+
+    let cfg = HarnessConfig {
+        name: clean_name,
+        category: detected_cat,
+        target_host: args.get("target_host").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        target_port: args.get("target_port").and_then(|v| v.as_i64()).map(|p| p as i32),
+        target_url: args.get("target_url").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        description: args.get("description").and_then(|v| v.as_str()).map(|s| s.to_string()),
+    };
+
+    // ALWAYS enforce 3-folder CTF harness (idempotent, won't overwrite existing notes/solvers)
+    if let Err(e) = scaffold_ctf_harness_into(&ws_dir, &session_id, paths, Some(db), &cfg) {
+        return Err(format!("Failed to enforce harness layout: {}", e));
     }
 
     let pointer = serde_json::json!({ "chat_id": session_id });
     let _ = fs::write(paths.workspace_root.join(".last_session"), pointer.to_string());
+
+    let chal_dir = ws_dir.join("challenge");
+    let script_dir = ws_dir.join("script");
+    let solver_dir = ws_dir.join("solver");
 
     Ok(serde_json::json!({
         "ok": true,
         "chat_id": session_id,
         "session_id": session_id,
         "workspace": ws_dir.to_string_lossy().to_string(),
-        "message": format!("Workspace ready at {}", ws_dir.display()),
+        "workspace_dir": ws_dir.to_string_lossy().to_string(),
+        "harness_enforced": true,
+        "harness": {
+            "challenge_dir": chal_dir.to_string_lossy().to_string(),
+            "script_dir": script_dir.to_string_lossy().to_string(),
+            "solver_dir": solver_dir.to_string_lossy().to_string(),
+            "note_file": chal_dir.join("NOTE.md").to_string_lossy().to_string(),
+            "analysis_file": script_dir.join("analysis.md").to_string_lossy().to_string(),
+            "solver_file": solver_dir.join("solve.py").to_string_lossy().to_string(),
+        },
+        "message": format!("Workspace ready with enforced CTF harness at {}", ws_dir.display()),
     }))
 }
 
@@ -681,4 +703,50 @@ mod tests {
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
+
+    #[test]
+    fn test_host_workspace_bind_enforces_harness_unconditionally() {
+        let temp_dir = std::env::temp_dir().join(format!("bqa_test_bind_harness_{}", std::process::id()));
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let mut paths = AppPaths::new();
+        paths.repo_root = temp_dir.clone();
+        paths.workspace_root = temp_dir.join("workspaces");
+        paths.db_path = temp_dir.join("test.db");
+
+        let db = Database::open(&paths.db_path).unwrap();
+        let paths_arc = Arc::new(paths);
+        let db_arc = Arc::new(db);
+
+        // 1. First bind with custom non-CTF label
+        let bind_res = handle_host_workspace_bind(&paths_arc, &db_arc, &serde_json::json!({
+            "label": "my_incident_investigation"
+        })).unwrap();
+
+        assert_eq!(bind_res["ok"], true);
+        assert_eq!(bind_res["harness_enforced"], true);
+        let ws_path = PathBuf::from(bind_res["workspace"].as_str().unwrap());
+        assert!(ws_path.join("challenge").join("NOTE.md").is_file());
+        assert!(ws_path.join("script").join("analysis.md").is_file());
+        assert!(ws_path.join("solver").join("solve.py").is_file());
+
+        // 2. User writes custom work into solver/solve.py
+        let custom_solver_code = "#!/usr/bin/env python3\nprint('USER_CUSTOM_SOLVER_PAYLOAD')";
+        fs::write(ws_path.join("solver").join("solve.py"), custom_solver_code).unwrap();
+
+        // 3. Re-bind / resume session with same chat_id
+        let chat_id = bind_res["chat_id"].as_str().unwrap();
+        let rebind_res = handle_host_workspace_bind(&paths_arc, &db_arc, &serde_json::json!({
+            "chat_id": chat_id,
+            "label": "my_incident_investigation"
+        })).unwrap();
+
+        assert_eq!(rebind_res["ok"], true);
+        // Verify custom code was NOT overwritten on resume
+        let current_solver_content = fs::read_to_string(ws_path.join("solver").join("solve.py")).unwrap();
+        assert_eq!(current_solver_content, custom_solver_code);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
 }
+

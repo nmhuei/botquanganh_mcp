@@ -68,6 +68,7 @@ def _invalid_chat_id_payload() -> dict[str, Any]:
 BIND_EXEMPT_TOOLS = frozenset({
     "host_workspace_bind",
     "host_workspace_list",
+    "auto_download_ctf_challenge",
 })
 
 
@@ -176,7 +177,7 @@ def _guard_chat_id(
                 resolved = get_active_workspace()
             except Exception:
                 pass
-        if resolved is None:
+        if resolved is None and tool not in BIND_EXEMPT_TOOLS:
             return None, _bind_required_payload(tool)
 
     if resolved is None:

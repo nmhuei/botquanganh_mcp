@@ -22,9 +22,9 @@ from app.chat_errors import (
 from app.mcp_server import mcp
 
 _NOTE_HINTS = (
+    "MANDATORY HARNESS: challenge/ (read-only), script/ (probes & notes), solver/ (reproducible solve.py).",
     "Append notes with host_save_note; each entry lands in notes/log.txt.",
     "Read files inside this workspace with host_read_file using absolute paths.",
-    "Keep chat-specific files under this path so sessions stay isolated.",
 )
 
 
@@ -242,18 +242,25 @@ async def host_workspace_bind(
             f"> ```text\n> {resume_prompt_text}\n> ```"
         )
 
-        if created and label and any(label.lower().startswith(p) for p in ("ctf_", "ctf-", "ctf")):
+        ws_path = Path(resolved)
+        is_missing_harness = not ((ws_path / "challenge").is_dir() and (ws_path / "script").is_dir() and (ws_path / "solver").is_dir())
+        if created or is_missing_harness:
             try:
                 from app.ctf.challenge_harness import setup_ctf_harness
-                clean_lbl = label
+                raw_lbl = label or assigned_id or "session"
+                clean_lbl = raw_lbl
                 for prefix in ("ctf_", "ctf-", "ctf"):
                     if clean_lbl.lower().startswith(prefix):
                         clean_lbl = clean_lbl[len(prefix):]
                         break
                 parts = clean_lbl.split("_", 1)
-                cat = parts[0] if parts[0] in {"pwn", "reverse", "crypto", "web", "forensics", "misc"} else "pwn"
-                cname = parts[1] if len(parts) > 1 else (parts[0] or "challenge")
-                setup_ctf_harness(Path(resolved), name=cname, category=cat)
+                detected_cat = "misc"
+                for cat_candidate in ("pwn", "crypto", "web", "reverse", "forensics", "ai-ml", "osint"):
+                    if cat_candidate in raw_lbl.lower():
+                        detected_cat = cat_candidate
+                        break
+                cname = parts[1] if len(parts) > 1 and parts[0] in {"pwn", "crypto", "web", "reverse", "forensics", "misc"} else (parts[0] or "challenge")
+                setup_ctf_harness(ws_path, name=cname, category=detected_cat)
             except Exception:
                 pass
 
@@ -263,7 +270,6 @@ async def host_workspace_bind(
             "workspace_files": ["challenge", "script", "solver"] if (Path(resolved) / "challenge").is_dir() else [],
         }
 
-
         extra_fields: dict[str, Any] = {
             "chat_id": assigned_id,
             "session_id": assigned_id,
@@ -271,6 +277,13 @@ async def host_workspace_bind(
             "workspace_dir": resolved,
             "created": bool(created),
             "is_new": bool(created),
+            "harness_enforced": True,
+            "harness": {
+                "challenge_dir": str(Path(resolved) / "challenge"),
+                "script_dir": str(Path(resolved) / "script"),
+                "solver_dir": str(Path(resolved) / "solver"),
+                "solve_script": str(Path(resolved) / "solver" / "solve.py"),
+            },
             "recent_commands": context_data["recent_commands"],
             "recent_notes": context_data["recent_notes"],
             "workspace_files": context_data["workspace_files"],

@@ -283,26 +283,30 @@ def setup_ctf_harness(
     binary_name = primary_artifact.name if primary_artifact else clean_name
 
     # 2. metadata.json
-    meta = {
-        "challenge_id": f"{norm_cat}_{clean_name}",
-        "name": clean_name,
-        "category": norm_cat,
-        "target": target or "",
-        "target_host": target_host,
-        "target_port": target_port,
-        "url": url or "",
-        "status": "in_progress",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    (ws / "metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    meta_file = ws / "metadata.json"
+    if not meta_file.exists():
+        meta = {
+            "challenge_id": f"{norm_cat}_{clean_name}",
+            "name": clean_name,
+            "category": norm_cat,
+            "target": target or "",
+            "target_host": target_host,
+            "target_port": target_port,
+            "url": url or "",
+            "status": "in_progress",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        meta_file.write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
     # 3. challenge/NOTE.md
-    note_content = f"""# Challenge: {clean_name}
+    note_file = challenge_dir / "NOTE.md"
+    if not note_file.exists():
+        note_content = f"""# Challenge: {clean_name}
 
 - **Category:** {norm_cat.upper()}
 - **Target Endpoint:** `{target or 'Local / Not specified'}`
 - **Source URL:** {url or 'Not specified'}
-- **Created At:** {meta['created_at']}
+- **Created At:** {datetime.now(timezone.utc).isoformat()}
 
 ## Description
 {description or 'Challenge description or initial prompt goes here.'}
@@ -311,7 +315,7 @@ def setup_ctf_harness(
 - Remember: NEVER submit flags automatically. Store candidate flags in `script/analysis.md`.
 - Inspect artifacts in this directory with `ctf_triage_artifact`.
 """
-    (challenge_dir / "NOTE.md").write_text(note_content, encoding="utf-8")
+        note_file.write_text(note_content, encoding="utf-8")
 
     # 4. Perform initial triage on primary artifact if found
     triage_info: Optional[dict[str, Any]] = None
@@ -332,7 +336,9 @@ def setup_ctf_harness(
             pass
 
     # 5. script/analysis.md (Living Analysis & Candidate Flags)
-    analysis_content = f"""# Analysis: {clean_name}
+    analysis_file = script_dir / "analysis.md"
+    if not analysis_file.exists():
+        analysis_content = f"""# Analysis: {clean_name}
 
 ## 1. Status & Phase
 - **Current Phase:** TRIAGE
@@ -355,36 +361,38 @@ def setup_ctf_harness(
 ## 6. Dead Ends Eliminated
 - *(None yet)*
 """
-    (script_dir / "analysis.md").write_text(analysis_content, encoding="utf-8")
+        analysis_file.write_text(analysis_content, encoding="utf-8")
 
     # 6. solver/solve.py
-    template_str = _SOLVER_TEMPLATES.get(norm_cat, _SOLVER_TEMPLATES["default"])
-    solve_code = (
-        template_str
-        .replace("{name}", clean_name)
-        .replace("{category}", norm_cat)
-        .replace("{target_host}", target_host or "127.0.0.1")
-        .replace("{target_port}", str(target_port or 1337))
-        .replace("{target_url}", target_url or "http://127.0.0.1:8000")
-        .replace("{binary_name}", binary_name)
-    )
-
     solve_file = solver_dir / "solve.py"
-    solve_file.write_text(solve_code, encoding="utf-8")
-    try:
-        os.chmod(solve_file, 0o755)
-    except OSError:
-        pass
+    if not solve_file.exists():
+        template_str = _SOLVER_TEMPLATES.get(norm_cat, _SOLVER_TEMPLATES["default"])
+        solve_code = (
+            template_str
+            .replace("{name}", clean_name)
+            .replace("{category}", norm_cat)
+            .replace("{target_host}", target_host or "127.0.0.1")
+            .replace("{target_port}", str(target_port or 1337))
+            .replace("{target_url}", target_url or "http://127.0.0.1:8000")
+            .replace("{binary_name}", binary_name)
+        )
+        solve_file.write_text(solve_code, encoding="utf-8")
+        try:
+            os.chmod(solve_file, 0o755)
+        except OSError:
+            pass
 
     # 7. solver/requirements.txt
-    reqs = ["requests\n"]
-    if norm_cat == "pwn":
-        reqs.append("pwntools\n")
-    elif norm_cat == "crypto":
-        reqs.extend(["pycryptodome\n", "sympy\n"])
-    elif norm_cat == "reverse":
-        reqs.append("z3-solver\n")
-    (solver_dir / "requirements.txt").write_text("".join(reqs), encoding="utf-8")
+    reqs_file = solver_dir / "requirements.txt"
+    if not reqs_file.exists():
+        reqs = ["requests\n"]
+        if norm_cat == "pwn":
+            reqs.append("pwntools\n")
+        elif norm_cat == "crypto":
+            reqs.extend(["pycryptodome\n", "sympy\n"])
+        elif norm_cat == "reverse":
+            reqs.append("z3-solver\n")
+        reqs_file.write_text("".join(reqs), encoding="utf-8")
 
     return {
         "ok": True,
