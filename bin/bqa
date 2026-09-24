@@ -31,6 +31,7 @@ if [ "${1:-}" = "studio" ] || [ "${1:-}" = "desktop" ] || [ "${1:-}" = "ui" ] ||
     shift || true
     RUST_BIN="$ROOT_DIR/crates/bqa_desktop/target/release/bqa-desktop"
     if [ ! -f "$RUST_BIN" ]; then
+        echo "[*] Đang biên dịch BotQuangAnh Native Studio (Rust)..."
         cargo build --release --manifest-path "$ROOT_DIR/crates/bqa_desktop/Cargo.toml" --bin bqa-desktop >&2
     fi
     export WEBKIT_DISABLE_COMPOSITING_MODE=1
@@ -40,7 +41,51 @@ if [ "${1:-}" = "studio" ] || [ "${1:-}" = "desktop" ] || [ "${1:-}" = "ui" ] ||
     if [ -z "${DISPLAY:-}" ]; then
         export DISPLAY=":0"
     fi
-    exec "$RUST_BIN" "$@"
+
+    # Lệnh dừng UI: bqa ui stop
+    if [ "${1:-}" = "stop" ]; then
+        PIDS="$(pgrep -f "$RUST_BIN" 2>/dev/null || true)"
+        if [ -n "$PIDS" ]; then
+            kill $PIDS 2>/dev/null || true
+            sleep 0.5
+            kill -9 $PIDS 2>/dev/null || true
+            rm -f "$ROOT_DIR/logs/desktop-ui.pid" 2>/dev/null || true
+            echo "[✓] Đã dừng BotQuangAnh Studio (Rust)."
+        else
+            echo "[i] Không có tiến trình BotQuangAnh Studio nào đang chạy."
+        fi
+        exit 0
+    fi
+
+    # Kiểm tra cờ chạy foreground: --foreground hoặc --inline
+    IS_FOREGROUND=0
+    FILTERED_ARGS=()
+    for arg in "$@"; do
+        if [ "$arg" = "--foreground" ] || [ "$arg" = "--inline" ]; then
+            IS_FOREGROUND=1
+        else
+            FILTERED_ARGS+=("$arg")
+        fi
+    done
+
+    if [ "$IS_FOREGROUND" -eq 1 ]; then
+        exec "$RUST_BIN" "${FILTERED_ARGS[@]}"
+    fi
+
+    # Mặc định chạy ngầm (Detached Background)
+    RUNNING_PID="$(pgrep -f "$RUST_BIN" | head -n 1 2>/dev/null || true)"
+    if [ -n "$RUNNING_PID" ]; then
+        echo "[i] BotQuangAnh Studio (Rust) đang chạy ngầm sẵn (PID: $RUNNING_PID)."
+        exit 0
+    fi
+
+    mkdir -p "$ROOT_DIR/logs"
+    nohup "$RUST_BIN" "${FILTERED_ARGS[@]}" > "$ROOT_DIR/logs/desktop-ui.log" 2>&1 &
+    PID=$!
+    echo "$PID" > "$ROOT_DIR/logs/desktop-ui.pid"
+    echo "[+] BotQuangAnh Studio (Rust) đã khởi chạy ngầm thành công (PID: $PID)."
+    echo "[i] Gõ 'bqa ui stop' để dừng giao diện."
+    exit 0
 fi
 
 export PYTHONPATH="$ROOT_DIR${PYTHONPATH:+:$PYTHONPATH}"
