@@ -24,11 +24,33 @@ pub fn scaffold_ctf_harness(
         .to_lowercase()
         .chars()
         .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
-        .collect::<String>();
+        .collect::<String>()
+        .trim_matches('_')
+        .trim_matches('-')
+        .to_string();
+    let clean_name = if clean_name.is_empty() { "chal".to_string() } else { clean_name };
 
-    let session_id = format!("cw-{}-{}", chrono::Utc::now().format("%Y%m%d%H%M%S"), clean_name);
+    let category = match config.category.to_lowercase().as_str() {
+        "pwn" | "reverse" | "crypto" | "web" | "forensics" | "misc" | "ai-ml" | "osint" => {
+            config.category.to_lowercase()
+        }
+        _ => "misc".to_string(),
+    };
+
+    let base_id = if clean_name.starts_with(&format!("{}_", category)) || clean_name.starts_with(&format!("{}-", category)) {
+        clean_name.replace('-', "_")
+    } else {
+        format!("{}_{}", category, clean_name)
+    };
+
+    let mut session_id = base_id.clone();
+    let mut v = 1;
+    while paths.workspace_root.join(&session_id).exists() && v <= 100 {
+        v += 1;
+        session_id = format!("{}_v{}", base_id, v);
+    }
+
     let session_dir = paths.workspace_root.join(&session_id);
-
     scaffold_ctf_harness_into(&session_dir, &session_id, paths, db, config)?;
     Ok(session_dir)
 }
@@ -255,7 +277,7 @@ if __name__ == "__main__":
     if !meta_path.exists() {
         let meta_json = serde_json::json!({
             "chat_id": session_id,
-            "label": format!("ctf_{}_{}", category, clean_name),
+            "label": clean_name,
             "category": category,
             "created_at": now_str,
             "target_host": config.target_host,
@@ -276,7 +298,7 @@ if __name__ == "__main__":
         let session_item = SessionItem {
             id: session_id.to_string(),
             chat_id: session_id.to_string(),
-            label: format!("ctf_{}_{}", category, clean_name),
+            label: clean_name,
             ops: 0,
             ops_count: 0,
             created_at: now_str,

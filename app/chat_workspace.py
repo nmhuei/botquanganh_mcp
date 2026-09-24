@@ -101,22 +101,60 @@ class QuotaError(RuntimeError):
         self.quota_bytes = quota_bytes
 
 
-def generate_chat_id(label: str | None = None) -> str:
-    """Generate a server-assigned unique chat_id.
+KNOWN_CATEGORIES = ("pwn", "crypto", "web", "reverse", "forensics", "misc", "ai-ml", "osint")
 
-    Format: cw-YYYYMMDD-[sanitized_label-]8hex
+
+def generate_chat_id(label: str | None = None) -> str:
+    """Generate a clean, category-prefixed chat_id without timestamps.
+
+    Format: <category>_<clean_challenge_name> (e.g. pwn_babybof, crypto_rsa).
     """
-    date_part = datetime.now(timezone.utc).strftime("%Y%m%d")
-    rand_part = secrets.token_hex(4)  # 8 hex chars
-    if label:
-        clean_label = re.sub(r"[^A-Za-z0-9_-]", "-", str(label).strip()).strip("-_")
-        max_label_len = 64 - 22  # "cw-YYYYMMDD-" (12) + "-" (1) + 8hex (8) + 1 = 22
-        clean_label = clean_label[:max_label_len].rstrip("-_")
-        if clean_label:
-            candidate = f"cw-{date_part}-{clean_label}-{rand_part}"
-            if CHAT_ID_PATTERN.fullmatch(candidate):
-                return candidate
-    return f"cw-{date_part}-{rand_part}"
+    raw_label = str(label or "session").strip()
+    # Strip common redundant ctf prefixes
+    for prefix in ("ctf_", "ctf-", "ctf"):
+        if raw_label.lower().startswith(prefix):
+            raw_label = raw_label[len(prefix):]
+            break
+
+    clean = re.sub(r"[^A-Za-z0-9_-]", "_", raw_label).strip("-_")
+    if not clean:
+        clean = "chal"
+
+    lower_clean = clean.lower()
+    detected_cat = "misc"
+    chal_name = clean
+
+    # Check if category prefix already explicitly present (e.g. pwn_babybof)
+    for cat in KNOWN_CATEGORIES:
+        if lower_clean == cat:
+            detected_cat = cat
+            chal_name = "chal"
+            break
+        if lower_clean.startswith(f"{cat}_") or lower_clean.startswith(f"{cat}-"):
+            detected_cat = cat
+            chal_name = clean[len(cat) + 1:].strip("-_") or "chal"
+            break
+
+    # If no prefix match, check if any category keyword is in the label
+    if detected_cat == "misc":
+        for cat in KNOWN_CATEGORIES:
+            if cat in lower_clean:
+                detected_cat = cat
+                parts = re.split(r"[-_]", clean)
+                remaining = [p for p in parts if p.lower() != cat]
+                chal_name = "_".join(remaining) if remaining else "chal"
+                break
+
+    chal_name = re.sub(r"[^A-Za-z0-9_-]", "_", chal_name).strip("-_") or "chal"
+    candidate = f"{detected_cat}_{chal_name}"
+    if len(candidate) < 6:
+        candidate = f"{candidate}_chal"
+    if len(candidate) > 64:
+        candidate = candidate[:64].rstrip("-_")
+
+    if CHAT_ID_PATTERN.fullmatch(candidate):
+        return candidate
+    return f"misc_{secrets.token_hex(4)}"
 
 
 def generate_session_token() -> tuple[str, str]:
@@ -744,6 +782,11 @@ class WorkspaceManager:
 
     def get_latest_active_chat_id(self, filter_label: str | None = None) -> str | None:
         """Find the most recently active workspace ID, optionally matching label."""
+        def _matches(name: str, fl: str) -> bool:
+            clean_f = fl.lower().strip("-_")
+            nl = name.lower()
+            return nl == clean_f or nl.endswith(f"_{clean_f}") or f"_{clean_f}_" in nl or f"-{clean_f}-" in nl or clean_f in nl
+
         pointer_file = self.root / LAST_SESSION_NAME
         if pointer_file.is_file():
             try:
@@ -751,7 +794,7 @@ class WorkspaceManager:
                 candidate = data.get("chat_id")
                 if isinstance(candidate, str) and is_valid_chat_id(candidate):
                     if (self.root / candidate).is_dir() or (self.root / ARCHIVE_DIR_NAME / candidate).is_dir():
-                        if filter_label is None or f"-{filter_label}-" in candidate:
+                        if filter_label is None or _matches(candidate, filter_label):
                             return candidate
             except (OSError, ValueError):
                 pass
@@ -766,7 +809,7 @@ class WorkspaceManager:
                     continue
                 if not is_valid_chat_id(entry.name):
                     continue
-                if filter_label is not None and f"-{filter_label}-" not in entry.name:
+                if filter_label is not None and not _matches(entry.name, filter_label):
                     continue
                 moment = last_activity(entry)
                 timestamp = moment.timestamp() if moment is not None else entry.stat().st_mtime
@@ -805,15 +848,25 @@ class WorkspaceManager:
 
         if chat_id is None:
             self._enforce_capacity()
-            for _ in range(10):
-                generated = generate_chat_id(label)
-                with self._lock_for(generated):
-                    ws = self.root / generated
+            base_id = generate_chat_id(label)
+            candidate = base_id
+            version = 1
+            while version <= 100:
+                with self._lock_for(candidate):
+                    ws = self.root / candidate
                     try:
                         os.mkdir(ws)
+                        return self._initialize(candidate, ws)
                     except FileExistsError:
-                        continue
-                    return self._initialize(generated, ws)
+                        version += 1
+                        candidate = f"{base_id}_v{version}"
+                        if version > 50:
+                            candidate = f"{base_id}_{secrets.token_hex(2)}"
+                            try:
+                                os.mkdir(self.root / candidate)
+                                return self._initialize(candidate, self.root / candidate)
+                            except FileExistsError:
+                                pass
             raise CapacityError("Unable to allocate a unique workspace directory.")
 
         validated = validate_chat_id(chat_id)

@@ -396,11 +396,15 @@ def auto_download_ctf_challenge(
             return rejection
 
         target_ws: Path
-        if validated:
+        if chat_id is not None and validated:
             from app.tools.workspace_tools import _chat_root
             target_ws = _chat_root() / validated
         else:
-            target_ws = host_workspace_dir() / name
+            import re
+            clean_n = re.sub(r"[^A-Za-z0-9_-]", "_", name).strip("-_") or "chal"
+            clean_cat = category.lower().strip() if category else "pwn"
+            folder_candidate = clean_n if clean_n.startswith(f"{clean_cat}_") else f"{clean_cat}_{clean_n}"
+            target_ws = host_workspace_dir() / folder_candidate
 
         journal_details = {"name": name, "category": category, "has_url": url is not None}
         journal_op = _begin_workspace_journal(

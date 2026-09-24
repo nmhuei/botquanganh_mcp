@@ -112,7 +112,7 @@ def test_invalid_chat_id_copy_never_reaches_the_message():
 
 @pytest.mark.parametrize(
     "value",
-    ["abcdef", "a.b-c_d1", "user-123.chat", "A" * 64],
+    ["pwn_ez", "pwn_rop", "crypto_rsa", "abcdef", "a.b-c_d1", "user-123.chat", "A" * 64],
 )
 def test_validate_chat_id_accepts_safe_ids(value):
     assert validate_chat_id(value) == value

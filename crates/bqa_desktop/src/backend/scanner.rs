@@ -81,19 +81,33 @@ pub fn scan_workspaces(root: &Path, db: Option<&Database>) -> Vec<SessionItem> {
                         .unwrap_or_default()
                         .to_string_lossy()
                         .to_string();
+                    let is_ctf_prefix = [
+                        "pwn_", "crypto_", "web_", "reverse_", "forensics_", "misc_", "ai-ml_", "osint_"
+                    ].iter().any(|p| name.starts_with(p));
+
                     if !name.starts_with('.')
                         && (name.starts_with("cw-")
+                            || is_ctf_prefix
                             || path.join("meta.json").exists()
-                            || path.join("journal.jsonl").exists())
+                            || path.join("metadata.json").exists()
+                            || path.join("journal.jsonl").exists()
+                            || path.join("challenge").is_dir()
+                            || path.join("solver").is_dir())
                     {
                         let mut ops = 0;
-                        let mut label = name.replace("cw-", "");
+                        let mut label = if name.starts_with("cw-") {
+                            name.replace("cw-", "")
+                        } else {
+                            name.clone()
+                        };
                         let mut created_at = String::new();
                         let mut category = None;
                         let mut target_host = None;
                         let mut target_port = None;
 
                         let meta_path = path.join("meta.json");
+                        let metadata_path = path.join("metadata.json");
+
                         if let Ok(content) = fs::read_to_string(&meta_path) {
                             if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
                                 if let Some(l) = val.get("label").and_then(|v| v.as_str()) {
@@ -107,6 +121,32 @@ pub fn scan_workspaces(root: &Path, db: Option<&Database>) -> Vec<SessionItem> {
                                 category = val.get("category").and_then(|v| v.as_str()).map(String::from);
                                 target_host = val.get("target_host").and_then(|v| v.as_str()).map(String::from);
                                 target_port = val.get("target_port").and_then(|v| v.as_i64()).map(|p| p as i32);
+                            }
+                        } else if let Ok(content) = fs::read_to_string(&metadata_path) {
+                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                                if let Some(n) = val.get("name").and_then(|v| v.as_str()) {
+                                    if !n.trim().is_empty() {
+                                        label = n.to_string();
+                                    }
+                                }
+                                if let Some(c) = val.get("created_at").and_then(|v| v.as_str()) {
+                                    created_at = c.to_string();
+                                }
+                                category = val.get("category").and_then(|v| v.as_str()).map(String::from);
+                                target_host = val.get("target_host").and_then(|v| v.as_str()).map(String::from);
+                                target_port = val.get("target_port").and_then(|v| v.as_i64()).map(|p| p as i32);
+                            }
+                        }
+
+                        if category.is_none() {
+                            for cat in &["pwn", "crypto", "web", "reverse", "forensics", "misc", "ai-ml", "osint"] {
+                                if name.starts_with(&format!("{}_", cat)) {
+                                    category = Some(cat.to_string());
+                                    if label == name {
+                                        label = name[cat.len() + 1..].to_string();
+                                    }
+                                    break;
+                                }
                             }
                         }
 

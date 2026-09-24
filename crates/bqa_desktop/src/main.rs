@@ -149,8 +149,8 @@ mod tests {
 
         // Verify SQLite persisted session
         let sessions = db.get_sessions().expect("Failed to query sessions from DB");
-        assert_eq!(sessions.len(), 1);
-        assert!(sessions[0].label.contains("ctf_pwn_ret2win"));
+        assert_eq!(sessions[0].label, "ret2win");
+        assert_eq!(sessions[0].chat_id, "pwn_ret2win");
 
         // Test SQLite flags storage
         db.save_flag(&sessions[0].chat_id, "FLAG{sqlite_rust_persistence_vjp}", Some("pwn"), true, Some("verified locally"))

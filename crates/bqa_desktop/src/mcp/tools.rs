@@ -291,34 +291,74 @@ pub fn handle_host_workspace_bind(
     db: &Arc<Database>,
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    let label = args.get("label").and_then(|v| v.as_str()).unwrap_or("session");
+    let raw_lbl = args.get("label").and_then(|v| v.as_str()).unwrap_or("session").trim();
     let chat_id = args.get("chat_id").and_then(|v| v.as_str());
+    let is_new = args.get("new").and_then(|v| v.as_bool()).unwrap_or(false);
+    let explicit_cat = args.get("category").and_then(|v| v.as_str());
 
-    let session_id = chat_id
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| format!("cw-{}-{}", chrono::Utc::now().format("%Y%m%d%H%M%S"), label));
-
-    let ws_dir = paths.workspace_root.join(&session_id);
-    fs::create_dir_all(&ws_dir).map_err(|e| format!("Failed to create workspace directory: {}", e))?;
-
-    // Detect category from label
-    let lower_lbl = label.to_lowercase();
-    let mut detected_cat = "misc".to_string();
-    for cat in &["pwn", "crypto", "web", "reverse", "forensics", "ai-ml", "osint"] {
-        if lower_lbl.contains(cat) {
-            detected_cat = cat.to_string();
-            break;
+    // Detect category from explicit arg or label
+    let lower_lbl = raw_lbl.to_lowercase();
+    let cats = ["pwn", "crypto", "web", "reverse", "forensics", "misc", "ai-ml", "osint"];
+    let mut detected_cat = explicit_cat.map(|c| c.to_lowercase()).unwrap_or_else(|| "misc".to_string());
+    if detected_cat == "misc" {
+        for cat in &cats {
+            if lower_lbl.starts_with(&format!("{}_", cat)) || lower_lbl.starts_with(&format!("{}-", cat)) || lower_lbl == *cat {
+                detected_cat = cat.to_string();
+                break;
+            }
+        }
+    }
+    if detected_cat == "misc" {
+        for cat in &cats {
+            if lower_lbl.contains(cat) {
+                detected_cat = cat.to_string();
+                break;
+            }
         }
     }
 
-    let clean_name = label
+    let mut clean_name = raw_lbl
         .replace("ctf_", "")
         .replace("ctf-", "")
-        .replace("ctf", "")
+        .replace("ctf", "");
+    for cat in &cats {
+        if clean_name.to_lowercase().starts_with(&format!("{}_", cat)) {
+            clean_name = clean_name[cat.len() + 1..].to_string();
+            break;
+        } else if clean_name.to_lowercase().starts_with(&format!("{}-", cat)) {
+            clean_name = clean_name[cat.len() + 1..].to_string();
+            break;
+        }
+    }
+    clean_name = clean_name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect::<String>()
         .trim_matches('_')
         .trim_matches('-')
         .to_string();
     let clean_name = if clean_name.is_empty() { "chal".to_string() } else { clean_name };
+
+    let session_id = if let Some(cid) = chat_id {
+        cid.to_string()
+    } else {
+        let base_id = format!("{}_{}", detected_cat, clean_name);
+        if is_new {
+            let mut cand = base_id.clone();
+            let mut v = 1;
+            while paths.workspace_root.join(&cand).exists() && v <= 100 {
+                v += 1;
+                cand = format!("{}_v{}", base_id, v);
+            }
+            cand
+        } else {
+            // Auto-resume existing or use base_id
+            base_id
+        }
+    };
+
+    let ws_dir = paths.workspace_root.join(&session_id);
+    fs::create_dir_all(&ws_dir).map_err(|e| format!("Failed to create workspace directory: {}", e))?;
 
     let cfg = HarnessConfig {
         name: clean_name,
@@ -748,5 +788,53 @@ mod tests {
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
+
+    #[test]
+    fn test_host_workspace_bind_category_naming_and_version_collision() {
+        let temp_dir = std::env::temp_dir().join(format!("bqa_test_naming_collision_{}", std::process::id()));
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let mut paths = AppPaths::new();
+        paths.repo_root = temp_dir.clone();
+        paths.workspace_root = temp_dir.join("workspaces");
+        paths.db_path = temp_dir.join("test.db");
+
+        let db = Database::open(&paths.db_path).unwrap();
+        let paths_arc = Arc::new(paths);
+        let db_arc = Arc::new(db);
+
+        // 1. Initial bind with category label -> pwn_babybof
+        let res1 = handle_host_workspace_bind(&paths_arc, &db_arc, &serde_json::json!({
+            "label": "pwn_babybof"
+        })).unwrap();
+        assert_eq!(res1["chat_id"], "pwn_babybof");
+        let p1 = PathBuf::from(res1["workspace"].as_str().unwrap());
+        assert_eq!(p1.file_name().unwrap().to_str().unwrap(), "pwn_babybof");
+
+        // 2. Re-bind without new=true -> reuses pwn_babybof
+        let res_resume = handle_host_workspace_bind(&paths_arc, &db_arc, &serde_json::json!({
+            "label": "pwn_babybof"
+        })).unwrap();
+        assert_eq!(res_resume["chat_id"], "pwn_babybof");
+
+        // 3. New bind with new=true -> pwn_babybof_v2 (clean version suffix, no timestamp!)
+        let res2 = handle_host_workspace_bind(&paths_arc, &db_arc, &serde_json::json!({
+            "label": "pwn_babybof",
+            "new": true
+        })).unwrap();
+        assert_eq!(res2["chat_id"], "pwn_babybof_v2");
+        let p2 = PathBuf::from(res2["workspace"].as_str().unwrap());
+        assert_eq!(p2.file_name().unwrap().to_str().unwrap(), "pwn_babybof_v2");
+
+        // 4. Crypto challenge detection
+        let res3 = handle_host_workspace_bind(&paths_arc, &db_arc, &serde_json::json!({
+            "label": "ez_rsa_factor",
+            "category": "crypto"
+        })).unwrap();
+        assert_eq!(res3["chat_id"], "crypto_ez_rsa_factor");
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
 }
+
 

@@ -148,7 +148,7 @@ def test_new_settings_default_to_workspace_and_enforce():
     assert snap["deny"] == []
     assert snap["attribution"] == "enforce"
     assert snap["chat_workspaces"] is True
-    assert snap["chat_root"] == str(Path.home() / "Downloads" / "bqa-workspaces")
+    assert snap["chat_root"] == str(Path.home() / "Documents" / "BQA")
     assert snap["idle_hours"] == 72
     assert snap["retention"] == 30
     assert snap["max_ws"] == 128
