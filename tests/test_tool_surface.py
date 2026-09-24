@@ -18,9 +18,13 @@ EXPECTED_TOOLS = {
     "ctf_fetch_url",
     "ctf_render_fetch_result",
     "ctf_triage_artifact",
+    "ctf_transform",
+    "ctf_pattern",
+    "ctf_hash_tool",
     "host_knowledge",
     "host_workspace_bind",
     "host_workspace_list",
+    "host_workspace_status",
     "host_save_note",
 }
 

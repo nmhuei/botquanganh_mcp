@@ -1,9 +1,20 @@
-"""CTF suite MCP tools for BotQuangAnh MCP."""
+"""CTF suite MCP tools for BotQuangAnh MCP.
+
+Includes:
+- ctf_triage_artifact: First-step static binary/file inspector (ELF/PE headers, checksec, entropy, strings)
+- ctf_transform: Offline byte/text encoding, decoding, compression, and XOR
+- ctf_pattern: De Bruijn cyclic pattern generator & crash offset locator for PWN
+- ctf_hash_tool: Offline cryptographic hash identifier and digest calculator
+"""
 
 from __future__ import annotations
 
+import base64
 from typing import Any, Optional
 
+from app.ctf.hash_tool import compute_hashes, identify_hash
+from app.ctf.pattern import cyclic_create, cyclic_offset
+from app.ctf.transforms import transform
 from app.ctf.triage import triage_artifact
 from app.host.paths import resolve_host_path
 from app.mcp_server import mcp
@@ -81,6 +92,258 @@ def ctf_triage_artifact(
         )
         _finish_workspace_journal(
             "ctf_triage_artifact",
+            validated,
+            journal_op,
+            ok=ok,
+            details=journal_details,
+        )
+        return result
+    except Exception as exc:
+        return format_error_response(exc)
+
+
+@mcp.tool(
+    name="ctf_transform",
+    description=(
+        "Run offline byte and text transformations without running shell commands. "
+        "Supported operations: 'base64_encode', 'base64_decode', 'hex_encode', 'hex_decode', "
+        "'url_encode', 'url_decode', 'gzip_compress', 'gzip_decompress', 'zlib_compress', "
+        "'zlib_decompress', 'rot13', 'xor_hex'. Provide exactly one input carrier: either "
+        "'input_text' (for UTF-8 string) or 'input_base64' (for binary bytes). 'key_hex' is "
+        "required for 'xor_hex'. Returns lossless output in base64 and utf-8 text (if valid)."
+    ),
+    annotations={
+        "title": "CTF transform (offline encoding/crypto transform)",
+        "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    },
+)
+def ctf_transform(
+    operation: str,
+    input_text: Optional[str] = None,
+    input_base64: Optional[str] = None,
+    key_hex: Optional[str] = None,
+    chat_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Perform bounded offline byte/text transformation (base64, hex, url, rot13, gzip, zlib, xor)."""
+    try:
+        from app.tools.host import (
+            _begin_workspace_journal,
+            _finish_workspace_journal,
+            _guard_chat_id,
+            _record_tool_call,
+        )
+
+        validated, rejection = _guard_chat_id("ctf_transform", chat_id)
+        if rejection is not None:
+            return rejection
+
+        journal_details = {
+            "operation": operation,
+            "has_input_text": input_text is not None,
+            "has_input_base64": input_base64 is not None,
+            "has_key_hex": key_hex is not None,
+        }
+        journal_op = _begin_workspace_journal(
+            "ctf_transform", validated, journal_details
+        )
+
+        try:
+            raw_result = transform(
+                operation,
+                input_text=input_text,
+                input_base64=input_base64,
+                key_hex=key_hex,
+            )
+            out_bytes = base64.b64decode(raw_result["output_base64"])
+            result: dict[str, Any] = {
+                "ok": True,
+                "operation": operation,
+                "output_bytes": len(out_bytes),
+                "output_base64": raw_result["output_base64"],
+                "output_text": raw_result.get("output_text"),
+            }
+        except Exception as exc:
+            result = format_error_response(exc)
+
+        ok = isinstance(result, dict) and bool(result.get("ok", False))
+        _record_tool_call(
+            "ctf_transform",
+            validated,
+            {"operation": operation},
+        )
+        _finish_workspace_journal(
+            "ctf_transform",
+            validated,
+            journal_op,
+            ok=ok,
+            details=journal_details,
+        )
+        return result
+    except Exception as exc:
+        return format_error_response(exc)
+
+
+@mcp.tool(
+    name="ctf_pattern",
+    description=(
+        "PWN/Reverse engineering cyclic pattern generator and crash offset locator (De Bruijn sequence). "
+        "Compatible with pwntools cyclic() and cyclic_find(). "
+        "- To create a pattern: action='create', length=N (e.g. 128, 256, 1024), width=4 (32-bit) or 8 (64-bit). "
+        "- To find an offset: action='offset', value='caaa' or '0x61616163' (hex address or crash string), width=4 (or 8)."
+    ),
+    annotations={
+        "title": "CTF cyclic pattern generator and offset finder",
+        "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    },
+)
+def ctf_pattern(
+    action: str,
+    length: int = 128,
+    value: Optional[str] = None,
+    width: int = 4,
+    chat_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Generate De Bruijn cyclic pattern or calculate offset to return address/EIP/RIP."""
+    try:
+        from app.tools.host import (
+            _begin_workspace_journal,
+            _finish_workspace_journal,
+            _guard_chat_id,
+            _record_tool_call,
+        )
+
+        validated, rejection = _guard_chat_id("ctf_pattern", chat_id)
+        if rejection is not None:
+            return rejection
+
+        journal_details = {"action": action, "length": length, "width": width}
+        journal_op = _begin_workspace_journal(
+            "ctf_pattern", validated, journal_details
+        )
+
+        try:
+            act = action.strip().lower()
+            if act == "create":
+                pattern = cyclic_create(length=length, width=width)
+                result: dict[str, Any] = {
+                    "ok": True,
+                    "action": "create",
+                    "length": len(pattern),
+                    "width": width,
+                    "pattern": pattern,
+                }
+            elif act == "offset":
+                if not value:
+                    raise ValueError("action='offset' requires a non-empty 'value'.")
+                offset = cyclic_offset(value=value, width=width)
+                result = {
+                    "ok": offset >= 0,
+                    "action": "offset",
+                    "value": value,
+                    "width": width,
+                    "offset": offset,
+                    "found": offset >= 0,
+                    "message": f"Offset is {offset}" if offset >= 0 else "Pattern subsequence not found",
+                }
+            else:
+                raise ValueError("action must be 'create' or 'offset'.")
+        except Exception as exc:
+            result = format_error_response(exc)
+
+        ok = isinstance(result, dict) and bool(result.get("ok", False))
+        _record_tool_call(
+            "ctf_pattern",
+            validated,
+            {"action": action},
+        )
+        _finish_workspace_journal(
+            "ctf_pattern",
+            validated,
+            journal_op,
+            ok=ok,
+            details=journal_details,
+        )
+        return result
+    except Exception as exc:
+        return format_error_response(exc)
+
+
+@mcp.tool(
+    name="ctf_hash_tool",
+    description=(
+        "Fast offline cryptographic hash identifier and digest calculator for CTF. "
+        "- action='identify': Analyzes value (hex, crypt, bcrypt, base64) and identifies candidate algorithms (MD5, SHA-1, SHA-256, NTLM, bcrypt, etc.) with hashcat/john modes. "
+        "- action='compute': Calculates standard digests (MD5, SHA-1, SHA-256, SHA-512, NTLM, CRC-32) of value."
+    ),
+    annotations={
+        "title": "CTF hash identifier and digest calculator",
+        "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    },
+)
+def ctf_hash_tool(
+    action: str,
+    value: str,
+    chat_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Identify hash types or compute MD5/SHA1/SHA256/SHA512/NTLM/CRC32 digests."""
+    try:
+        from app.tools.host import (
+            _begin_workspace_journal,
+            _finish_workspace_journal,
+            _guard_chat_id,
+            _record_tool_call,
+        )
+
+        validated, rejection = _guard_chat_id("ctf_hash_tool", chat_id)
+        if rejection is not None:
+            return rejection
+
+        journal_details = {"action": action}
+        journal_op = _begin_workspace_journal(
+            "ctf_hash_tool", validated, journal_details
+        )
+
+        try:
+            act = action.strip().lower()
+            if act == "identify":
+                candidates = identify_hash(value)
+                result: dict[str, Any] = {
+                    "ok": True,
+                    "action": "identify",
+                    "input_length": len(value.strip()),
+                    "candidates": candidates,
+                    "candidate_count": len(candidates),
+                }
+            elif act == "compute":
+                hashes = compute_hashes(value)
+                result = {
+                    "ok": True,
+                    "action": "compute",
+                    "input_bytes": len(value.encode("utf-8")),
+                    "hashes": hashes,
+                }
+            else:
+                raise ValueError("action must be 'identify' or 'compute'.")
+        except Exception as exc:
+            result = format_error_response(exc)
+
+        ok = isinstance(result, dict) and bool(result.get("ok", False))
+        _record_tool_call(
+            "ctf_hash_tool",
+            validated,
+            {"action": action},
+        )
+        _finish_workspace_journal(
+            "ctf_hash_tool",
             validated,
             journal_op,
             ok=ok,

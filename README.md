@@ -1,6 +1,6 @@
 # BotQuangAnh Host MCP
 
-Máy chủ Host MCP và CLI vận hành `bqa` để thực thi các lệnh cho phép trên máy này qua MCP. Nhánh phát hành hiện tại là `feature/vjp-pro`; nhánh này bao gồm desktop UI, chat workspace isolation và bộ tool CTF `ctf_triage_artifact` đang được dùng trong bản hiện tại.
+Máy chủ Host MCP và CLI vận hành `bqa` để thực thi các lệnh cho phép trên máy này qua MCP. Nhánh phát hành hiện tại là `feature/vjp-pro`; nhánh này bao gồm desktop UI, chat workspace isolation, bộ tool CTF chuyên sâu (`ctf_triage_artifact`, `ctf_transform`, `ctf_pattern`, `ctf_hash_tool`, `host_workspace_status`) cùng Playbook tác chiến CTF chuẩn (`CTF_TOOLKIT_PLAYBOOK.md`).
 
 ## Cài đặt
 
@@ -139,4 +139,5 @@ Probe sức khỏe trực tiếp: `curl -s http://127.0.0.1:18427/healthz` · en
 
 ## Tài liệu
 
-[Kiến trúc](docs/ARCHITECTURE.md) · [Vận hành](docs/OPERATIONS_RUNBOOK.md) · [Checklist phát hành](docs/RELEASE_CHECKLIST.md) · [Bảo mật](SECURITY.md) · [Giao diện CLI](docs/CLI_UI.md) · [Chat workspaces](docs/CHAT_WORKSPACES.md)
+[Kiến trúc](docs/ARCHITECTURE.md) · [CTF Playbook](docs/CTF_TOOLKIT_PLAYBOOK.md) · [Vận hành](docs/OPERATIONS_RUNBOOK.md) · [Checklist phát hành](docs/RELEASE_CHECKLIST.md) · [Bảo mật](SECURITY.md) · [Giao diện CLI](docs/CLI_UI.md) · [Chat workspaces](docs/CHAT_WORKSPACES.md)
+

@@ -16,7 +16,13 @@ import pytest
 
 import app.config
 from app.tools.ctf_http import ctf_fetch_url, ctf_render_fetch_result
-from app.tools.ctf_suite import ctf_triage_artifact
+from app.tools.ctf_suite import (
+    ctf_hash_tool,
+    ctf_pattern,
+    ctf_transform,
+    ctf_triage_artifact,
+)
+
 from app.tools.health import HOST_TOOLS
 from app.tools.host import (
     BIND_EXEMPT_TOOLS,
@@ -31,7 +37,12 @@ from app.tools.host import (
     host_write_file,
 )
 from app.tools.host_knowledge import host_knowledge
-from app.tools.workspace_tools import host_save_note, host_workspace_bind, host_workspace_list
+from app.tools.workspace_tools import (
+    host_save_note,
+    host_workspace_bind,
+    host_workspace_list,
+    host_workspace_status,
+)
 
 VALID_ID = "enforce-chat"
 OTHER_VALID_ID = "second-chat"
@@ -54,9 +65,13 @@ TOOL_FUNCTIONS = {
     "ctf_fetch_url": ctf_fetch_url,
     "ctf_render_fetch_result": ctf_render_fetch_result,
     "ctf_triage_artifact": ctf_triage_artifact,
+    "ctf_transform": ctf_transform,
+    "ctf_pattern": ctf_pattern,
+    "ctf_hash_tool": ctf_hash_tool,
     "host_knowledge": host_knowledge,
     "host_workspace_bind": host_workspace_bind,
     "host_workspace_list": host_workspace_list,
+    "host_workspace_status": host_workspace_status,
     "host_save_note": host_save_note,
 }
 

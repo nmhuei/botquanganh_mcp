@@ -24,3 +24,14 @@
 - Dùng timeout phù hợp.
 - Đọc `exit_code`, `stdout`, `stderr` và cờ `*_truncated`.
 - Nếu command bị policy chặn, không cố bypass từ phía caller; thay đổi config phía server hoặc chọn cách an toàn hơn.
+
+## Khi giải bài CTF (CTF Toolkit Playbook)
+
+1. Tham khảo chi tiết trong `CTF_TOOLKIT_PLAYBOOK.md` (`host_knowledge(section="guide", query="CTF")`).
+2. Luôn gọi `host_workspace_status` để kiểm tra tài nguyên và trạng thái phiên trước khi thao tác.
+3. Luôn gọi `ctf_triage_artifact` đầu tiên để nhận diện binary/file thay vì chạy file/checksec/strings qua shell.
+4. Dùng `ctf_transform` cho các phép biến đổi Base64, Hex, URL, ROT13, Gzip, Zlib, XOR lặp khóa.
+5. Dùng `ctf_pattern` để tạo de Bruijn cyclic pattern và tìm offset EIP/RIP/saved frame pointer.
+6. Dùng `ctf_hash_tool` để nhận diện cấu trúc hash hoặc tính toán mã băm cryptographic.
+7. Tuân thủ nguyên tắc Evidence-First: Không đoán mò cờ, lưu cờ qua `host_save_note` và không bao giờ nộp cờ tự động lên scoreboard.
+

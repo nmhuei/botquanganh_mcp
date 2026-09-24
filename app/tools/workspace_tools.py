@@ -10,7 +10,7 @@ from __future__ import annotations
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import app.config
 from app.chat_errors import (
@@ -569,3 +569,107 @@ def _resolve_notes_file(validated: str | None) -> Path:
                 return workspace_dir.expanduser() / "notes" / "log.txt"
     # Graceful degradation: conventional location derived from the validated id.
     return root / validated / "notes" / "log.txt"
+
+
+@mcp.tool(
+    name="host_workspace_status",
+    description=(
+        "Inspect the current active chat workspace status, quota, journal, and health. "
+        "Returns workspace directory, metadata, logical disk usage, quota remaining, "
+        "recent operations, and note log status. Safe, read-only diagnostic call."
+    ),
+    annotations={
+        "title": "Host workspace status (read-only workspace diagnostic)",
+        "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    },
+)
+def host_workspace_status(chat_id: Optional[str] = None) -> dict[str, Any]:
+    """Inspect active chat workspace status, quota, operations, and notes."""
+    try:
+        from app.tools.host import _guard_chat_id
+
+        validated, rejection = _guard_chat_id("host_workspace_status", chat_id)
+        if rejection is not None:
+            return rejection
+
+        root = _chat_root()
+        target_dir = root / validated
+        if not target_dir.is_dir():
+            return {
+                "ok": False,
+                "error": {
+                    "code": "WORKSPACE_NOT_FOUND",
+                    "message": f"Workspace directory for chat_id '{validated}' not found at {target_dir}.",
+                },
+            }
+
+        # Metadata
+        meta_file = target_dir / "meta.json"
+        meta_data: dict[str, Any] = {}
+        if meta_file.is_file():
+            try:
+                import json
+                meta_data = json.loads(meta_file.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+
+        # Usage
+        total_bytes = 0
+        file_count = 0
+        try:
+            for item in target_dir.rglob("*"):
+                if item.is_file() and not item.is_symlink():
+                    file_count += 1
+                    total_bytes += item.stat().st_size
+        except Exception:
+            pass
+
+        # Quota
+        quota_mb = float(getattr(app.config, "HOST_CHAT_QUOTA_MB", 2048) or 2048)
+        used_mb = round(total_bytes / (1024 * 1024), 2)
+        remaining_mb = max(0.0, round(quota_mb - used_mb, 2))
+
+        # Rehydrate session context
+        session_ctx = _rehydrate_session_context(target_dir)
+
+        # Journal count
+        journal_file = target_dir / "journal.jsonl"
+        journal_lines = 0
+        if journal_file.is_file():
+            try:
+                journal_lines = sum(1 for line in journal_file.open("r", encoding="utf-8") if line.strip())
+            except Exception:
+                pass
+
+        return {
+            "ok": True,
+            "chat_id": validated,
+            "workspace_dir": str(target_dir),
+            "created_at": meta_data.get("created_at"),
+            "label": meta_data.get("label"),
+            "usage": {
+                "logical_bytes": total_bytes,
+                "file_count": file_count,
+            },
+            "quota": {
+                "limit_mb": quota_mb,
+                "used_mb": used_mb,
+                "remaining_mb": remaining_mb,
+            },
+            "journal": {
+                "total_events": journal_lines,
+                "recent_operations": session_ctx.get("recent_commands", []),
+                "workspace_files": session_ctx.get("workspace_files", []),
+            },
+            "state": {
+                "has_state_file": (target_dir / "STATE.md").is_file(),
+                "has_notes": (target_dir / "notes" / "log.txt").is_file(),
+                "recent_notes": session_ctx.get("recent_notes", ""),
+            },
+        }
+    except Exception as exc:
+        return to_tool_error(exc)
+
