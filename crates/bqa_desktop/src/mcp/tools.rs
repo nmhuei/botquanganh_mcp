@@ -436,10 +436,21 @@ pub async fn handle_host_run_command(
 ) -> Result<serde_json::Value, String> {
     let cmd = args.get("command").and_then(|v| v.as_str()).unwrap_or("");
     let cwd_arg = args.get("cwd").and_then(|v| v.as_str());
+    let chat_id_arg = args.get("chat_id").and_then(|v| v.as_str());
     let timeout = args.get("timeout_seconds").and_then(|v| v.as_u64()).unwrap_or(30);
 
     let cwd = cwd_arg
         .map(PathBuf::from)
+        .or_else(|| {
+            chat_id_arg.map(|cid| {
+                let candidate = paths.workspace_root.join(cid);
+                if candidate.is_dir() {
+                    candidate
+                } else {
+                    paths.workspace_root.clone()
+                }
+            })
+        })
         .unwrap_or_else(|| paths.workspace_root.clone());
 
     let start_t = Instant::now();

@@ -680,9 +680,18 @@ def host_run_command(
     journal_op = _begin_workspace_journal(
         "host_run_command", validated, journal_start
     )
+    effective_cwd = cwd
+    if effective_cwd is None and validated:
+        try:
+            from app.tools.workspace_tools import _chat_root
+            candidate_ws = (_chat_root() / validated).resolve()
+            if candidate_ws.is_dir():
+                effective_cwd = str(candidate_ws)
+        except Exception:
+            pass
     try:
         execute_kwargs: dict[str, Any] = {
-            "cwd": cwd,
+            "cwd": effective_cwd,
             "timeout_seconds": timeout_seconds,
             "activity_source": "mcp",
             "activity_chat_id": validated,
@@ -741,7 +750,7 @@ def host_run_command(
                     stdout=result.get("stdout", ""),
                     stderr=result.get("stderr", ""),
                     exit_code=0,
-                    cwd=cwd,
+                    cwd=effective_cwd,
                 )
                 if promotion.get("promoted"):
                     result["harness_promotion"] = promotion
