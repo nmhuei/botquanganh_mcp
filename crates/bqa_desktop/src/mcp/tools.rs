@@ -370,6 +370,39 @@ pub fn handle_host_workspace_bind(
     let chal_dir = ws_dir.join("challenge");
     let script_dir = ws_dir.join("script");
     let solver_dir = ws_dir.join("solver");
+    let math_model_path = ws_dir.join("notes").join("math_model.md");
+
+    let mut harness_map = serde_json::json!({
+        "challenge_dir": chal_dir.to_string_lossy().to_string(),
+        "script_dir": script_dir.to_string_lossy().to_string(),
+        "solver_dir": solver_dir.to_string_lossy().to_string(),
+        "note_file": chal_dir.join("NOTE.md").to_string_lossy().to_string(),
+        "analysis_file": script_dir.join("analysis.md").to_string_lossy().to_string(),
+        "solver_file": solver_dir.join("solve.py").to_string_lossy().to_string(),
+    });
+    if math_model_path.is_file() {
+        if let Some(obj) = harness_map.as_object_mut() {
+            obj.insert(
+                "math_model_file".to_string(),
+                serde_json::json!(math_model_path.to_string_lossy().to_string()),
+            );
+        }
+    }
+
+    let instructions = if cfg.category == "crypto" || math_model_path.is_file() {
+        format!(
+            "Workspace '{session_id}' is active (Category: CRYPTO). Include chat_id='{session_id}' in subsequent tool calls. \
+            CRITICAL BQA CRYPTO PROTOCOL: You MUST adhere to the BQA Extreme Crypto Playbook (app/ctf/playbooks/crypto_playbook.md). \
+            1. Parameter Triage: Inspect challenge files and identify public values (n, e, c, curve, PRNG state). \
+            2. Mathematical Modeling: Document algebraic structures, unknowns, bounds, and equations in notes/math_model.md. \
+            3. Vector Selection: Call tool 'ctf_crypto_playbook' to pick a deterministic attack vector matching observed preconditions. \
+            4. Local Verification: Write solver in script/ implementing parse_data(), derive_secret(), and verify_solution(). \
+            5. Verification & Promotion: Run via host_run_command. Successful exit code 0 auto-promotes to solver/solve.py, creates WRITEUP.md, and hoards the flag. \
+            DO NOT guess or run brute-force attacks without proven small bounds!"
+        )
+    } else {
+        format!("Workspace '{session_id}' is active. Include chat_id='{session_id}' in subsequent tool calls.")
+    };
 
     Ok(serde_json::json!({
         "ok": true,
@@ -378,16 +411,131 @@ pub fn handle_host_workspace_bind(
         "workspace": ws_dir.to_string_lossy().to_string(),
         "workspace_dir": ws_dir.to_string_lossy().to_string(),
         "harness_enforced": true,
-        "harness": {
-            "challenge_dir": chal_dir.to_string_lossy().to_string(),
-            "script_dir": script_dir.to_string_lossy().to_string(),
-            "solver_dir": solver_dir.to_string_lossy().to_string(),
-            "note_file": chal_dir.join("NOTE.md").to_string_lossy().to_string(),
-            "analysis_file": script_dir.join("analysis.md").to_string_lossy().to_string(),
-            "solver_file": solver_dir.join("solve.py").to_string_lossy().to_string(),
-        },
+        "harness": harness_map,
+        "instructions": instructions,
         "message": format!("Workspace ready with enforced CTF harness at {}", ws_dir.display()),
     }))
+}
+
+pub fn handle_ctf_crypto_playbook(args: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let query_opt = args.get("query").and_then(|v| v.as_str());
+    let section_opt = args.get("section").and_then(|v| v.as_str());
+
+    let candidate_paths = [
+        PathBuf::from("/home/undertaker/Downloads/bqa/botquanganh_mcp/app/ctf/playbooks/crypto_playbook.md"),
+        PathBuf::from("app/ctf/playbooks/crypto_playbook.md"),
+        PathBuf::from("../app/ctf/playbooks/crypto_playbook.md"),
+    ];
+
+    let mut content_opt: Option<String> = None;
+    for cand in &candidate_paths {
+        if let Ok(c) = fs::read_to_string(cand) {
+            content_opt = Some(c);
+            break;
+        }
+    }
+
+    if query_opt.is_none() && section_opt.is_none() {
+        return Ok(serde_json::json!({
+            "ok": true,
+            "discipline": "BQA Extreme Crypto Playbook (Deterministic Cryptanalysis Engine)",
+            "protocol": [
+                "Phase 1: Parameter & Scheme Triage (extract n, e, c, curve, PRNG state, cipher mode)",
+                "Phase 2: Mathematical Modeling (write algebraic relations & bounds in notes/math_model.md)",
+                "Phase 3: Attack Vector Selection (query ctf_crypto_playbook or Attack Router Matrix)",
+                "Phase 4: Deterministic Local Verification (script/ with parse_data, derive_secret, verify_solution)",
+                "Phase 5: Solution Promotion & Hoarding (auto-promote to solver/solve.py, WRITEUP.md, flag.txt)"
+            ],
+            "attack_categories": [
+                { "category": "RSA", "vectors": ["Integer e-th Root", "Common Modulus", "Batch/Shared GCD", "Fermat", "Pollard p-1", "Wiener", "Boneh-Durfee", "Franklin-Reiter", "Coppersmith Small Roots", "Partial Key Exposure"] },
+                { "category": "Elliptic Curves (ECC)", "vectors": ["Repeated Nonce", "Biased Nonce / HNP", "Pohlig-Hellman", "Smart's Attack (Anomalous)", "Singular Curves"] },
+                { "category": "Discrete Logarithm (DLP)", "vectors": ["Baby-step Giant-step (BSGS)", "Pollard's Rho", "Pohlig-Hellman"] },
+                { "category": "Lattices", "vectors": ["CVP / Babai Nearest Plane", "LLL / BKZ Reduction", "Subset Sum / Knapsack (CLOS)", "Noisy Modular Equations"] },
+                { "category": "PRNG", "vectors": ["LCG Inversion", "Truncated LCG (Lattice)", "Mersenne Twister Untemper", "Truncated MT19937 (Z3 SMT)", "LFSR Berlekamp-Massey"] },
+                { "category": "Symmetric & Hashes", "vectors": ["AES-CBC Padding Oracle", "CBC Bit-Flipping", "Byte-at-a-time ECB", "AES-GCM Nonce Reuse GHASH", "Hash Length Extension", "OTP / Keystream Reuse"] }
+            ],
+            "guidance": "Pass 'query' (e.g. 'wiener', 'ecc', 'coppersmith', 'lattice', 'gcm') to inspect specific attack parameters and preconditions."
+        }));
+    }
+
+    let content = match content_opt {
+        Some(c) => c,
+        None => return Err("Crypto playbook markdown file not found on disk.".to_string()),
+    };
+
+    if let Some(sec) = section_opt {
+        let sec_lower = sec.to_lowercase();
+        let header = match sec_lower.as_str() {
+            "phases" => "## 1. Quy trình 5 Giai đoạn",
+            "matrix" | "router" => "## 2. Attack Router Matrix",
+            "rsa" => "### 3.1. RSA Deep-Dive",
+            "ecc" => "### 3.2. Elliptic Curves Deep-Dive",
+            "lattice" => "### 3.3. Lattice Discipline",
+            "audit" => "## 4. Checklist Kỷ luật",
+            _ => "## 2. Attack Router Matrix",
+        };
+        if let Some(pos) = content.find(header) {
+            let rest = &content[pos..];
+            let end_pos = rest[header.len()..]
+                .find("\n## ")
+                .map(|p| p + header.len())
+                .unwrap_or(rest.len());
+            return Ok(serde_json::json!({
+                "ok": true,
+                "section": sec,
+                "content": rest[..end_pos].trim()
+            }));
+        }
+    }
+
+    if let Some(query) = query_opt {
+        let q_lower = query.to_lowercase();
+        let terms: Vec<&str> = q_lower.split_whitespace().collect();
+        let mut matched_rows = Vec::new();
+
+        let mut in_table = false;
+        for line in content.lines() {
+            let line_clean = line.trim();
+            if line_clean.contains("## 2. Attack Router Matrix") {
+                in_table = true;
+                continue;
+            }
+            if in_table && line_clean.starts_with("## ") {
+                break;
+            }
+            if in_table
+                && line_clean.starts_with('|')
+                && !line_clean.starts_with("|---")
+                && !line_clean.contains("Dấu hiệu")
+            {
+                let parts: Vec<&str> = line_clean
+                    .split('|')
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                if parts.len() >= 3 {
+                    let combined = format!("{} {} {}", parts[0], parts[1], parts[2]).to_lowercase();
+                    if terms.iter().any(|&term| combined.contains(term)) {
+                        matched_rows.push(serde_json::json!({
+                            "observation": parts[0],
+                            "prerequisite": parts[1],
+                            "vector": parts[2]
+                        }));
+                    }
+                }
+            }
+        }
+
+        return Ok(serde_json::json!({
+            "ok": true,
+            "query": query,
+            "matched_vectors_count": matched_rows.len(),
+            "matched_vectors": matched_rows,
+            "guidance": "Verify the prerequisite checks before writing exploit code. Document parameters in notes/math_model.md."
+        }));
+    }
+
+    Err("Không tìm thấy kết quả phù hợp trong playbook.".to_string())
 }
 
 pub fn handle_host_workspace_status(
@@ -999,6 +1147,78 @@ print("Got shell! Output: FLAG{canary_master_leak_win_1337}")
         }));
         assert!(blocked.is_err());
         assert!(blocked.unwrap_err().contains("Policy BQA"));
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_ctf_crypto_playbook_tool() {
+        // 1. Overview
+        let overview = handle_ctf_crypto_playbook(&serde_json::json!({})).unwrap();
+        assert_eq!(overview["ok"], true);
+        assert!(overview["discipline"].as_str().unwrap().contains("BQA Extreme Crypto Playbook"));
+        assert_eq!(overview["protocol"].as_array().unwrap().len(), 5);
+
+        // 2. Query search
+        let rsa_query = handle_ctf_crypto_playbook(&serde_json::json!({ "query": "wiener" })).unwrap();
+        assert_eq!(rsa_query["ok"], true);
+        assert!(rsa_query["matched_vectors_count"].as_u64().unwrap() >= 1);
+        let vectors = rsa_query["matched_vectors"].as_array().unwrap();
+        assert!(vectors.iter().any(|v| v["vector"].as_str().unwrap().to_lowercase().contains("wiener")));
+
+        // 3. Section lookup
+        let sec_res = handle_ctf_crypto_playbook(&serde_json::json!({ "section": "phases" })).unwrap();
+        assert_eq!(sec_res["ok"], true);
+        assert!(sec_res["content"].as_str().unwrap().contains("Quy trình 5 Giai đoạn"));
+    }
+
+    #[test]
+    fn test_crypto_workspace_bind_enforces_playbook_and_math_model() {
+        let temp_dir = std::env::temp_dir().join(format!("bqa_test_crypto_bind_{}", std::process::id()));
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let mut paths = AppPaths::new();
+        paths.repo_root = temp_dir.clone();
+        paths.workspace_root = temp_dir.join("workspaces");
+        paths.db_path = temp_dir.join("test.db");
+
+        let db = Database::open(&paths.db_path).unwrap();
+        let paths_arc = Arc::new(paths);
+        let db_arc = Arc::new(db);
+
+        let bind_res = handle_host_workspace_bind(&paths_arc, &db_arc, &serde_json::json!({
+            "label": "crypto_rsa_oracle"
+        })).unwrap();
+
+        assert_eq!(bind_res["ok"], true);
+        assert!(bind_res["instructions"].as_str().unwrap().contains("Category: CRYPTO"));
+        assert!(bind_res["instructions"].as_str().unwrap().contains("BQA Extreme Crypto Playbook"));
+
+        let ws_path = PathBuf::from(bind_res["workspace"].as_str().unwrap());
+        let math_file = ws_path.join("notes").join("math_model.md");
+        assert!(math_file.is_file());
+
+        let math_text = fs::read_to_string(&math_file).unwrap();
+        assert!(math_text.contains("# Mathematical Model: rsa_oracle"));
+        assert!(math_text.contains("Algebraic Structure & Domains"));
+        assert!(math_text.contains("Selected Attack Vector"));
+
+        // Verify solve.py template has 3-phase structure
+        let solve_path = ws_path.join("solver").join("solve.py");
+        assert!(solve_path.is_file());
+        let solve_text = fs::read_to_string(&solve_path).unwrap();
+        assert!(solve_text.contains("def parse_data()"));
+        assert!(solve_text.contains("def derive_secret(params"));
+        assert!(solve_text.contains("def verify_solution(recovered"));
+        assert!(solve_text.contains("verify_solution(secret, params)"));
+
+        // Verify requirements.txt
+        let reqs_path = ws_path.join("solver").join("requirements.txt");
+        assert!(reqs_path.is_file());
+        let reqs_text = fs::read_to_string(&reqs_path).unwrap();
+        assert!(reqs_text.contains("pycryptodome"));
+        assert!(reqs_text.contains("sympy"));
+        assert!(reqs_text.contains("gmpy2"));
 
         let _ = fs::remove_dir_all(&temp_dir);
     }

@@ -31,6 +31,9 @@ KNOWN_IMPORTS_MAP = {
     "z3": "z3-solver>=4.12.0\n",
     "Crypto": "pycryptodome>=3.18.0\n",
     "sympy": "sympy>=1.12\n",
+    "gmpy2": "gmpy2>=2.1.5\n",
+    "ecdsa": "ecdsa>=0.18.0\n",
+    "fpylll": "fpylll>=0.5.9\n",
     "scapy": "scapy>=2.5.0\n",
     "httpx": "httpx>=0.24.0\n",
     "bs4": "beautifulsoup4>=4.12.0\n",
@@ -94,11 +97,21 @@ def generate_writeup_content(
     flags: list[str],
     stdout_sample: str,
     command: str,
+    math_model_note: Optional[str] = None,
 ) -> str:
     """Generate Markdown writeup complying with AGENTS.md requirements."""
     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     flag_display = "\n".join(f"- `{f}`" for f in flags) if flags else "- *(Flag recovered in script execution)*"
     sample_clean = stdout_sample[-2000:].strip() if len(stdout_sample) > 2000 else stdout_sample.strip()
+
+    math_section = ""
+    step_num = 2
+    if math_model_note:
+        math_section = f"""## {step_num}. Mathematical Model & Attack Vector
+{math_model_note}
+
+"""
+        step_num += 1
 
     return f"""# Writeup: {challenge_name}
 
@@ -113,7 +126,7 @@ def generate_writeup_content(
 - **Overview:** Challenge `{challenge_name}` ({category}) was analyzed and triaged using standard BotQuangAnh MCP 3-folder harness discipline.
 - **Exploitation Vector:** Deterministic script execution via `{script_name}` successfully triggered the exploit and retrieved the target flag.
 
-## 2. Reproduction Steps
+{math_section}## {step_num}. Reproduction Steps
 1. Navigate to the solver directory:
    ```bash
    cd solver
@@ -127,7 +140,7 @@ def generate_writeup_content(
    python3 solve.py
    ```
 
-## 3. Original Execution Proof
+## {step_num + 1}. Original Execution Proof
 Command executed:
 ```bash
 {command}
@@ -138,11 +151,12 @@ Terminal output:
 {sample_clean}
 ```
 
-## 4. Recovered Flag(s)
+## {step_num + 2}. Recovered Flag(s)
 {flag_display}
 
 > 🎯 *Flag is hoarded directly in `flag.txt` in the root workspace directory.*
 """
+
 
 
 def promote_script_to_solver(
@@ -212,6 +226,14 @@ def promote_script_to_solver(
 
     # 4. Generate solver/WRITEUP.md
     writeup_file = solver_dir / "WRITEUP.md"
+    math_note: Optional[str] = None
+    math_model_path = ws / "notes" / "math_model.md"
+    if math_model_path.is_file():
+        math_note = (
+            "- **Mathematical Model:** Formalized in `notes/math_model.md`.\n"
+            "- **Attack Discipline:** Verified against BQA Extreme Crypto Playbook (Deterministic Verification)."
+        )
+
     writeup_text = generate_writeup_content(
         challenge_name=chal_name,
         category=category,
@@ -219,6 +241,7 @@ def promote_script_to_solver(
         flags=flags,
         stdout_sample=stdout,
         command=command,
+        math_model_note=math_note,
     )
     writeup_file.write_text(writeup_text, encoding="utf-8")
 

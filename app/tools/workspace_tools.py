@@ -244,22 +244,23 @@ async def host_workspace_bind(
 
         ws_path = Path(resolved)
         is_missing_harness = not ((ws_path / "challenge").is_dir() and (ws_path / "script").is_dir() and (ws_path / "solver").is_dir())
+        detected_cat = "misc"
+        raw_lbl = label or assigned_id or "session"
+        clean_lbl = raw_lbl
+        for prefix in ("ctf_", "ctf-", "ctf"):
+            if clean_lbl.lower().startswith(prefix):
+                clean_lbl = clean_lbl[len(prefix):]
+                break
+        parts = clean_lbl.split("_", 1)
+        for cat_candidate in ("pwn", "crypto", "web", "reverse", "forensics", "ai-ml", "osint"):
+            if cat_candidate in raw_lbl.lower():
+                detected_cat = cat_candidate
+                break
+        cname = parts[1] if len(parts) > 1 and parts[0] in {"pwn", "crypto", "web", "reverse", "forensics", "misc"} else (parts[0] or "challenge")
+
         if created or is_missing_harness:
             try:
                 from app.ctf.challenge_harness import setup_ctf_harness
-                raw_lbl = label or assigned_id or "session"
-                clean_lbl = raw_lbl
-                for prefix in ("ctf_", "ctf-", "ctf"):
-                    if clean_lbl.lower().startswith(prefix):
-                        clean_lbl = clean_lbl[len(prefix):]
-                        break
-                parts = clean_lbl.split("_", 1)
-                detected_cat = "misc"
-                for cat_candidate in ("pwn", "crypto", "web", "reverse", "forensics", "ai-ml", "osint"):
-                    if cat_candidate in raw_lbl.lower():
-                        detected_cat = cat_candidate
-                        break
-                cname = parts[1] if len(parts) > 1 and parts[0] in {"pwn", "crypto", "web", "reverse", "forensics", "misc"} else (parts[0] or "challenge")
                 setup_ctf_harness(ws_path, name=cname, category=detected_cat)
             except Exception:
                 pass
@@ -270,6 +271,29 @@ async def host_workspace_bind(
             "workspace_files": ["challenge", "script", "solver"] if (Path(resolved) / "challenge").is_dir() else [],
         }
 
+        harness_info = {
+            "challenge_dir": str(Path(resolved) / "challenge"),
+            "script_dir": str(Path(resolved) / "script"),
+            "solver_dir": str(Path(resolved) / "solver"),
+            "solve_script": str(Path(resolved) / "solver" / "solve.py"),
+        }
+        math_model_path = ws_path / "notes" / "math_model.md"
+        if math_model_path.is_file():
+            harness_info["math_model_file"] = str(math_model_path)
+
+        instructions = f"Workspace '{assigned_id}' is active. Include chat_id='{assigned_id}' in subsequent tool calls."
+        if detected_cat == "crypto" or math_model_path.is_file():
+            instructions = (
+                f"Workspace '{assigned_id}' is active (Category: CRYPTO). Include chat_id='{assigned_id}' in subsequent tool calls. "
+                "CRITICAL BQA CRYPTO PROTOCOL: You MUST adhere to the BQA Extreme Crypto Playbook (app/ctf/playbooks/crypto_playbook.md). "
+                "1. Parameter Triage: Inspect challenge files and identify public values (n, e, c, curve, PRNG state). "
+                "2. Mathematical Modeling: Document algebraic structures, unknowns, bounds, and equations in notes/math_model.md. "
+                "3. Vector Selection: Call tool 'ctf_crypto_playbook' to pick a deterministic attack vector matching observed preconditions. "
+                "4. Local Verification: Write solver in script/ implementing parse_data(), derive_secret(), and verify_solution(). "
+                "5. Verification & Promotion: Run via host_run_command. Successful exit code 0 auto-promotes to solver/solve.py, creates WRITEUP.md, and hoards the flag. "
+                "DO NOT guess or run brute-force attacks without proven small bounds!"
+            )
+
         extra_fields: dict[str, Any] = {
             "chat_id": assigned_id,
             "session_id": assigned_id,
@@ -278,12 +302,7 @@ async def host_workspace_bind(
             "created": bool(created),
             "is_new": bool(created),
             "harness_enforced": True,
-            "harness": {
-                "challenge_dir": str(Path(resolved) / "challenge"),
-                "script_dir": str(Path(resolved) / "script"),
-                "solver_dir": str(Path(resolved) / "solver"),
-                "solve_script": str(Path(resolved) / "solver" / "solve.py"),
-            },
+            "harness": harness_info,
             "recent_commands": context_data["recent_commands"],
             "recent_notes": context_data["recent_notes"],
             "workspace_files": context_data["workspace_files"],
@@ -291,7 +310,7 @@ async def host_workspace_bind(
             "lines": [resolved, *hints],
             "resume_prompt": resume_prompt_text,
             "resume_badge_markdown": resume_badge_md,
-            "instructions": f"Workspace '{assigned_id}' is active. Include chat_id='{assigned_id}' in subsequent tool calls.",
+            "instructions": instructions,
         }
         if session_token:
             extra_fields["session_token"] = session_token

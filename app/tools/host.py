@@ -69,6 +69,7 @@ BIND_EXEMPT_TOOLS = frozenset({
     "host_workspace_bind",
     "host_workspace_list",
     "auto_download_ctf_challenge",
+    "ctf_crypto_playbook",
     "ctf_transform",
     "ctf_pattern",
     "ctf_hash_tool",

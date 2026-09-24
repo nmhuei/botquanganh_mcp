@@ -68,23 +68,60 @@ if __name__ == "__main__":
 ''',
 
     "crypto": '''#!/usr/bin/env python3
-"""Deterministic cryptographic solver for {name} ({category})."""
+"""Deterministic cryptographic solver for {name} ({category}).
+Enforces the 5-Phase BQA Crypto Playbook discipline.
+"""
 
 import sys
-# from Crypto.Util.number import *
+from typing import Any
+# from Crypto.Util.number import bytes_to_long, long_to_bytes, inverse
 # from sympy import *
+# from z3 import *
+
+def parse_data() -> dict[str, Any]:
+    """Phase 1: Parse and validate public cryptographic parameters."""
+    print("[*] Phase 1: Parsing challenge parameters...")
+    params: dict[str, Any] = {
+        # "n": ...,
+        # "e": ...,
+        # "c": ...,
+    }
+    return params
+
+def derive_secret(params: dict[str, Any]) -> int | bytes | str:
+    """Phase 2-3: Mathematically solve for the secret / plaintext."""
+    print("[*] Phase 2-3: Deriving secret via deterministic attack vector...")
+    # === [IMPLEMENT DETERMINISTIC ATTACK ALGORITHM HERE] ===
+    recovered = "FLAG{{placeholder}}"
+    return recovered
+
+def verify_solution(recovered: Any, params: dict[str, Any]) -> bool:
+    """Phase 4: Deterministically verify solution satisfies all initial relations."""
+    print("[*] Phase 4: Verifying solution against original equations...")
+    # Example:
+    # if pow(recovered, params['e'], params['n']) != params['c']:
+    #     return False
+    return True
 
 def solve():
-    print("[*] Loading challenge parameters...")
-    # === [SOLVER LOGIC HERE] ===
+    params = parse_data()
+    secret = derive_secret(params)
+    if not verify_solution(secret, params):
+        print("[-] Verification failed! Solution does not satisfy initial equations.", file=sys.stderr)
+        sys.exit(1)
 
-    flag = "FLAG{{placeholder}}"
+    if isinstance(secret, bytes):
+        flag = secret.decode(errors="ignore")
+    else:
+        flag = str(secret)
+
     print(f"[+] Recovered flag: {flag}")
     return flag
 
 if __name__ == "__main__":
     solve()
 ''',
+
 
     "web": '''#!/usr/bin/env python3
 """Deterministic web exploit harness for {name} ({category})."""
@@ -338,6 +375,16 @@ def setup_ctf_harness(
     # 5. script/analysis.md (Living Analysis & Candidate Flags)
     analysis_file = script_dir / "analysis.md"
     if not analysis_file.exists():
+        crypto_section = ""
+        if norm_cat == "crypto":
+            crypto_section = """
+## 7. Crypto Discipline (BQA Extreme Playbook Protocol)
+- [ ] Phase 1: Parameter & Scheme Triage (extract n, e, c, curve params, PRNG state from challenge/)
+- [ ] Phase 2: Mathematical Modeling (formalized in `notes/math_model.md`)
+- [ ] Phase 3: Attack Vector Selection (verified preconditions via `ctf_crypto_playbook`)
+- [ ] Phase 4: Deterministic Local Verification (implemented 3-phase harness in script/)
+- [ ] Phase 5: Solution Promotion (promoted to `solver/solve.py` with exit code 0)
+"""
         analysis_content = f"""# Analysis: {clean_name}
 
 ## 1. Status & Phase
@@ -360,8 +407,50 @@ def setup_ctf_harness(
 
 ## 6. Dead Ends Eliminated
 - *(None yet)*
-"""
+{crypto_section}"""
         analysis_file.write_text(analysis_content, encoding="utf-8")
+
+    # 5.1. notes/math_model.md (Mandatory Mathematical Modeling for Crypto)
+    math_model_file: Optional[Path] = None
+    if norm_cat == "crypto":
+        notes_dir = ws / "notes"
+        notes_dir.mkdir(parents=True, exist_ok=True)
+        math_model_file = notes_dir / "math_model.md"
+        if not math_model_file.exists():
+            math_model_content = f"""# Mathematical Model: {clean_name}
+
+> **Mandatory Crypto Discipline:** Before writing exploit code, document the mathematical relations below.
+> Reference: `app/ctf/playbooks/crypto_playbook.md` or invoke tool `ctf_crypto_playbook`.
+
+## 1. Algebraic Structure & Domains
+- Ring / Field / Group: (e.g. Z/nZ, GF(2^128), E(F_p), Lattice Z^m)
+- Generator / Base points: (e.g. g, G)
+- Modulus / Order: (e.g. n = p*q, curve order #E)
+
+## 2. Public Parameters & Observed Values
+- Modulus n:
+- Public Exponent e:
+- Ciphertext c:
+- Elliptic Curve Params (p, a, b, G):
+- PRNG Outputs / Keystream:
+
+## 3. Unknowns & Bounds
+- Target secret (m / flag): Bounds: (e.g. m < 2^256)
+- Nonce / Randomness (k, r): Bounds: (e.g. |k_i| < 2^128)
+- Factors (p, q, d): Bounds: (e.g. d < 1/3 * n^0.25)
+
+## 4. System of Equations & Congruences
+- Equation 1:
+- Equation 2:
+
+## 5. Selected Attack Vector (from Playbook)
+- Selected Vector:
+- Mathematical Justification / Preconditions verified:
+
+## 6. Verification Criterion
+- Equation to satisfy:
+"""
+            math_model_file.write_text(math_model_content, encoding="utf-8")
 
     # 6. solver/solve.py
     solve_file = solver_dir / "solve.py"
@@ -389,24 +478,28 @@ def setup_ctf_harness(
         if norm_cat == "pwn":
             reqs.append("pwntools\n")
         elif norm_cat == "crypto":
-            reqs.extend(["pycryptodome\n", "sympy\n"])
+            reqs.extend(["pycryptodome\n", "sympy\n", "gmpy2\n"])
         elif norm_cat == "reverse":
             reqs.append("z3-solver\n")
         reqs_file.write_text("".join(reqs), encoding="utf-8")
+
+    harness_info = {
+        "challenge_dir": str(challenge_dir),
+        "script_dir": str(script_dir),
+        "solver_dir": str(solver_dir),
+        "note_file": str(challenge_dir / "NOTE.md"),
+        "analysis_file": str(script_dir / "analysis.md"),
+        "solver_file": str(solve_file),
+    }
+    if math_model_file:
+        harness_info["math_model_file"] = str(math_model_file)
 
     return {
         "ok": True,
         "name": clean_name,
         "category": norm_cat,
         "workspace_dir": str(ws),
-        "harness": {
-            "challenge_dir": str(challenge_dir),
-            "script_dir": str(script_dir),
-            "solver_dir": str(solver_dir),
-            "note_file": str(challenge_dir / "NOTE.md"),
-            "analysis_file": str(script_dir / "analysis.md"),
-            "solver_file": str(solve_file),
-        },
+        "harness": harness_info,
         "downloaded_files": downloaded_files,
         "triage": triage_info,
         "message": f"CTF harness created successfully for '{clean_name}' ({norm_cat}).",

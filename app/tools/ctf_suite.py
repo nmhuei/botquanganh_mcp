@@ -440,3 +440,66 @@ def auto_download_ctf_challenge(
     except Exception as exc:
         return format_error_response(exc)
 
+
+@mcp.tool(
+    name="ctf_crypto_playbook",
+    description=(
+        "Query the BQA Extreme Cryptography Playbook and Attack Router Matrix. "
+        "Use this tool to find the exact attack vector, mathematical preconditions, "
+        "equations, and verification method for RSA, ECC, lattices, PRNG, AES, and hashes. "
+        "Pass 'query' (e.g., 'wiener', 'coppersmith', 'biased nonce', 'smart', 'lcg', 'gcm') "
+        "or 'section' ('phases', 'matrix', 'rsa', 'ecc', 'lattice', 'audit') to get deterministic guidance. "
+        "Leaving arguments empty returns the 5-phase protocol and full category overview."
+    ),
+    annotations={
+        "title": "Query BQA Cryptography Playbook & Attack Router Matrix",
+        "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    },
+)
+def ctf_crypto_playbook(
+    query: Optional[str] = None,
+    section: Optional[str] = None,
+    chat_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Look up deterministic attack vectors and formulas from BQA Extreme Crypto Playbook."""
+    try:
+        from app.ctf.crypto_playbook import query_crypto_playbook
+        from app.tools.host import (
+            _begin_workspace_journal,
+            _finish_workspace_journal,
+            _guard_chat_id,
+            _record_tool_call,
+        )
+
+        validated, rejection = _guard_chat_id("ctf_crypto_playbook", chat_id)
+        if rejection is not None:
+            return rejection
+
+        journal_details = {"query": query, "section": section}
+        journal_op = _begin_workspace_journal(
+            "ctf_crypto_playbook", validated, journal_details
+        )
+
+        result = query_crypto_playbook(query=query, section=section)
+
+        ok = isinstance(result, dict) and bool(result.get("ok", False))
+        _record_tool_call(
+            "ctf_crypto_playbook",
+            validated,
+            {"query": query, "section": section},
+        )
+        _finish_workspace_journal(
+            "ctf_crypto_playbook",
+            validated,
+            journal_op,
+            ok=ok,
+            details=journal_details,
+        )
+        return result
+    except Exception as exc:
+        return format_error_response(exc)
+
+

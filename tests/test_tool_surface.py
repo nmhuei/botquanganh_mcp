@@ -21,6 +21,7 @@ EXPECTED_TOOLS = {
     "ctf_transform",
     "ctf_pattern",
     "ctf_hash_tool",
+    "ctf_crypto_playbook",
     "auto_download_ctf_challenge",
     "host_knowledge",
     "host_workspace_bind",

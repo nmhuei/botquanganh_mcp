@@ -59,6 +59,17 @@ pub fn get_tools_manifest() -> serde_json::Value {
                 }
             },
             {
+                "name": "ctf_crypto_playbook",
+                "description": "Tra cứu cẩm nang mật mã BQA Extreme Crypto Playbook và bảng ma trận vector tấn công (Attack Router Matrix). Dùng cho RSA, ECC, Lattices, PRNG, AES, Hashes.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string", "description": "Từ khóa tìm kiếm vector (vd: wiener, biased nonce, small roots, lcg, gcm)" },
+                        "section": { "type": "string", "enum": ["phases", "matrix", "rsa", "ecc", "lattice", "audit"], "description": "Tên phần cẩm nang cần đọc" }
+                    }
+                }
+            },
+            {
                 "name": "host_workspace_bind",
                 "description": "Khởi tạo hoặc liên kết không gian làm việc (workspace/session). Nếu label chứa 'ctf', tự động dựng harness 3 thư mục.",
                 "inputSchema": {
@@ -222,6 +233,7 @@ pub async fn run_stdio_server(paths: Arc<AppPaths>, db: Arc<Database>) -> Result
                     "ctf_transform" => handle_ctf_transform(&arguments),
                     "ctf_pattern" => handle_ctf_pattern(&arguments),
                     "ctf_hash_tool" => handle_ctf_hash_tool(&arguments),
+                    "ctf_crypto_playbook" => handle_ctf_crypto_playbook(&arguments),
                     "host_workspace_bind" => handle_host_workspace_bind(&paths, &db, &arguments),
                     "host_workspace_status" => handle_host_workspace_status(&paths, &db, &arguments),
                     "host_run_command" => handle_host_run_command(&paths, &db, &arguments).await,

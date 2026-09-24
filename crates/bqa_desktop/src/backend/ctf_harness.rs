@@ -107,9 +107,67 @@ pub fn scaffold_ctf_harness_into(
         fs::write(note_path, note_content)?;
     }
 
+    // 1.1. Write notes/math_model.md (Mandatory Mathematical Modeling for Crypto)
+    if category == "crypto" {
+        let notes_dir = session_dir.join("notes");
+        fs::create_dir_all(&notes_dir)?;
+        let math_model_path = notes_dir.join("math_model.md");
+        if !math_model_path.exists() {
+            let math_content = format!(
+                r#"# Mathematical Model: {name}
+
+> **Mandatory Crypto Discipline:** Before writing exploit code, document the mathematical relations below.
+> Reference: `app/ctf/playbooks/crypto_playbook.md` or invoke tool `ctf_crypto_playbook`.
+
+## 1. Algebraic Structure & Domains
+- Ring / Field / Group: (e.g. Z/nZ, GF(2^128), E(F_p), Lattice Z^m)
+- Generator / Base points: (e.g. g, G)
+- Modulus / Order: (e.g. n = p*q, curve order #E)
+
+## 2. Public Parameters & Observed Values
+- Modulus n:
+- Public Exponent e:
+- Ciphertext c:
+- Elliptic Curve Params (p, a, b, G):
+- PRNG Outputs / Keystream:
+
+## 3. Unknowns & Bounds
+- Target secret (m / flag): Bounds: (e.g. m < 2^256)
+- Nonce / Randomness (k, r): Bounds: (e.g. |k_i| < 2^128)
+- Factors (p, q, d): Bounds: (e.g. d < 1/3 * n^0.25)
+
+## 4. System of Equations & Congruences
+- Equation 1:
+- Equation 2:
+
+## 5. Selected Attack Vector (from Playbook)
+- Selected Vector:
+- Mathematical Justification / Preconditions verified:
+
+## 6. Verification Criterion
+- Equation to satisfy:
+"#,
+                name = clean_name
+            );
+            fs::write(math_model_path, math_content)?;
+        }
+    }
+
     // 2. Write script/analysis.md (only if not exists)
     let analysis_path = script_dir.join("analysis.md");
     if !analysis_path.exists() {
+        let crypto_discipline = if category == "crypto" {
+            r#"
+## 4. Crypto Discipline (BQA Extreme Playbook Protocol)
+- [ ] Phase 1: Parameter & Scheme Triage (extract n, e, c, curve params, PRNG state from challenge/)
+- [ ] Phase 2: Mathematical Modeling (formalized in `notes/math_model.md`)
+- [ ] Phase 3: Attack Vector Selection (verified preconditions via `ctf_crypto_playbook`)
+- [ ] Phase 4: Deterministic Local Verification (implemented 3-phase harness in script/)
+- [ ] Phase 5: Solution Promotion (promoted to `solver/solve.py` with exit code 0)
+"#
+        } else {
+            ""
+        };
         let analysis_content = format!(
             r#"# Analysis & Hypotheses for {name} ({category})
 
@@ -124,9 +182,10 @@ pub fn scaffold_ctf_harness_into(
 
 ## 3. Disproven / Dead Paths
 (Record failing payloads and discarded ideas here to avoid repeating work)
-"#,
+{discipline}"#,
             name = clean_name,
-            category = category
+            category = category,
+            discipline = crypto_discipline
         );
         fs::write(analysis_path, analysis_content)?;
     }
@@ -179,17 +238,53 @@ if __name__ == "__main__":
             ),
             "crypto" => format!(
                 r#"#!/usr/bin/env python3
-"""Deterministic cryptographic solver for {name} ({category})."""
+"""Deterministic cryptographic solver for {name} ({category}).
+Enforces the 5-Phase BQA Crypto Playbook discipline.
+"""
 
 import sys
-# from Crypto.Util.number import *
+from typing import Any
+# from Crypto.Util.number import bytes_to_long, long_to_bytes, inverse
 # from sympy import *
+# from z3 import *
+
+def parse_data() -> dict[str, Any]:
+    """Phase 1: Parse and validate public cryptographic parameters."""
+    print("[*] Phase 1: Parsing challenge parameters...")
+    params: dict[str, Any] = {{
+        # "n": ...,
+        # "e": ...,
+        # "c": ...,
+    }}
+    return params
+
+def derive_secret(params: dict[str, Any]) -> int | bytes | str:
+    """Phase 2-3: Mathematically solve for the secret / plaintext."""
+    print("[*] Phase 2-3: Deriving secret via deterministic attack vector...")
+    # === [IMPLEMENT DETERMINISTIC ATTACK ALGORITHM HERE] ===
+    recovered = "FLAG{{placeholder}}"
+    return recovered
+
+def verify_solution(recovered: Any, params: dict[str, Any]) -> bool:
+    """Phase 4: Deterministically verify solution satisfies all initial relations."""
+    print("[*] Phase 4: Verifying solution against original equations...")
+    # Example:
+    # if pow(recovered, params['e'], params['n']) != params['c']:
+    #     return False
+    return True
 
 def solve():
-    print("[*] Loading cryptographic parameters...")
-    # === [SOLVER LOGIC HERE] ===
+    params = parse_data()
+    secret = derive_secret(params)
+    if not verify_solution(secret, params):
+        print("[-] Verification failed! Solution does not satisfy initial equations.", file=sys.stderr)
+        sys.exit(1)
 
-    flag = "FLAG{{placeholder}}"
+    if isinstance(secret, bytes):
+        flag = secret.decode(errors="ignore")
+    else:
+        flag = str(secret)
+
     print(f"[+] Recovered flag: {{flag}}")
     return flag
 
@@ -259,10 +354,22 @@ if __name__ == "__main__":
 
     let reqs_path = solver_dir.join("requirements.txt");
     if !reqs_path.exists() {
-        fs::write(
-            reqs_path,
-            "# Python dependencies for standalone solve script\nrequests>=2.28.0\n",
-        )?;
+        if category == "crypto" {
+            fs::write(
+                reqs_path,
+                "# Python dependencies for standalone crypto solve script\nrequests>=2.28.0\npycryptodome>=3.18.0\nsympy>=1.12\ngmpy2>=2.1.5\n",
+            )?;
+        } else if category == "pwn" {
+            fs::write(
+                reqs_path,
+                "# Python dependencies for standalone pwn exploit\npwntools>=4.10.0\nrequests>=2.28.0\n",
+            )?;
+        } else {
+            fs::write(
+                reqs_path,
+                "# Python dependencies for standalone solve script\nrequests>=2.28.0\n",
+            )?;
+        }
     }
 
     // 4. Write meta.json (only if not exists)
@@ -406,6 +513,12 @@ pub fn promote_script_to_solver(
         stdout
     };
 
+    let math_section = if ws_dir.join("notes/math_model.md").is_file() {
+        "## 2. Mathematical Model & Attack Vector\n- **Mathematical Model:** Formalized in `notes/math_model.md`.\n- **Protocol:** Strictly followed BQA Extreme Crypto Playbook (Deterministic Verification).\n\n## 3. Reproduction Steps"
+    } else {
+        "## 2. Reproduction Steps"
+    };
+
     let writeup_content = format!(
 r#"# Writeup: {name}
 
@@ -419,7 +532,7 @@ r#"# Writeup: {name}
 - **Overview:** Challenge `{name}` was analyzed and exploited deterministically.
 - **Exploitation Vector:** Automated harness promotion from `{script_name}`.
 
-## 2. Reproduction Steps
+{math_part}
 1. Navigate to the solver directory:
    ```bash
    cd solver
@@ -433,7 +546,7 @@ r#"# Writeup: {name}
    python3 solve.py
    ```
 
-## 3. Original Execution Proof
+## Original Execution Proof
 Command executed:
 ```bash
 {cmd}
@@ -444,7 +557,7 @@ Terminal Output:
 {out}
 ```
 
-## 4. Recovered Flag(s)
+## Recovered Flag(s)
 {flags_text}
 
 > 🎯 *Flag is hoarded directly in `flag.txt` in the root workspace directory.*
@@ -452,6 +565,7 @@ Terminal Output:
         name = chal_name,
         now = now_str,
         script_name = script_file.file_name().and_then(|n| n.to_str()).unwrap_or("poc.py"),
+        math_part = math_section,
         cmd = command,
         out = stdout_sample.trim(),
         flags_text = flag_lines

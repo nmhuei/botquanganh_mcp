@@ -241,4 +241,70 @@ async def test_root_protection_and_chat_workspace_auto_scoping(tmp_path, monkeyp
         _resolve_scoped_file_path(path=str(tmp_path / "solver" / "evil.py"), chat_id=None, mode="write")
 
 
+def test_ctf_crypto_playbook_tool():
+    from app.tools.ctf_suite import ctf_crypto_playbook
+
+    # 1. Overview when no arguments provided
+    overview = ctf_crypto_playbook()
+    assert overview["ok"] is True
+    assert "BQA Extreme Crypto Playbook" in overview["discipline"]
+    assert len(overview["protocol"]) == 5
+    assert any(c["category"] == "RSA" for c in overview["attack_categories"])
+
+    # 2. Query search by keyword
+    rsa_res = ctf_crypto_playbook(query="wiener")
+    assert rsa_res["ok"] is True
+    assert rsa_res["matched_vectors_count"] >= 1
+    assert any("wiener" in v["vector"].lower() for v in rsa_res["matched_vectors"])
+
+    # 3. Query section lookup
+    sec_res = ctf_crypto_playbook(section="phases")
+    assert sec_res["ok"] is True
+    assert "Quy trình 5 Giai đoạn" in sec_res["content"]
+
+
+def test_crypto_harness_scaffolds_math_model_and_3phase_solver(tmp_path):
+    ws = tmp_path / "crypto_chal"
+    res = setup_ctf_harness(ws, name="my_rsa", category="crypto")
+
+    assert res["ok"] is True
+    assert (ws / "notes" / "math_model.md").is_file()
+    math_content = (ws / "notes" / "math_model.md").read_text(encoding="utf-8")
+    assert "# Mathematical Model: my_rsa" in math_content
+    assert "Algebraic Structure & Domains" in math_content
+    assert "Selected Attack Vector" in math_content
+
+    # Check 3-phase disciplined solve.py template
+    solve_content = (ws / "solver" / "solve.py").read_text(encoding="utf-8")
+    assert "def parse_data()" in solve_content
+    assert "def derive_secret(params" in solve_content
+    assert "def verify_solution(recovered" in solve_content
+    assert "verify_solution(secret, params)" in solve_content
+
+    # Check requirements.txt
+    reqs = (ws / "solver" / "requirements.txt").read_text(encoding="utf-8")
+    assert "pycryptodome" in reqs
+    assert "sympy" in reqs
+    assert "gmpy2" in reqs
+
+
+@pytest.mark.anyio
+async def test_workspace_bind_crypto_instructions_and_harness(tmp_path, monkeypatch):
+    import app.config
+    from app.tools.workspace_tools import host_workspace_bind
+
+    monkeypatch.setattr(app.config, "HOST_CHAT_WORKSPACES", True, raising=False)
+    monkeypatch.setattr(app.config, "HOST_WORKSPACE_DIR", tmp_path, raising=False)
+    monkeypatch.setattr(app.config, "HOST_CHAT_ROOT", tmp_path, raising=False)
+
+    res = await host_workspace_bind(label="crypto_rsa_oracle")
+    assert res["ok"] is True
+    assert "Category: CRYPTO" in res["instructions"]
+    assert "BQA Extreme Crypto Playbook" in res["instructions"]
+    assert "math_model_file" in res["harness"]
+
+    ws_path = Path(res["workspace"])
+    assert (ws_path / "notes" / "math_model.md").is_file()
+
+
 

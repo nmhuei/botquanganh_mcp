@@ -18,6 +18,7 @@ import app.config
 from app.tools.ctf_http import ctf_fetch_url, ctf_render_fetch_result
 from app.tools.ctf_suite import (
     auto_download_ctf_challenge,
+    ctf_crypto_playbook,
     ctf_hash_tool,
     ctf_pattern,
     ctf_transform,
@@ -70,6 +71,7 @@ TOOL_FUNCTIONS = {
     "ctf_transform": ctf_transform,
     "ctf_pattern": ctf_pattern,
     "ctf_hash_tool": ctf_hash_tool,
+    "ctf_crypto_playbook": ctf_crypto_playbook,
     "auto_download_ctf_challenge": auto_download_ctf_challenge,
     "host_knowledge": host_knowledge,
     "host_workspace_bind": host_workspace_bind,
