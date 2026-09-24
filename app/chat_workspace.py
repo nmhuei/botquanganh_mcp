@@ -849,25 +849,15 @@ class WorkspaceManager:
         if chat_id is None:
             self._enforce_capacity()
             base_id = generate_chat_id(label)
-            candidate = base_id
-            version = 1
-            while version <= 100:
-                with self._lock_for(candidate):
-                    ws = self.root / candidate
-                    try:
-                        os.mkdir(ws)
-                        return self._initialize(candidate, ws)
-                    except FileExistsError:
-                        version += 1
-                        candidate = f"{base_id}_v{version}"
-                        if version > 50:
-                            candidate = f"{base_id}_{secrets.token_hex(2)}"
-                            try:
-                                os.mkdir(self.root / candidate)
-                                return self._initialize(candidate, self.root / candidate)
-                            except FileExistsError:
-                                pass
-            raise CapacityError("Unable to allocate a unique workspace directory.")
+            with self._lock_for(base_id):
+                ws = self.root / base_id
+                if ws.is_dir():
+                    return self._bind_existing(base_id, ws, resume_token=resume_token, require_token=False)
+                try:
+                    os.mkdir(ws)
+                    return self._initialize(base_id, ws)
+                except FileExistsError:
+                    return self._bind_existing(base_id, ws, resume_token=resume_token, require_token=False)
 
         validated = validate_chat_id(chat_id)
         with self._lock_for(validated):

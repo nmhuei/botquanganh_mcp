@@ -730,4 +730,21 @@ def host_run_command(
             result["stdout"], _ = sanitize_output(result["stdout"])
         if "stderr" in result and isinstance(result["stderr"], str):
             result["stderr"], _ = sanitize_output(result["stderr"])
+        if result.get("exit_code") == 0:
+            try:
+                from app.ctf.auto_solver import promote_script_to_solver
+                from app.tools.workspace_tools import _chat_root
+                ws_root = (_chat_root() / validated) if validated else Path(cwd or ".").resolve()
+                promotion = promote_script_to_solver(
+                    workspace_root=ws_root,
+                    command=command,
+                    stdout=result.get("stdout", ""),
+                    stderr=result.get("stderr", ""),
+                    exit_code=0,
+                    cwd=cwd,
+                )
+                if promotion.get("promoted"):
+                    result["harness_promotion"] = promotion
+            except Exception:
+                pass
     return result

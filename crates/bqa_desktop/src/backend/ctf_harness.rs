@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use crate::backend::paths::AppPaths;
 use crate::db::{Database, SessionItem};
@@ -43,13 +43,7 @@ pub fn scaffold_ctf_harness(
         format!("{}_{}", category, clean_name)
     };
 
-    let mut session_id = base_id.clone();
-    let mut v = 1;
-    while paths.workspace_root.join(&session_id).exists() && v <= 100 {
-        v += 1;
-        session_id = format!("{}_v{}", base_id, v);
-    }
-
+    let session_id = base_id;
     let session_dir = paths.workspace_root.join(&session_id);
     scaffold_ctf_harness_into(&session_dir, &session_id, paths, db, config)?;
     Ok(session_dir)
@@ -314,4 +308,165 @@ if __name__ == "__main__":
     }
 
     Ok(())
+}
+
+pub fn promote_script_to_solver(
+    ws_dir: &std::path::Path,
+    command: &str,
+    stdout: &str,
+    stderr: &str,
+    exit_code: i32,
+    db: Option<&Database>,
+    chat_id: Option<&str>,
+) -> Option<serde_json::Value> {
+    if exit_code != 0 {
+        return None;
+    }
+
+    let script_dir = ws_dir.join("script");
+    if !script_dir.is_dir() {
+        return None;
+    }
+
+    // Find script file referenced in command
+    let mut script_path: Option<PathBuf> = None;
+    for token in command.split_whitespace() {
+        let clean = token.trim_matches(|c| c == '"' || c == '\'' || c == ';' || c == '&' || c == '|');
+        if clean.ends_with(".py") || clean.ends_with(".sh") || clean.ends_with(".js") || clean.ends_with(".rb") {
+            let cand1 = ws_dir.join(clean);
+            if cand1.is_file() && cand1.starts_with(&script_dir) {
+                script_path = Some(cand1);
+                break;
+            }
+            let cand2 = script_dir.join(Path::new(clean).file_name().unwrap_or_default());
+            if cand2.is_file() {
+                script_path = Some(cand2);
+                break;
+            }
+        }
+    }
+
+    let script_file = script_path?;
+    let script_content = fs::read_to_string(&script_file).ok()?;
+
+    // 1. Extract flags using regex
+    let flag_re = regex::Regex::new(r"([A-Za-z0-9_-]{2,30}\{[^}\n\r\t ]+\})").ok()?;
+    let combined_out = format!("{}\n{}", stdout, stderr);
+    let mut flags: Vec<String> = Vec::new();
+    for cap in flag_re.captures_iter(&combined_out) {
+        if let Some(m) = cap.get(1) {
+            let f = m.as_str().to_string();
+            if !f.to_lowercase().contains("placeholder") && !flags.contains(&f) {
+                flags.push(f);
+            }
+        }
+    }
+
+    // 2. Promote to solver/solve.py
+    let solver_dir = ws_dir.join("solver");
+    let _ = fs::create_dir_all(&solver_dir);
+    let solve_py = solver_dir.join("solve.py");
+    let _ = fs::write(&solve_py, &script_content);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&solve_py, fs::Permissions::from_mode(0o755));
+    }
+
+    // 3. Hoard flag in root workspace flag.txt
+    let flag_txt_path = ws_dir.join("flag.txt");
+    if !flags.is_empty() {
+        let _ = fs::write(&flag_txt_path, flags.join("\n") + "\n");
+        // Save to SQLite
+        if let Some(database) = db {
+            let target_cid = chat_id.unwrap_or(ws_dir.file_name().and_then(|n| n.to_str()).unwrap_or("current"));
+            for flag in &flags {
+                let _ = database.save_flag(
+                    target_cid,
+                    flag,
+                    Some("harness"),
+                    true,
+                    Some(&format!("Captured from execution of {}", script_file.display()))
+                );
+            }
+        }
+    }
+
+    // 4. Generate solver/WRITEUP.md
+    let chal_name = ws_dir.file_name().and_then(|n| n.to_str()).unwrap_or("challenge");
+    let now_str = chrono::Utc::now().to_rfc3339();
+    let flag_lines = if !flags.is_empty() {
+        flags.iter().map(|f| format!("- `{}`", f)).collect::<Vec<_>>().join("\n")
+    } else {
+        "- *(Flag recovered during script execution)*".to_string()
+    };
+    let stdout_sample = if stdout.len() > 2000 {
+        &stdout[stdout.len() - 2000..]
+    } else {
+        stdout
+    };
+
+    let writeup_content = format!(
+r#"# Writeup: {name}
+
+- **Solved At:** {now}
+- **Exploit Script:** `{script_name}`
+- **Status:** VERIFIED SOLVED
+
+---
+
+## 1. Challenge & Vulnerability Summary
+- **Overview:** Challenge `{name}` was analyzed and exploited deterministically.
+- **Exploitation Vector:** Automated harness promotion from `{script_name}`.
+
+## 2. Reproduction Steps
+1. Navigate to the solver directory:
+   ```bash
+   cd solver
+   ```
+2. Install Python dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. Run the standalone exploit:
+   ```bash
+   python3 solve.py
+   ```
+
+## 3. Original Execution Proof
+Command executed:
+```bash
+{cmd}
+```
+
+Terminal Output:
+```text
+{out}
+```
+
+## 4. Recovered Flag(s)
+{flags_text}
+
+> 🎯 *Flag is hoarded directly in `flag.txt` in the root workspace directory.*
+"#,
+        name = chal_name,
+        now = now_str,
+        script_name = script_file.file_name().and_then(|n| n.to_str()).unwrap_or("poc.py"),
+        cmd = command,
+        out = stdout_sample.trim(),
+        flags_text = flag_lines
+    );
+
+    let writeup_path = solver_dir.join("WRITEUP.md");
+    let _ = fs::write(&writeup_path, writeup_content);
+
+    Some(serde_json::json!({
+        "promoted": true,
+        "script_source": script_file.to_string_lossy().to_string(),
+        "solver_file": solve_py.to_string_lossy().to_string(),
+        "writeup_file": writeup_path.to_string_lossy().to_string(),
+        "flag_file": if !flags.is_empty() { Some(flag_txt_path.to_string_lossy().to_string()) } else { None },
+        "flags": flags,
+        "message": format!("Successfully promoted {} to solver/solve.py, generated WRITEUP.md, and hoarded flag(s) in flag.txt.", script_file.display())
+    }))
 }

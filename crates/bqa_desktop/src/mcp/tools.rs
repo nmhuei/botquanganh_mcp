@@ -5,7 +5,9 @@ use std::time::Instant;
 use base64::prelude::*;
 use sha2::{Digest, Sha256};
 
-use crate::backend::ctf_harness::{scaffold_ctf_harness, scaffold_ctf_harness_into, HarnessConfig};
+use crate::backend::ctf_harness::{
+    promote_script_to_solver, scaffold_ctf_harness, scaffold_ctf_harness_into, HarnessConfig,
+};
 use crate::backend::paths::AppPaths;
 use crate::db::{CommandItem, Database};
 
@@ -293,7 +295,7 @@ pub fn handle_host_workspace_bind(
 ) -> Result<serde_json::Value, String> {
     let raw_lbl = args.get("label").and_then(|v| v.as_str()).unwrap_or("session").trim();
     let chat_id = args.get("chat_id").and_then(|v| v.as_str());
-    let is_new = args.get("new").and_then(|v| v.as_bool()).unwrap_or(false);
+    let _is_new = args.get("new").and_then(|v| v.as_bool()).unwrap_or(false);
     let explicit_cat = args.get("category").and_then(|v| v.as_str());
 
     // Detect category from explicit arg or label
@@ -342,19 +344,7 @@ pub fn handle_host_workspace_bind(
     let session_id = if let Some(cid) = chat_id {
         cid.to_string()
     } else {
-        let base_id = format!("{}_{}", detected_cat, clean_name);
-        if is_new {
-            let mut cand = base_id.clone();
-            let mut v = 1;
-            while paths.workspace_root.join(&cand).exists() && v <= 100 {
-                v += 1;
-                cand = format!("{}_v{}", base_id, v);
-            }
-            cand
-        } else {
-            // Auto-resume existing or use base_id
-            base_id
-        }
+        format!("{}_{}", detected_cat, clean_name)
     };
 
     let ws_dir = paths.workspace_root.join(&session_id);
@@ -492,13 +482,24 @@ pub async fn handle_host_run_command(
 
     let _ = db.upsert_command("current", &cmd_item);
 
+    let mut promotion_res = None;
+    if exit_code == 0 {
+        let ws_dir = if cwd.starts_with(&paths.workspace_root) {
+            cwd.clone()
+        } else {
+            paths.workspace_root.clone()
+        };
+        promotion_res = promote_script_to_solver(&ws_dir, cmd, &stdout, &stderr, exit_code, Some(db), None);
+    }
+
     Ok(serde_json::json!({
         "ok": exit_code == 0,
         "exit_code": exit_code,
         "stdout": stdout,
         "stderr": stderr,
         "duration_ms": duration_ms,
-        "operation_id": op_id
+        "operation_id": op_id,
+        "harness_promotion": promotion_res
     }))
 }
 
@@ -817,14 +818,14 @@ mod tests {
         })).unwrap();
         assert_eq!(res_resume["chat_id"], "pwn_babybof");
 
-        // 3. New bind with new=true -> pwn_babybof_v2 (clean version suffix, no timestamp!)
+        // 3. Bind with new=true still continues in canonical folder to avoid clutter
         let res2 = handle_host_workspace_bind(&paths_arc, &db_arc, &serde_json::json!({
             "label": "pwn_babybof",
             "new": true
         })).unwrap();
-        assert_eq!(res2["chat_id"], "pwn_babybof_v2");
+        assert_eq!(res2["chat_id"], "pwn_babybof");
         let p2 = PathBuf::from(res2["workspace"].as_str().unwrap());
-        assert_eq!(p2.file_name().unwrap().to_str().unwrap(), "pwn_babybof_v2");
+        assert_eq!(p2.file_name().unwrap().to_str().unwrap(), "pwn_babybof");
 
         // 4. Crypto challenge detection
         let res3 = handle_host_workspace_bind(&paths_arc, &db_arc, &serde_json::json!({
@@ -835,6 +836,70 @@ mod tests {
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
+
+    #[tokio::test]
+    async fn test_promote_script_to_solver_and_hoard_flag() {
+        let temp_dir = std::env::temp_dir().join(format!("bqa_test_promote_{}", std::process::id()));
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let mut paths = AppPaths::new();
+        paths.repo_root = temp_dir.clone();
+        paths.workspace_root = temp_dir.join("workspaces");
+        paths.db_path = temp_dir.join("test.db");
+
+        let db = Database::open(&paths.db_path).unwrap();
+        let paths_arc = Arc::new(paths);
+        let db_arc = Arc::new(db);
+
+        // 1. Bind session
+        let bind_res = handle_host_workspace_bind(&paths_arc, &db_arc, &serde_json::json!({
+            "label": "pwn_canary_leak"
+        })).unwrap();
+
+        let ws_path = PathBuf::from(bind_res["workspace"].as_str().unwrap());
+        let script_file = ws_path.join("script").join("exploit.py");
+
+        // 2. User writes exploratory exploit in script/
+        let exploit_code = r#"#!/usr/bin/env python3
+print("Stage 1: Leaking canary...")
+print("Stage 2: Payload dispatch...")
+print("Got shell! Output: FLAG{canary_master_leak_win_1337}")
+"#;
+        fs::write(&script_file, exploit_code).unwrap();
+
+        // 3. User runs script via handle_host_run_command
+        let cmd = format!("python3 script/exploit.py");
+        let run_res = handle_host_run_command(&paths_arc, &db_arc, &serde_json::json!({
+            "command": cmd,
+            "cwd": ws_path.to_string_lossy().to_string()
+        })).await.unwrap();
+
+        assert_eq!(run_res["ok"], true);
+        assert!(run_res["harness_promotion"]["promoted"].as_bool().unwrap());
+
+        // 4. Verify solve.py promoted
+        let solve_content = fs::read_to_string(ws_path.join("solver").join("solve.py")).unwrap();
+        assert_eq!(solve_content, exploit_code);
+
+        // 5. Verify flag.txt created in root workspace
+        let flag_content = fs::read_to_string(ws_path.join("flag.txt")).unwrap();
+        assert!(flag_content.contains("FLAG{canary_master_leak_win_1337}"));
+
+        // 6. Verify solver/WRITEUP.md generated
+        let writeup_content = fs::read_to_string(ws_path.join("solver").join("WRITEUP.md")).unwrap();
+        assert!(writeup_content.contains("# Writeup:"));
+        assert!(writeup_content.contains("VERIFIED SOLVED"));
+        assert!(writeup_content.contains("FLAG{canary_master_leak_win_1337}"));
+
+        // 7. Verify flag persisted in SQLite DB
+        let flags = db_arc.get_flags(None).unwrap();
+        assert!(!flags.is_empty());
+        assert_eq!(flags[0].flag, "FLAG{canary_master_leak_win_1337}");
+        assert!(flags[0].verified);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
 }
+
 
 
