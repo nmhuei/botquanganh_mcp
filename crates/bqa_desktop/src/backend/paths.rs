@@ -64,7 +64,7 @@ impl AppPaths {
         let server_log = repo_root.join("logs/server.log");
         let db_path = repo_root.join("logs/bqa_studio.db");
 
-        let mut ws_root = PathBuf::from(&home_dir).join("Downloads/bqa-workspaces");
+        let mut ws_root = PathBuf::from(&home_dir).join("Documents/BQA");
 
         // 1. Read HOST_CHAT_ROOT from .env if present
         if let Ok(content) = fs::read_to_string(&dotenv) {

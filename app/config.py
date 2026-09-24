@@ -265,7 +265,7 @@ if ATTRIBUTION_MODE not in {"off", "tag", "strict", "enforce"}:
 HOST_CHAT_WORKSPACES = os.getenv("HOST_CHAT_WORKSPACES", "true").lower() == "true"
 HOST_CHAT_ROOT = _resolve_config_path(
     os.getenv("HOST_CHAT_ROOT", "").strip(),
-    Path("~/Downloads/bqa-workspaces"),
+    Path("~/Documents/BQA"),
 )
 HOST_CHAT_IDLE_ARCHIVE_HOURS = max(
     0, int(os.getenv("HOST_CHAT_IDLE_ARCHIVE_HOURS", "72"))

@@ -348,7 +348,7 @@ import importlib  # noqa: E402
 import sys  # noqa: E402
 from typing import TextIO  # noqa: E402
 
-_DEFAULT_ROOT = Path("~/Downloads/bqa-workspaces")
+_DEFAULT_ROOT = Path("~/Documents/BQA")
 
 
 def _limits_from_config(config: Any) -> SweepLimits:
