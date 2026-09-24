@@ -1,0 +1,66 @@
+"""Unit tests for automated CTF challenge harness and auto_download_ctf_challenge tool."""
+
+from pathlib import Path
+import pytest
+
+from app.ctf.challenge_harness import setup_ctf_harness
+from app.tools.ctf_suite import auto_download_ctf_challenge
+
+
+def test_setup_ctf_harness_scaffolding(tmp_path):
+    ws = tmp_path / "chal_workspace"
+    res = setup_ctf_harness(
+        workspace_dir=ws,
+        name="babybof",
+        category="pwn",
+        target="10.10.10.1:1337",
+        description="A simple stack buffer overflow challenge.",
+    )
+
+    assert res["ok"] is True
+    assert res["name"] == "babybof"
+    assert res["category"] == "pwn"
+
+    # Check 3-folder layout
+    assert (ws / "challenge").is_dir()
+    assert (ws / "script").is_dir()
+    assert (ws / "script" / "probes").is_dir()
+    assert (ws / "solver").is_dir()
+
+    # Check generated files
+    assert (ws / "metadata.json").is_file()
+    assert (ws / "challenge" / "NOTE.md").is_file()
+    assert (ws / "script" / "analysis.md").is_file()
+    assert (ws / "solver" / "solve.py").is_file()
+    assert (ws / "solver" / "requirements.txt").is_file()
+
+    # Check solve.py content for pwn template
+    solve_content = (ws / "solver" / "solve.py").read_text(encoding="utf-8")
+    assert "from pwn import *" in solve_content
+    assert "10.10.10.1" in solve_content
+    assert "1337" in solve_content
+
+    # Check analysis.md content for candidate flags table
+    analysis_content = (ws / "script" / "analysis.md").read_text(encoding="utf-8")
+    assert "Candidate Flags Lifecycle" in analysis_content
+    assert "CANDIDATE" in analysis_content
+
+
+def test_auto_download_ctf_challenge_tool(tmp_path, monkeypatch):
+    import app.config
+    monkeypatch.setattr(app.config, "HOST_WORKSPACE_DIR", tmp_path)
+
+    res = auto_download_ctf_challenge(
+        name="rsa_easy",
+        category="crypto",
+        description="Find p and q from n and e.",
+    )
+
+    assert res["ok"] is True
+    assert res["category"] == "crypto"
+    chal_dir = Path(res["workspace_dir"])
+    assert (chal_dir / "challenge" / "NOTE.md").is_file()
+
+    assert (chal_dir / "solver" / "solve.py").is_file()
+    solve_content = (chal_dir / "solver" / "solve.py").read_text(encoding="utf-8")
+    assert "cryptographic solver" in solve_content.lower()

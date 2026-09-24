@@ -36,6 +36,7 @@ HOST_TOOLS = [
     "ctf_transform",
     "ctf_pattern",
     "ctf_hash_tool",
+    "auto_download_ctf_challenge",
     "host_knowledge",
     "host_workspace_bind",
     "host_workspace_list",

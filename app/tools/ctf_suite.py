@@ -352,3 +352,87 @@ def ctf_hash_tool(
         return result
     except Exception as exc:
         return format_error_response(exc)
+
+
+@mcp.tool(
+    name="auto_download_ctf_challenge",
+    description=(
+        "Initialize standardized CTF challenge harness (challenge/, script/, solver/) "
+        "and optionally download/extract remote challenge files. "
+        "Creates metadata.json, challenge/NOTE.md, script/analysis.md, and boilerplate solver/solve.py. "
+        "If a URL is provided, downloads and safely unpacks archives (.zip/.tar.gz), then runs "
+        "ctf_triage_artifact automatically on the downloaded binary."
+    ),
+    annotations={
+        "title": "Auto-download CTF challenge and initialize 3-folder harness",
+        "readOnlyHint": False,
+        "openWorldHint": True,
+        "destructiveHint": False,
+        "idempotentHint": False,
+    },
+)
+def auto_download_ctf_challenge(
+    name: str,
+    category: str = "pwn",
+    url: Optional[str] = None,
+    description: Optional[str] = None,
+    target: Optional[str] = None,
+    chat_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Scaffold standard 3-folder CTF harness (challenge/, script/, solver/) and optionally fetch challenge files."""
+    try:
+        from pathlib import Path
+        from app.ctf.challenge_harness import setup_ctf_harness
+        from app.host.paths import host_workspace_dir
+        from app.tools.host import (
+            _begin_workspace_journal,
+            _finish_workspace_journal,
+            _guard_chat_id,
+            _record_tool_call,
+        )
+
+        validated, rejection = _guard_chat_id("auto_download_ctf_challenge", chat_id)
+        if rejection is not None:
+            return rejection
+
+        target_ws: Path
+        if validated:
+            from app.tools.workspace_tools import _chat_root
+            target_ws = _chat_root() / validated
+        else:
+            target_ws = host_workspace_dir() / name
+
+        journal_details = {"name": name, "category": category, "has_url": url is not None}
+        journal_op = _begin_workspace_journal(
+            "auto_download_ctf_challenge", validated, journal_details
+        )
+
+        try:
+            result = setup_ctf_harness(
+                workspace_dir=target_ws,
+                name=name,
+                category=category,
+                url=url,
+                description=description,
+                target=target,
+            )
+        except Exception as exc:
+            result = format_error_response(exc)
+
+        ok = isinstance(result, dict) and bool(result.get("ok", False))
+        _record_tool_call(
+            "auto_download_ctf_challenge",
+            validated,
+            {"name": name, "category": category},
+        )
+        _finish_workspace_journal(
+            "auto_download_ctf_challenge",
+            validated,
+            journal_op,
+            ok=ok,
+            details=journal_details,
+        )
+        return result
+    except Exception as exc:
+        return format_error_response(exc)
+

@@ -242,11 +242,27 @@ async def host_workspace_bind(
             f"> ```text\n> {resume_prompt_text}\n> ```"
         )
 
+        if created and label and any(label.lower().startswith(p) for p in ("ctf_", "ctf-", "ctf")):
+            try:
+                from app.ctf.challenge_harness import setup_ctf_harness
+                clean_lbl = label
+                for prefix in ("ctf_", "ctf-", "ctf"):
+                    if clean_lbl.lower().startswith(prefix):
+                        clean_lbl = clean_lbl[len(prefix):]
+                        break
+                parts = clean_lbl.split("_", 1)
+                cat = parts[0] if parts[0] in {"pwn", "reverse", "crypto", "web", "forensics", "misc"} else "pwn"
+                cname = parts[1] if len(parts) > 1 else (parts[0] or "challenge")
+                setup_ctf_harness(Path(resolved), name=cname, category=cat)
+            except Exception:
+                pass
+
         context_data = _rehydrate_session_context(Path(resolved)) if not created else {
             "recent_commands": [],
             "recent_notes": "",
-            "workspace_files": [],
+            "workspace_files": ["challenge", "script", "solver"] if (Path(resolved) / "challenge").is_dir() else [],
         }
+
 
         extra_fields: dict[str, Any] = {
             "chat_id": assigned_id,

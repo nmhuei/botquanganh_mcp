@@ -17,11 +17,13 @@ import pytest
 import app.config
 from app.tools.ctf_http import ctf_fetch_url, ctf_render_fetch_result
 from app.tools.ctf_suite import (
+    auto_download_ctf_challenge,
     ctf_hash_tool,
     ctf_pattern,
     ctf_transform,
     ctf_triage_artifact,
 )
+
 
 from app.tools.health import HOST_TOOLS
 from app.tools.host import (
@@ -68,6 +70,7 @@ TOOL_FUNCTIONS = {
     "ctf_transform": ctf_transform,
     "ctf_pattern": ctf_pattern,
     "ctf_hash_tool": ctf_hash_tool,
+    "auto_download_ctf_challenge": auto_download_ctf_challenge,
     "host_knowledge": host_knowledge,
     "host_workspace_bind": host_workspace_bind,
     "host_workspace_list": host_workspace_list,

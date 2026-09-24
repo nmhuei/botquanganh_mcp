@@ -156,3 +156,58 @@ The bootstrap wrapper resolves its real path, so the global symlink works from a
 ## Knowledge flow
 
 `host_knowledge` reads Markdown guides and `TOOL_CATALOG.json`, checks executable availability from `PATH`, and runs only catalog-declared version arguments against resolved executable paths. Callers cannot supply arbitrary version-probe commands.
+
+---
+
+# Clean Architecture — Rust Native Studio & CTF Harness
+
+## 1. Clean Modular Design
+
+The system implements Clean Architecture by separating the presentation, business logic, and persistence layers into distinct modules:
+
+```text
++------------------------------------------------------------------------+
+|                               FRONT-END                                |
+|  - Tao Window Manager (Window sizing, title, events)                   |
+|  - Wry Webview Engine (GTK Container integration)                      |
+|  - UI Assets (HTML5, TailwindCSS, JavaScript SPA)                      |
+|  - Two-way IPC Bridge (window.ipc.postMessage <-> EvalScript)          |
++------------------------------------------------------------------------+
+                                    │
+                                    │ IPC Messages (JSON-RPC style)
+                                    ▼
++------------------------------------------------------------------------+
+|                                BACK-END                                |
+|  [Rust Core Daemon & Controller]                                       |
+|  - IPC Dispatcher (Routing: workspaces, commands, logs, runtime, flags)|
+|  - Process Supervisor (FastMCP PID & Cloudflared Tunnel via /proc)     |
+|  - Inotify Watcher (Real-time disk file modify / create detection)     |
+|  - CTF Harness Engine (Scaffolding challenge/, script/, solver/)       |
+|  - Sanitizer (Honeypot & Canary filter, clipboard bridge)              |
+|                                                                        |
+|  [Python FastMCP Server Layer]                                         |
+|  - 23 FastMCP Tools (CTF Suite, Host Execution, Workspace, Health)     |
+|  - Enforce Gating & Policy Engine                                      |
++------------------------------------------------------------------------+
+                                    │
+                                    │ Structured Persistence (WAL mode)
+                                    ▼
++------------------------------------------------------------------------+
+|                                DATABASE                                |
+|  - SQLite Engine (Embedded via rusqlite with bundled C compiler)       |
+|  - WAL (Write-Ahead Logging) for concurrent webview & daemon access    |
+|  - Tables:                                                             |
+|    * sessions: Quản lý không gian làm việc và metadata CTF             |
+|    * commands: Lịch sử thực thi, unredacted stdout/stderr, mã thoát    |
+|    * flags: Kho cất giữ flag (Flag Hoard), trạng thái verify/submit    |
+|    * audit_logs: Nhật ký bảo mật, sự kiện hệ thống và HTTP requests    |
++------------------------------------------------------------------------+
+```
+
+## 2. Directory Scaffolding & Harness Generation
+
+Whenever GPT creates a session or invokes `auto_download_ctf_challenge` / `host_workspace_bind(label="ctf_...")`:
+1. `challenge/`: Read-only original challenge artifacts and `NOTE.md` with SHA256 checksums and triage facts.
+2. `script/`: Probes, exploratory code, and living `analysis.md` (Facts, Hypotheses, Eliminated Paths).
+3. `solver/`: Deterministic, standalone `solve.py` with tailored templates for pwn, crypto, web, reverse, and misc, accompanied by `requirements.txt`.
+4. Metadata and flags are persisted into SQLite (`bqa_studio.db`) and synced with the Webview interface in real-time.
