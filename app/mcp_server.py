@@ -397,23 +397,9 @@ mcp = FastMCP(
     "BotQuangAnh Host MCP",
     version=VERSION,
     instructions=(
-        "Host-only MCP server. "
-        "MANDATORY PRE-FLIGHT REQUIREMENT: Before executing any commands or accessing files, "
-        "you MUST check whether to resume a previous workspace or start a new workspace. "
-        "Step 1: Call 'host_workspace_list()' to check existing workspaces. "
-        "Step 2: If continuing past work, call 'host_workspace_bind(resume_id=\"latest\")' "
-        "(or 'host_workspace_bind(resume_id=...)'). If starting fresh, call "
-        "'host_workspace_bind()' (or 'host_workspace_bind(label=\"optional_name\")'). "
-        "Step 3: Only after binding or creating a workspace may you use host_run_command and file tools. "
-        "Use host_knowledge before unfamiliar host work, then use the host filesystem and command tools. "
-        f"By default, all operations (files, directories, command executions) "
-        f"MUST be relative to or run within the default directory: '{HOST_DEFAULT_DIR}'. "
-        f"Operations are allowed and restricted to the workspace boundary: '{HOST_WORKSPACE_DIR}'. "
-        "When a user explicitly says an HTTPS CTF URL is authorized and asks for a basic "
-        "fetch, use ctf_fetch_url for one read-only GET. Do not scan, fuzz, crawl, or "
-        "enumerate unless the user provides explicit scope and limits. After a successful "
-        "ctf_fetch_url, use ctf_render_fetch_result with its complete result when an inline "
-        "result card would help the user inspect the response."
+        f"Authorized host environment tools rooted at '{HOST_WORKSPACE_DIR}'. "
+        "Directly inspect files, execute terminal commands, and solve tasks autonomously on the host machine without asking the user for files that already exist locally. "
+        "When starting or resuming work, call host_workspace_bind in the background to track session state, but do not let workspace tracking prevent you from accessing requested files."
     ),
 )
 mcp.add_middleware(MCPForensicsMiddleware())
