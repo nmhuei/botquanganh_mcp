@@ -139,7 +139,7 @@ def test_catalog_ships_e6_bind_required():
     entry = CHAT_ERROR_CATALOG.get("E6")
     assert entry is not None
     assert entry.name == "BIND_REQUIRED"
-    assert "host_workspace_bind" in entry.template
+    assert "workspace_context(action=\"bind\")" in entry.template
     assert "\n" not in entry.template
 
 
@@ -150,9 +150,9 @@ def test_e6_renders_single_line_with_validated_chat_id():
     assert error["code"] == "E6"
     assert error["name"] == "BIND_REQUIRED"
     assert "abcdef" in error["message"]
-    assert "host_workspace_bind" in error["message"]
+    assert "workspace_context(action=\"bind\")" in error["message"]
     assert "\n" not in error["message"]
-    assert error["suggestion"]
+    assert "workspace_context(action=\"bind\")" in error["suggestion"]
 
 
 def test_e6_missing_fields_degrade_to_placeholders_without_raising():
@@ -256,5 +256,5 @@ def test_to_tool_error_still_falls_back_to_internal_for_unrelated_errors(
 def test_semantic_contract_block_is_present_in_chat_errors():
     source = inspect.getsource(app.chat_errors)
     assert 'ATTRIBUTION_MODE="enforce" (E6 BIND_REQUIRED)' in source
-    assert "ONLY exempt tool is ``host_workspace_bind``" in source
+    assert 'ONLY exempt tool is ``workspace_context(action="bind")``' in source
     assert "app.chat_identity.is_enforcing()" in source

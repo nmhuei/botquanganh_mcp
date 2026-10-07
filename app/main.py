@@ -6,12 +6,9 @@ from app.config import GATEWAY_TOKEN, MCP_BIND_HOST, MCP_PORT, REQUIRE_AUTH
 from app.logging_audit import log_audit_event
 from app.mcp_server import mcp
 
-# Tool registration is intentionally explicit and host-only.
-import app.tools.ctf_http  # noqa: E402,F401
-import app.tools.health  # noqa: E402,F401
-import app.tools.host  # noqa: E402,F401
-import app.tools.host_knowledge  # noqa: E402,F401
-import app.tools.workspace_tools  # noqa: E402,F401
+from app.discovery import discover_and_register_tools
+
+discover_and_register_tools("app.tools")
 
 
 @atexit.register

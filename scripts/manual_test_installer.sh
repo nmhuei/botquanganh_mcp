@@ -62,12 +62,14 @@ install_env() {
 
 verify_install() {
     local repo="$1" bin_dir="$2"
+    local expected_version
     [ -x "$repo/.venv/bin/python" ]
     [ -f "$repo/.env" ]
     [ "$(stat -c '%a' "$repo/.env")" = "600" ]
     [ -L "$bin_dir/bqa" ]
     [ "$(readlink -f "$bin_dir/bqa")" = "$repo/bin/bqa" ]
-    [ "$("$bin_dir/bqa" version)" = "bqa 1.0.0" ]
+    expected_version="$("$repo/.venv/bin/python" -c 'from app.config import VERSION; print(VERSION)')"
+    [ "$("$bin_dir/bqa" version)" = "bqa $expected_version" ]
     "$repo/.venv/bin/python" -m pip check >/dev/null
 }
 

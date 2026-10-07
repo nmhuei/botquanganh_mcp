@@ -257,7 +257,7 @@
   {
     "name": "bash",
     "category": "shell",
-    "purpose": "GNU Bourne Again Shell used by host_run_command.",
+    "purpose": "GNU Bourne Again Shell used by terminal execution.",
     "usage_notes": [],
     "version_args": [
       "--version"

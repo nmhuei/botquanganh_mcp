@@ -198,7 +198,14 @@ def plan_actions(
 
     overflow = len(remaining) - limits.max_workspaces
     if overflow > 0:
-        surplus = sorted(remaining, key=lambda e: (float(e.get("mtime") or 0.0), e["chat_id"]))
+        surplus = sorted(
+            remaining,
+            key=lambda e: (
+                int(e.get("size_bytes") or 0),
+                float(e.get("mtime") or 0.0),
+                e["chat_id"],
+            ),
+        )
         count_reason = (
             "{:d} active workspaces exceed max_workspaces={:d}".format(
                 len(remaining), limits.max_workspaces
@@ -357,15 +364,17 @@ def _limits_from_config(config: Any) -> SweepLimits:
     The fallbacks mirror the :class:`SweepLimits` dataclass defaults, so a bare
     namespace yields the same plan as calling the pure API directly.
     """
+    defaults = SweepLimits()
     return SweepLimits(
         idle_archive_hours=max(
-            0.0, float(getattr(config, "HOST_CHAT_IDLE_ARCHIVE_HOURS", 24 * 7))
+            0.0,
+            float(getattr(config, "HOST_CHAT_IDLE_ARCHIVE_HOURS", defaults.idle_archive_hours)),
         ),
         retention_days=max(
-            0.0, float(getattr(config, "HOST_CHAT_RETENTION_DAYS", 30))
+            0.0, float(getattr(config, "HOST_CHAT_RETENTION_DAYS", defaults.retention_days))
         ),
-        max_workspaces=int(getattr(config, "HOST_CHAT_MAX_WORKSPACES", 64)),
-        root_max_gb=max(0.0, float(getattr(config, "HOST_CHAT_ROOT_MAX_GB", 10.0))),
+        max_workspaces=int(getattr(config, "HOST_CHAT_MAX_WORKSPACES", defaults.max_workspaces)),
+        root_max_gb=max(0.0, float(getattr(config, "HOST_CHAT_ROOT_MAX_GB", defaults.root_max_gb))),
     )
 
 

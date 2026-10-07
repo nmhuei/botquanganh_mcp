@@ -336,6 +336,7 @@ def execute_host_command(
             operation_id=operation_id,
             phase=phase,
             status=status,
+            tool_name="host_run_command",
             result=result_value,
         )
 

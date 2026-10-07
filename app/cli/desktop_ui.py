@@ -67,6 +67,20 @@ MIN_COMPLETION_TOAST_SECONDS = 10.0
 COMPLETION_TOAST_LIFETIME_MS = 6000
 
 
+def desktop_search_limit_fields() -> list[dict[str, str]]:
+    """Expose validated Search Limits metadata for desktop settings surfaces."""
+    from app.cli.config_view import desktop_search_limit_fields as _fields
+
+    return _fields()
+
+
+def desktop_search_limit_values(values: dict[str, str]) -> dict[str, str]:
+    """Return current Search Limits values for desktop settings display."""
+    from app.cli.config_view import SEARCH_LIMIT_KEYS
+
+    return {key: str(values.get(key, "")) for key in SEARCH_LIMIT_KEYS}
+
+
 class DesktopUIUnavailable(RuntimeError):
     """Raised when the current session cannot create a desktop window."""
 

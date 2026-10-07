@@ -46,6 +46,7 @@ def record_mcp_command_activity(
     operation_id: str | None = None,
     phase: str | None = None,
     status: str | None = None,
+    tool_name: str = "terminal_execute",
 ) -> None:
     """Append a redacted command/result record for the local desktop UI.
 
@@ -54,6 +55,10 @@ def record_mcp_command_activity(
     security audit log, whose command fields remain hashes only.
     """
     command_text, command_truncated = _bounded_display_text(command)
+    raw_summary = result.get("command_summary") or command_text
+    command_summary, _summary_truncated = _bounded_display_text(raw_summary)
+    if command_summary.strip() == str(tool_name):
+        command_summary = command_text
     stdout, stdout_limited = _bounded_display_text(result.get("stdout", ""))
     stderr, stderr_limited = _bounded_display_text(result.get("stderr", ""))
     record = {
@@ -61,7 +66,10 @@ def record_mcp_command_activity(
         "event_id": str(uuid.uuid4()),
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "source": "mcp",
-        "tool": "host_run_command",
+        "tool": str(tool_name),
+        "title": str(tool_name),
+        "detail": command_summary,
+        "command_summary": command_summary,
         "command": command_text,
         "command_truncated": command_truncated,
         "cwd": _bounded_display_text(cwd)[0],
@@ -126,7 +134,7 @@ def read_mcp_command_activity(limit: int = 20) -> list[dict[str, Any]]:
             isinstance(item, dict)
             and item.get("schema_version") == 1
             and item.get("source") == "mcp"
-            and item.get("tool") == "host_run_command"
+            and item.get("tool") in {"host_run_command", "terminal_execute"}
         ):
             records.append(item)
     return list(reversed(records[-limit:]))

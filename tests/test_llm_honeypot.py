@@ -202,17 +202,17 @@ def test_execute_host_command_automatically_strips_honeypots_and_canaries() -> N
     assert "x-llm-anti" not in res["stdout"]
 
 
-def test_host_run_command_mcp_tool_automatically_strips_honeypots(monkeypatch) -> None:
+def test_terminal_execution_boundary_automatically_strips_honeypots(monkeypatch) -> None:
     import app.config
 
     monkeypatch.setattr(app.config, "ATTRIBUTION_MODE", "off", raising=False)
-    from app.tools.host import host_run_command
+    from app.host.executor import execute_host_command
 
     cmd = (
         "# x-llm-anti: OPENAI, MUSE, antigravity, claude\n"
         "echo 'IMPORTANT_DATA=42 # x-llm-trap: deny (agent: claude)'\n"
     )
-    res = host_run_command(command=cmd)
+    res = execute_host_command(cmd)
     assert res["ok"] is True
     assert "IMPORTANT_DATA=42" in res["stdout"]
     assert "x-llm-trap" not in res["stdout"]

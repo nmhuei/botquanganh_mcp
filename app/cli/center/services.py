@@ -16,13 +16,13 @@ from typing import Any, Mapping
 
 from app import chat_sweeper
 from app.chat_errors import validate_chat_id
-from app.chat_workspace import read_journal_records, summarize_journal_records
+from app.chat_workspace import read_journal_records, read_limits, summarize_journal_records
 from app.cli.config_view import bool_value, resolve_config_path, validate_config
 from app.cli.context import normalize_base_url
 from app.cli.lifecycle import canonical_tunnel_base, status_data
 from app.cli.client import RESTClient
 from app.dependency_check import check_project_dependencies
-from app.tools.health import get_capabilities, health_check
+from app.tools.server_info import get_capabilities, health_check
 
 
 _SEVERITY_ORDER = {"error": 0, "warning": 1, "info": 2}
@@ -176,11 +176,12 @@ def workspace_prune(
     *,
     apply: bool = False,
 ) -> dict[str, Any]:
+    cur_limits = read_limits()
     limits = chat_sweeper.SweepLimits(
-        idle_archive_hours=float(values.get("HOST_CHAT_IDLE_ARCHIVE_HOURS", 72)),
-        retention_days=float(values.get("HOST_CHAT_RETENTION_DAYS", 30)),
-        max_workspaces=int(values.get("HOST_CHAT_MAX_WORKSPACES", 128)),
-        root_max_gb=float(values.get("HOST_CHAT_ROOT_MAX_GB", 24)),
+        idle_archive_hours=float(values.get("HOST_CHAT_IDLE_ARCHIVE_HOURS", cur_limits.idle_archive_hours)),
+        retention_days=float(values.get("HOST_CHAT_RETENTION_DAYS", cur_limits.retention_days)),
+        max_workspaces=int(values.get("HOST_CHAT_MAX_WORKSPACES", cur_limits.max_workspaces)),
+        root_max_gb=float(values.get("HOST_CHAT_ROOT_MAX_GB", cur_limits.root_max_gb)),
     )
     report = chat_sweeper.run_sweep_once(Path(root), limits, dry_run=not apply)
     report["ok"] = all(

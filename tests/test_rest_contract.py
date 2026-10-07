@@ -3,6 +3,15 @@ import os
 import subprocess
 import sys
 
+from app import config
+from app.rest_api import openapi_document
+
+
+def test_openapi_reports_the_current_release_version():
+    document = openapi_document()
+
+    assert document["info"]["version"] == config.VERSION
+
 
 def test_rest_error_contract_matches_shared_taxonomy():
     env = {
@@ -104,3 +113,36 @@ print(json.dumps({
     assert result["status"] == 401
     assert result["content_type"].startswith("application/json")
     assert result["body"]["error"]["code"] == "AUTH_REQUIRED"
+
+
+def test_forbidden_origin_uses_json_error_contract():
+    env = {
+        **os.environ,
+        "REQUIRE_AUTH": "false",
+        "MCP_JSON_RESPONSE": "true",
+        "MCP_STATELESS_HTTP": "true",
+    }
+    code = r'''
+import json
+from starlette.testclient import TestClient
+from app.mcp_server import mcp
+
+app = mcp.http_app(path="/mcp", transport="streamable-http")
+with TestClient(app) as client:
+    response = client.get(
+        "/api/v1/health",
+        headers={"Origin": "https://forbidden.example"},
+    )
+print(json.dumps({"status": response.status_code, "body": response.json()}))
+'''
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=True,
+    )
+    result = json.loads(proc.stdout)
+    assert result["status"] == 403
+    assert result["body"]["error"]["code"] == "FORBIDDEN_ORIGIN"

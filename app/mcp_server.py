@@ -397,9 +397,10 @@ mcp = FastMCP(
     "BotQuangAnh Host MCP",
     version=VERSION,
     instructions=(
-        f"Authorized host environment tools rooted at '{HOST_WORKSPACE_DIR}'. "
-        "Directly inspect files, execute terminal commands, and solve tasks autonomously on the host machine without asking the user for files that already exist locally. "
-        "When starting or resuming work, call host_workspace_bind in the background to track session state, but do not let workspace tracking prevent you from accessing requested files."
+        f"Authorized host tools root at '{HOST_WORKSPACE_DIR}'. "
+        "Use the connected BQA MCP for host operations instead of container.exec. "
+        "Pass chat_id in all tool calls. "
+        "Do not modify tunnel infrastructure."
     ),
 )
 mcp.add_middleware(MCPForensicsMiddleware())

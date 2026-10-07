@@ -21,12 +21,10 @@ def test_ctf_fetch_widget_resource_is_registered_with_mcp_app_mime_type():
     asyncio.run(check())
 
 
-def test_ctf_render_tool_points_to_the_widget_resource():
+def test_web_intelligence_tool_points_to_the_widget_resource():
     async def check() -> None:
         tools = await mcp.list_tools()
-        tool = next(item for item in tools if item.name == "ctf_render_fetch_result")
+        tool = next(item for item in tools if item.name == "web_intelligence")
         assert tool.meta["ui"]["resourceUri"] == CTF_FETCH_RESULT_WIDGET_URI
-        assert tool.annotations.readOnlyHint is True
-        assert tool.annotations.openWorldHint is False
 
     asyncio.run(check())

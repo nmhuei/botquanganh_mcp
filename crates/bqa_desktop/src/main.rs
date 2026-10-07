@@ -237,6 +237,7 @@ impl AppPaths {
     }
 
     fn write_dotenv(&self, updates: &HashMap<String, String>) -> Result<(), std::io::Error> {
+        validate_search_limit_updates(updates)?;
         let mut current = self.read_dotenv();
         for (k, v) in updates {
             if k.contains('\n') || k.contains('\r') || v.contains('\n') || v.contains('\r') {
@@ -263,9 +264,88 @@ impl AppPaths {
         let tmp_path = self.dotenv_path.with_extension(format!("tmp.{}.{}", std::process::id(), seq));
         let content = lines.join("\n") + "\n";
         fs::write(&tmp_path, content)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = fs::set_permissions(&tmp_path, fs::Permissions::from_mode(0o600));
+        }
         fs::rename(&tmp_path, &self.dotenv_path)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = fs::set_permissions(&self.dotenv_path, fs::Permissions::from_mode(0o600));
+        }
         Ok(())
     }
+}
+
+fn validate_search_limit_updates(updates: &HashMap<String, String>) -> Result<(), std::io::Error> {
+    let invalid = |key: &str, why: &str| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("Invalid {key}: {why}"),
+        )
+    };
+    for (key, value) in updates {
+        let text = value.trim();
+        match key.as_str() {
+            "SEARCH_TEXT_DEADLINE_SECONDS" | "WORKSPACE_SEARCH_QUEUE_TIMEOUT_SECONDS" => {
+                let parsed: f64 = text.parse().map_err(|_| invalid(key, "must be a number >= 0"))?;
+                if parsed < 0.0 || !parsed.is_finite() {
+                    return Err(invalid(key, "must be a number >= 0"));
+                }
+            }
+            "WORKSPACE_SEARCH_MAX_WORK_MATCHES"
+            | "WORKSPACE_SEARCH_MAX_SCANNED_FILES"
+            | "WORKSPACE_SEARCH_MAX_SCANNED_BYTES"
+            | "WORKSPACE_SEARCH_DEFAULT_MAX_MATCHES"
+            | "WORKSPACE_SEARCH_MAX_LINE_CHARS" => {
+                let parsed: i64 = text.parse().map_err(|_| invalid(key, "must be an integer >= 1"))?;
+                if parsed < 1 {
+                    return Err(invalid(key, "must be an integer >= 1"));
+                }
+            }
+            "WORKSPACE_SEARCH_MAX_CONCURRENT" | "WORKSPACE_SEARCH_MAX_PER_CHAT" => {
+                let parsed: i64 = text.parse().map_err(|_| invalid(key, "must be an integer in [1, 64]"))?;
+                if parsed < 1 || parsed > 64 {
+                    return Err(invalid(key, "must be an integer in [1, 64]"));
+                }
+            }
+            "WORKSPACE_SEARCH_MAX_RETURNED_MATCHES" => {
+                let parsed: i64 = text.parse().map_err(|_| invalid(key, "must be an integer in [1, 5000]"))?;
+                if parsed < 1 || parsed > 5000 {
+                    return Err(invalid(key, "must be an integer in [1, 5000]"));
+                }
+            }
+            "MCP_MAX_PAYLOAD_BYTES" => {
+                let parsed: i64 = text.parse().map_err(|_| invalid(key, "must be an integer >= 1024"))?;
+                if parsed < 1024 {
+                    return Err(invalid(key, "must be an integer >= 1024"));
+                }
+            }
+            "MCP_TOOL_RESULT_OVERHEAD_BYTES" => {
+                let parsed: i64 = text.parse().map_err(|_| invalid(key, "must be an integer >= 0"))?;
+                if parsed < 0 {
+                    return Err(invalid(key, "must be an integer >= 0"));
+                }
+            }
+            _ => {}
+        }
+    }
+    if let (Some(default_cap), Some(max_cap)) = (
+        updates.get("WORKSPACE_SEARCH_DEFAULT_MAX_MATCHES"),
+        updates.get("WORKSPACE_SEARCH_MAX_RETURNED_MATCHES"),
+    ) {
+        let default_parsed: i64 = default_cap.trim().parse().map_err(|_| invalid("WORKSPACE_SEARCH_DEFAULT_MAX_MATCHES", "must be an integer"))?;
+        let max_parsed: i64 = max_cap.trim().parse().map_err(|_| invalid("WORKSPACE_SEARCH_MAX_RETURNED_MATCHES", "must be an integer"))?;
+        if default_parsed > max_parsed {
+            return Err(invalid(
+                "WORKSPACE_SEARCH_DEFAULT_MAX_MATCHES",
+                "must be <= WORKSPACE_SEARCH_MAX_RETURNED_MATCHES",
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn read_last_lines(path: &Path, max_lines: usize) -> Vec<String> {
@@ -453,6 +533,43 @@ fn scan_workspaces(root: &Path) -> Vec<SessionItem> {
     sessions
 }
 
+fn robust_remove_dir_all(path: &Path) -> std::io::Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(meta) = fs::metadata(path) {
+            let mut perms = meta.permissions();
+            if perms.mode() & 0o200 == 0 {
+                perms.set_mode(perms.mode() | 0o700);
+                let _ = fs::set_permissions(path, perms);
+            }
+        }
+        if path.is_dir() {
+            if let Ok(entries) = fs::read_dir(path) {
+                for entry in entries.flatten() {
+                    let p = entry.path();
+                    if p.is_dir() {
+                        let _ = robust_remove_dir_all(&p);
+                    } else {
+                        if let Ok(m) = fs::metadata(&p) {
+                            let mut perms = m.permissions();
+                            if perms.mode() & 0o200 == 0 {
+                                perms.set_mode(perms.mode() | 0o600);
+                                let _ = fs::set_permissions(&p, perms);
+                            }
+                        }
+                        let _ = fs::remove_file(&p);
+                    }
+                }
+            }
+        }
+    }
+    fs::remove_dir_all(path)
+}
+
 fn delete_workspace_folder(workspace_root: &Path, chat_id: &str) -> (bool, String) {
     let clean_id = chat_id.trim();
     if clean_id.is_empty() {
@@ -468,13 +585,13 @@ fn delete_workspace_folder(workspace_root: &Path, chat_id: &str) -> (bool, Strin
     let mut err_msg = String::new();
 
     if ws_dir.is_dir() {
-        match fs::remove_dir_all(&ws_dir) {
+        match robust_remove_dir_all(&ws_dir) {
             Ok(_) => { deleted_any = true; }
             Err(e) => { err_msg = format!("Lỗi khi xóa thư mục {}: {}", ws_dir.display(), e); }
         }
     }
     if archive_dir.is_dir() {
-        match fs::remove_dir_all(&archive_dir) {
+        match robust_remove_dir_all(&archive_dir) {
             Ok(_) => { deleted_any = true; }
             Err(e) => {
                 if err_msg.is_empty() {
@@ -661,9 +778,13 @@ fn read_session_commands(paths: &AppPaths, chat_id: &str) -> Vec<CommandItem> {
     }
 
     let mut commands: Vec<CommandItem> = Vec::new();
+    const MAX_SESSION_COMMANDS: usize = 200;
 
-    // 3. Reconcile journal operations with MCP activity records
-    for op_id in &op_order {
+    // 3. Reconcile journal operations with MCP activity records (take only the latest 200 operations to prevent lag)
+    let start_idx = op_order.len().saturating_sub(MAX_SESSION_COMMANDS);
+    let recent_ops = &op_order[start_idx..];
+
+    for op_id in recent_ops {
         let started = match started_ops.get(op_id) {
             Some(s) => s,
             None => continue,
@@ -712,18 +833,28 @@ fn read_session_commands(paths: &AppPaths, chat_id: &str) -> Vec<CommandItem> {
 
             if !p_cmd.is_empty() && p_cmd != "<redacted>" {
                 p_cmd.to_string()
-            } else if kind == "host_read_file" && !p_path.is_empty() {
+            } else if (kind == "workspace_explore" || kind == "host_read_file") && !p_path.is_empty() {
                 let start = p.get("start_line").and_then(|v| v.as_i64()).unwrap_or(1);
-                let end = p.get("end_line").and_then(|v| v.as_i64()).unwrap_or(100);
+                let count = p.get("line_count").or_else(|| p.get("end_line")).and_then(|v| v.as_i64()).unwrap_or(150);
                 let rel_path = p_path.split('/').next_back().unwrap_or(p_path);
-                format!("read {} (lines {}-{})", rel_path, start, end)
-            } else if kind == "host_write_file" && !p_path.is_empty() {
+                format!("explore {} (lines {}-{})", rel_path, start, start + count - 1)
+            } else if (kind == "workspace_edit" || kind == "host_write_file" || kind == "host_replace_in_file") && !p_path.is_empty() {
+                let act = p.get("action").and_then(|v| v.as_str()).unwrap_or("edit");
                 let rel_path = p_path.split('/').next_back().unwrap_or(p_path);
-                format!("write {}", rel_path)
-            } else if kind == "host_search_text" && !p_query.is_empty() {
+                format!("{} {}", act, rel_path)
+            } else if (kind == "workspace_search" || kind == "host_search_text") && !p_query.is_empty() {
                 format!("search '{}'", p_query)
-            } else if kind == "host_workspace_bind" {
-                format!("bind {}", p.get("label").and_then(|v| v.as_str()).unwrap_or(chat_id))
+            } else if kind == "terminal_execute" || kind == "host_run_command" {
+                let cmd = p.get("command").and_then(|v| v.as_str()).unwrap_or("bash");
+                format!("exec {}", cmd)
+            } else if kind == "web_intelligence" || kind == "ctf_fetch_url" {
+                let url = p.get("url").and_then(|v| v.as_str()).unwrap_or("url");
+                format!("web_intel {}", url)
+            } else if kind == "workspace_context" || kind == "host_workspace_bind" {
+                let act = p.get("action").or_else(|| p.get("label")).and_then(|v| v.as_str()).unwrap_or("context");
+                format!("context {}", act)
+            } else if kind == "server_info" || kind == "health_check" {
+                "server_info".to_string()
             } else if kind == "host_knowledge" {
                 format!("docs: {}", p.get("section").and_then(|v| v.as_str()).unwrap_or("overview"))
             } else if let Some(int) = raw_intent {
@@ -814,81 +945,40 @@ fn read_session_commands(paths: &AppPaths, chat_id: &str) -> Vec<CommandItem> {
             .to_string();
 
         if output.is_empty() {
-            if kind == "host_run_command" {
+            if kind == "terminal_execute" || kind == "host_run_command" {
                 if exit_code == 0 {
                     output = "[Lệnh thực thi thành công (Mã thoát: 0)]".to_string();
                 } else {
                     output = format!("[Lệnh kết thúc với lỗi (Mã thoát: {})]", exit_code);
                 }
-            } else if kind == "host_read_file" {
-                if let Some(p) = payload {
-                    if let Some(path_str) = p.get("path").and_then(|v| v.as_str()) {
-                        let candidate_paths = [
-                            PathBuf::from(path_str),
-                            PathBuf::from(&cwd).join(path_str),
-                            paths.workspace_root.join(chat_id).join(path_str),
-                            paths.repo_root.join(path_str),
-                            paths.workspace_root.parent().unwrap_or(&paths.workspace_root).join(path_str),
-                        ];
-                        let mut found_content = None;
-                        for cand in &candidate_paths {
-                            if cand.exists() && cand.is_file() {
-                                if let Ok(content) = fs::read_to_string(cand) {
-                                    let start = p.get("start_line").and_then(|v| v.as_i64()).unwrap_or(1).max(1) as usize;
-                                    let end = p.get("end_line").and_then(|v| v.as_i64()).unwrap_or(200).max(start as i64) as usize;
-                                    let lines: Vec<&str> = content.lines().collect();
-                                    let slice_end = end.min(lines.len());
-                                    let slice_start = (start - 1).min(slice_end);
-                                    if slice_start < slice_end {
-                                        found_content = Some(lines[slice_start..slice_end].join("\n"));
-                                    } else {
-                                        found_content = Some(content);
-                                    }
-                                    break;
-                                }
-                            }
-                        }
-                        output = found_content.unwrap_or_else(|| {
-                            format!("[Đọc tệp tin: {} (Dòng {}-{})]", path_str,
-                                p.get("start_line").and_then(|v| v.as_i64()).unwrap_or(1),
-                                p.get("end_line").and_then(|v| v.as_i64()).unwrap_or(100)
-                            )
-                        });
-                    }
-                }
-            } else if kind == "host_write_file" {
+            } else if kind == "workspace_explore" || kind == "host_read_file" || kind == "host_list_directory" {
                 if let Some(p) = payload {
                     let path_str = p.get("path").and_then(|v| v.as_str()).unwrap_or("");
-                    let size = p.get("size_bytes").and_then(|v| v.as_i64()).unwrap_or(0);
-                    let overwrite = p.get("overwrite").and_then(|v| v.as_bool()).unwrap_or(false);
-                    output = format!("[Ghi tệp tin thành công]\nĐường dẫn: {}\nKích thước: {} bytes\nGhi đè: {}", path_str, size, overwrite);
+                    let start = p.get("start_line").and_then(|v| v.as_i64()).unwrap_or(1);
+                    let count = p.get("line_count").or_else(|| p.get("end_line")).and_then(|v| v.as_i64()).unwrap_or(150);
+                    output = format!("[Khám phá tệp/thư mục: {} (Dòng {}-{})]", path_str, start, start + count - 1);
                 }
-            } else if kind == "host_search_text" {
+            } else if kind == "workspace_edit" || kind == "host_write_file" || kind == "host_replace_in_file" {
+                if let Some(p) = payload {
+                    let path_str = p.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                    let action = p.get("action").and_then(|v| v.as_str()).unwrap_or("write");
+                    output = format!("[Chỉnh sửa tệp tin thành công]\nĐường dẫn: {}\nHành động: {}", path_str, action);
+                }
+            } else if kind == "workspace_search" || kind == "host_search_text" {
                 if let Some(p) = payload {
                     let query = p.get("query").and_then(|v| v.as_str()).unwrap_or("");
                     let path_str = p.get("path").and_then(|v| v.as_str()).unwrap_or("");
                     output = format!("[Tìm kiếm văn bản trong '{}' với từ khóa '{}']", path_str, query);
                 }
-            } else if kind == "host_list_directory" {
+            } else if kind == "web_intelligence" || kind == "ctf_fetch_url" {
                 if let Some(p) = payload {
-                    if let Some(path_str) = p.get("path").and_then(|v| v.as_str()) {
-                        let path = Path::new(path_str);
-                        if let Ok(entries) = fs::read_dir(path) {
-                            let names: Vec<String> = entries
-                                .filter_map(|e| e.ok().and_then(|de| de.file_name().into_string().ok()))
-                                .take(150)
-                                .collect();
-                            if !names.is_empty() {
-                                output = names.join("\n");
-                            }
-                        }
-                        if output.is_empty() {
-                            output = format!("[Liệt kê thư mục: {}]", path_str);
-                        }
-                    }
+                    let url = p.get("url").and_then(|v| v.as_str()).unwrap_or("");
+                    output = format!("[Trinh sát web và bóc tách thông tin: {}]", url);
                 }
-            } else if kind == "host_workspace_bind" {
-                output = format!("[Khởi tạo và kết nối không gian làm việc: {}]", chat_id);
+            } else if kind == "workspace_context" || kind == "host_workspace_bind" {
+                output = format!("[Quản lý không gian làm việc và bộ nhớ: {}]", chat_id);
+            } else if kind == "server_info" || kind == "health_check" {
+                output = "[Kiểm tra tình trạng và thông tin hệ thống máy chủ]".to_string();
             } else if kind == "host_knowledge" {
                 if let Some(p) = payload {
                     let section = p.get("section").and_then(|v| v.as_str()).unwrap_or("");
@@ -976,6 +1066,9 @@ fn read_session_commands(paths: &AppPaths, chat_id: &str) -> Vec<CommandItem> {
     }
 
     commands.reverse();
+    if commands.len() > MAX_SESSION_COMMANDS {
+        commands.truncate(MAX_SESSION_COMMANDS);
+    }
     if let Some(first) = commands.first_mut() {
         first.is_latest = true;
     }
@@ -992,15 +1085,18 @@ fn read_runtime_status(paths: &AppPaths) -> serde_json::Value {
     let server_pid_path = paths.repo_root.join("logs/server.pid");
     if let Ok(content) = fs::read_to_string(&server_pid_path) {
         if let Ok(pid) = content.trim().parse::<u32>() {
-            let proc_path = format!("/proc/{}", pid);
-            if Path::new(&proc_path).exists() {
-                server_running = true;
-                server_pid = Some(pid);
+            let proc_cmdline = format!("/proc/{}/cmdline", pid);
+            if let Ok(bytes) = fs::read(&proc_cmdline) {
+                let cmdline = String::from_utf8_lossy(&bytes);
+                if cmdline.contains("fastmcp") && cmdline.contains("app/main.py") {
+                    server_running = true;
+                    server_pid = Some(pid);
+                }
             }
         }
     }
     if !server_running {
-        if let Ok(output) = Command::new("pgrep").args(["-f", "fastmcp"]).output() {
+        if let Ok(output) = Command::new("pgrep").args(["-f", "fastmcp.*app/main.py"]).output() {
             if output.status.success() {
                 let pid_str = String::from_utf8_lossy(&output.stdout);
                 if let Some(first_line) = pid_str.lines().next() {
@@ -1017,10 +1113,13 @@ fn read_runtime_status(paths: &AppPaths) -> serde_json::Value {
     let tunnel_pid_path = paths.repo_root.join("logs/tunnel.pid");
     if let Ok(content) = fs::read_to_string(&tunnel_pid_path) {
         if let Ok(pid) = content.trim().parse::<u32>() {
-            let proc_path = format!("/proc/{}", pid);
-            if Path::new(&proc_path).exists() {
-                tunnel_running = true;
-                tunnel_pid = Some(pid);
+            let proc_cmdline = format!("/proc/{}/cmdline", pid);
+            if let Ok(bytes) = fs::read(&proc_cmdline) {
+                let cmdline = String::from_utf8_lossy(&bytes);
+                if cmdline.contains("cloudflared") && cmdline.contains("tunnel") {
+                    tunnel_running = true;
+                    tunnel_pid = Some(pid);
+                }
             }
         }
     }
@@ -1071,6 +1170,18 @@ fn read_runtime_status(paths: &AppPaths) -> serde_json::Value {
     let token = env_map.get("GATEWAY_TOKEN").cloned().unwrap_or_default();
     let require_auth = env_map.get("REQUIRE_AUTH").map(|v| v == "true" || v == "1").unwrap_or(false);
     let attribution = env_map.get("ATTRIBUTION_MODE").cloned().unwrap_or_else(|| "full".to_string());
+    let search_deadline = env_map.get("SEARCH_TEXT_DEADLINE_SECONDS").cloned().unwrap_or_else(|| "15".to_string());
+    let search_work = env_map.get("WORKSPACE_SEARCH_MAX_WORK_MATCHES").cloned().unwrap_or_else(|| "20000".to_string());
+    let search_scanned_files = env_map.get("WORKSPACE_SEARCH_MAX_SCANNED_FILES").cloned().unwrap_or_else(|| "20000".to_string());
+    let search_scanned_bytes = env_map.get("WORKSPACE_SEARCH_MAX_SCANNED_BYTES").cloned().unwrap_or_else(|| "200000000".to_string());
+    let search_concurrent = env_map.get("WORKSPACE_SEARCH_MAX_CONCURRENT").cloned().unwrap_or_else(|| "4".to_string());
+    let search_per_chat = env_map.get("WORKSPACE_SEARCH_MAX_PER_CHAT").cloned().unwrap_or_else(|| "2".to_string());
+    let search_queue = env_map.get("WORKSPACE_SEARCH_QUEUE_TIMEOUT_SECONDS").cloned().unwrap_or_else(|| "2".to_string());
+    let search_default_cap = env_map.get("WORKSPACE_SEARCH_DEFAULT_MAX_MATCHES").cloned().unwrap_or_else(|| "100".to_string());
+    let search_max_cap = env_map.get("WORKSPACE_SEARCH_MAX_RETURNED_MATCHES").cloned().unwrap_or_else(|| "500".to_string());
+    let search_line_chars = env_map.get("WORKSPACE_SEARCH_MAX_LINE_CHARS").cloned().unwrap_or_else(|| "8192".to_string());
+    let mcp_max_payload = env_map.get("MCP_MAX_PAYLOAD_BYTES").cloned().unwrap_or_else(|| "512000".to_string());
+    let mcp_overhead = env_map.get("MCP_TOOL_RESULT_OVERHEAD_BYTES").cloned().unwrap_or_else(|| "4096".to_string());
 
     serde_json::json!({
         "ok": server_running,
@@ -1106,6 +1217,18 @@ fn read_runtime_status(paths: &AppPaths) -> serde_json::Value {
         "gateway_token": token,
         "require_auth": require_auth,
         "attribution_mode": attribution,
+        "SEARCH_TEXT_DEADLINE_SECONDS": search_deadline,
+        "WORKSPACE_SEARCH_MAX_WORK_MATCHES": search_work,
+        "WORKSPACE_SEARCH_MAX_SCANNED_FILES": search_scanned_files,
+        "WORKSPACE_SEARCH_MAX_SCANNED_BYTES": search_scanned_bytes,
+        "WORKSPACE_SEARCH_MAX_CONCURRENT": search_concurrent,
+        "WORKSPACE_SEARCH_MAX_PER_CHAT": search_per_chat,
+        "WORKSPACE_SEARCH_QUEUE_TIMEOUT_SECONDS": search_queue,
+        "WORKSPACE_SEARCH_DEFAULT_MAX_MATCHES": search_default_cap,
+        "WORKSPACE_SEARCH_MAX_RETURNED_MATCHES": search_max_cap,
+        "WORKSPACE_SEARCH_MAX_LINE_CHARS": search_line_chars,
+        "MCP_MAX_PAYLOAD_BYTES": mcp_max_payload,
+        "MCP_TOOL_RESULT_OVERHEAD_BYTES": mcp_overhead,
         "env": env_map
     })
 }
@@ -1167,10 +1290,18 @@ fn read_system_logs(paths: &AppPaths) -> Vec<LogItem> {
                 .unwrap_or("AUDIT_EVENT");
 
             let (cat, action) = if let Some(tool) = tool_opt {
-                if tool.contains("file") {
+                if tool.contains("file") || tool.contains("explore") || tool.contains("edit") {
                     ("file".to_string(), tool.replace("host_", ""))
-                } else if tool.contains("command") {
-                    ("process".to_string(), "run_command".to_string())
+                } else if tool.contains("command") || tool.contains("terminal") {
+                    ("process".to_string(), "terminal_execute".to_string())
+                } else if tool.contains("search") {
+                    ("search".to_string(), "workspace_search".to_string())
+                } else if tool.contains("web") || tool.contains("fetch") {
+                    ("network".to_string(), "web_intelligence".to_string())
+                } else if tool.contains("context") || tool.contains("workspace") {
+                    ("session".to_string(), "workspace_context".to_string())
+                } else if tool.contains("server") || tool.contains("health") {
+                    ("runtime".to_string(), "server_info".to_string())
                 } else {
                     ("session".to_string(), tool.replace("host_", ""))
                 }
@@ -1374,9 +1505,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .and_then(|v| v.get("action"))
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("");
+                            let bqa_bin = if p.repo_root.join("bin/bqa").exists() {
+                                p.repo_root.join("bin/bqa")
+                            } else {
+                                PathBuf::from("bqa")
+                            };
                             let (success, msg) = match act {
                                 "start" => {
-                                    let ok = Command::new("bqa")
+                                    let ok = Command::new(&bqa_bin)
                                         .arg("start")
                                         .current_dir(&p.repo_root)
                                         .status()
@@ -1385,7 +1521,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     (ok, if ok { "Đã khởi chạy FastMCP server" } else { "Không thể khởi chạy FastMCP server" })
                                 }
                                 "stop" => {
-                                    let ok = Command::new("bqa")
+                                    let ok = Command::new(&bqa_bin)
                                         .arg("stop")
                                         .current_dir(&p.repo_root)
                                         .status()
@@ -1394,7 +1530,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     (ok, if ok { "Đã dừng FastMCP server" } else { "Không thể dừng FastMCP server" })
                                 }
                                 "restart" => {
-                                    let ok = Command::new("bqa")
+                                    let ok = Command::new(&bqa_bin)
                                         .arg("restart")
                                         .current_dir(&p.repo_root)
                                         .status()
@@ -1441,10 +1577,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .unwrap_or("");
                             let (ok, msg) = delete_workspace_folder(&p.workspace_root, chat_id);
                             let js_res = format!(
-                                "if (window.__onWorkspaceDeleted) window.__onWorkspaceDeleted({}, '{}', '{}');",
-                                ok,
-                                chat_id.replace('\'', "\\'"),
-                                msg.replace('\'', "\\'")
+                                "if (window.__onWorkspaceDeleted) window.__onWorkspaceDeleted({}, {}, {});",
+                                serde_json::to_string(&ok).unwrap_or_else(|_| "false".to_string()),
+                                serde_json::to_string(&chat_id).unwrap_or_else(|_| "\"\"".to_string()),
+                                serde_json::to_string(&msg).unwrap_or_else(|_| "\"\"".to_string())
                             );
                             let _ = pr.send_event(UserEvent::EvalScript(js_res));
 
@@ -1574,6 +1710,23 @@ mod tests {
         let (fail_empty, _) = delete_workspace_folder(&temp_dir, "");
         assert!(!fail_empty);
 
+        // Test deleting workspace with read-only files / directories
+        let ws_ro = "cw-20260917-test-ro-delete";
+        let ro_ws_path = temp_dir.join(ws_ro);
+        let ro_sub = ro_ws_path.join("locked_sub");
+        fs::create_dir_all(&ro_sub).unwrap();
+        let ro_file = ro_sub.join("locked.txt");
+        fs::write(&ro_file, "read only content").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = fs::set_permissions(&ro_file, fs::Permissions::from_mode(0o444));
+            let _ = fs::set_permissions(&ro_sub, fs::Permissions::from_mode(0o555));
+        }
+        let (ro_ok, ro_msg) = delete_workspace_folder(&temp_dir, ws_ro);
+        assert!(ro_ok, "Deleting read-only workspace should succeed: {}", ro_msg);
+        assert!(!ro_ws_path.exists(), "Read-only workspace should be removed");
+
         let _ = fs::remove_dir_all(&temp_dir);
     }
 
@@ -1661,5 +1814,225 @@ mod tests {
         assert_eq!(cmd.exit_code, 0, "In-progress command must have exit_code 0, got {}", cmd.exit_code);
 
         let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_activity_ui_status_prefers_running_state_over_exit_code_zero() {
+        let ui = include_str!("../ui/index.html");
+        assert!(ui.contains("function commandIsRunning(c)"));
+        assert!(ui.contains("if (commandIsRunning(c)) return { text: 'RUNNING'"));
+        assert!(ui.contains("const exitVal = commandIsRunning(c)"));
+    }
+
+    #[test]
+    fn test_activity_running_timer_uses_status_timestamp_not_exit_code() {
+        let ui = include_str!("../ui/index.html");
+        assert!(ui.contains("function refreshRunningCommandElapsedTimes()"));
+        assert!(ui.contains("if (!command || !commandIsRunning(command)) return;"));
+        assert!(ui.contains("if (commandIsRunning(c) && c.timestamp)"));
+        assert!(ui.contains("commandElapsedTimer = setInterval(refreshRunningCommandElapsedTimes, 1000)"));
+    }
+
+    #[test]
+    fn test_activity_running_duration_prefers_timestamp_over_placeholder_duration() {
+        let ui = include_str!("../ui/index.html");
+        let running_pos = ui.find("if (commandIsRunning(c) && c.timestamp)").expect("running timestamp elapsed branch missing");
+        let duration_pos = ui.find("if (c.duration != null && String(c.duration).trim()").expect("completed duration branch missing");
+        assert!(running_pos < duration_pos, "running elapsed must be computed before stored duration");
+        assert!(ui.contains("String(c.duration).trim() !== '—'"));
+    }
+
+    #[test]
+    fn test_webkit_ui_intent_is_only_rendered_in_global_hero_not_metadata() {
+        let ui = include_str!("../ui/index.html");
+        assert!(ui.contains("inspectIntentHero"), "global intent hero must remain");
+        assert!(!ui.contains("inspectIntentCard"), "metadata intent duplicate must be removed");
+        assert!(!ui.contains("id=\"inspectIntent\""), "metadata intent value node must be removed");
+        assert!(ui.contains("inspectIntentHeroText"), "hero intent text node must remain");
+    }
+
+    #[test]
+    fn test_webkit_ui_activity_rows_keep_intent_only_in_inspector() {
+        let ui = include_str!("../ui/index.html");
+        assert!(ui.contains("inspectIntentHeroText"));
+        assert!(!ui.contains("intent-container"), "activity rows must not duplicate agent intent");
+        assert!(!ui.contains("intent-text"), "activity rows must not contain intent text nodes");
+    }
+
+    #[test]
+    fn test_webkit_ui_delete_keyboard_requires_modal_and_ignores_inputs() {
+        let ui = include_str!("../ui/index.html");
+        assert!(ui.contains("openDeleteWorkspaceModal(w.chat_id, w.label)"));
+        assert!(ui.contains("deleteWorkspaceCancelBtn"));
+        assert!(ui.contains("deleteWorkspaceConfirmBtn"));
+        assert!(ui.contains("document.getElementById('deleteWorkspaceConfirmBtn')?.focus();"));
+        assert!(ui.contains("ev.target && ev.target.id === 'deleteWorkspaceCancelBtn'"));
+        assert!(ui.contains("ev.target && ev.target.id === 'deleteWorkspaceConfirmBtn'"));
+        assert!(ui.contains("if (ev.key === 'Escape') { ev.preventDefault(); closeDeleteWorkspaceModal(); }"));
+        assert!(ui.contains("ev.target.tagName === 'INPUT'"));
+        assert!(ui.contains("function safeSessionKey"));
+    }
+
+    #[test]
+    fn test_max_session_commands_limit_200() {
+        let temp_dir = std::env::temp_dir().join(format!("bqa_test_limit_200_{}", std::process::id()));
+        let ws_dir = temp_dir.join("workspaces/cw-test-250");
+        let _ = fs::create_dir_all(&ws_dir);
+
+        // Generate 250 operations
+        let mut journal_content = String::new();
+        for i in 0..250 {
+            journal_content.push_str(&format!(
+                "{{\"type\":\"op_started\",\"op\":\"op-{}\",\"kind\":\"host_run_command\",\"payload\":{{\"command\":\"echo {}\"}},\"ts\":\"2026-09-17T10:{:02}:00Z\"}}\n",
+                i, i, i % 60
+            ));
+            journal_content.push_str(&format!(
+                "{{\"type\":\"op_result\",\"op\":\"op-{}\",\"ok\":true,\"payload\":{{\"exit_code\":0,\"stdout\":\"result {}\"}}}}\n",
+                i, i
+            ));
+        }
+        fs::write(ws_dir.join("journal.jsonl"), journal_content).unwrap();
+
+        let mut paths = AppPaths::new();
+        paths.workspace_root = temp_dir.join("workspaces");
+        paths.repo_root = temp_dir.clone();
+
+        let cmds = read_session_commands(&paths, "cw-test-250");
+        assert_eq!(cmds.len(), 200, "Should only return exactly 200 latest commands");
+        assert_eq!(cmds[0].id, "op-249", "First command should be the latest (op-249)");
+        assert!(cmds[0].is_latest, "Latest command must have is_latest = true");
+        assert_eq!(cmds[199].id, "op-50", "Last command should be op-50 (250 - 200)");
+        assert!(!cmds[199].is_latest, "Older commands must have is_latest = false");
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_profile_real_workspace_load() {
+        let paths = AppPaths::new();
+        let target_ws = "cw-20260923-gpt-session-prompt-tool-27183845";
+        let ws_path = paths.workspace_root.join(target_ws);
+        if !ws_path.exists() {
+            println!("Skipping real profile test as workspace doesn't exist");
+            return;
+        }
+
+        let start = std::time::Instant::now();
+        let cmds = read_session_commands(&paths, target_ws);
+        let elapsed = start.elapsed();
+        let json = serde_json::to_string(&cmds).unwrap();
+        println!("=== REAL PROFILE RESULTS ===");
+        println!("Loaded {} commands in {:?}", cmds.len(), elapsed);
+        println!("JSON Payload Size: {} KB ({} bytes)", json.len() / 1024, json.len());
+        println!("============================");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_write_dotenv_permissions_mode_600() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp_dir = std::env::temp_dir().join(format!("bqa_test_dotenv_perm_{}", std::process::id()));
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let mut paths = AppPaths::new();
+        paths.dotenv_path = temp_dir.join(".env");
+
+        let mut updates = HashMap::new();
+        updates.insert("TEST_KEY".to_string(), "SECRET_VALUE".to_string());
+        paths.write_dotenv(&updates).unwrap();
+
+        let metadata = fs::metadata(&paths.dotenv_path).unwrap();
+        let mode = metadata.permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "Dotenv file permissions must be 0600 (got {:o})", mode);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_webkit_ui_has_unique_restart_ids_and_ipc_guard() {
+        let ui = include_str!("../ui/index.html");
+        assert_eq!(ui.matches("id=\"restartIcon\"").count(), 1, "restartIcon id must be unique");
+        assert_eq!(ui.matches("id=\"restartLabel\"").count(), 1, "restartLabel id must be unique");
+        assert!(ui.contains("IPC unavailable") || ui.contains("ipc unavailable"), "missing IPC must be visible");
+        assert!(ui.contains("status.classList.remove('hidden')"), "missing IPC state must unhide status");
+        assert!(ui.contains("text-amber-300") || ui.contains("text-red"), "missing IPC warning must be styled");
+        assert!(ui.contains("resolve(false)"), "missing IPC must resolve false");
+    }
+
+    #[test]
+    fn test_frontend_ipc_actions_have_native_dispatch_cases() {
+        let ui = include_str!("../ui/index.html");
+        let rust = include_str!("main.rs");
+        for action in [
+            "get_workspaces",
+            "get_session_details",
+            "get_runtime_status",
+            "get_logs",
+            "lifecycle_action",
+            "copy_to_clipboard",
+            "save_env",
+            "delete_workspace",
+        ] {
+            assert!(ui.contains(&format!("sendToRust('{}'", action)) || ui.contains(&format!("sendToRust(\"{}\"", action)), "frontend IPC action missing: {}", action);
+            assert!(rust.contains(&format!("\"{}\" =>", action)), "native IPC dispatch missing: {}", action);
+        }
+    }
+
+    #[test]
+    fn test_webkit_ui_960_inspector_summary_is_responsive() {
+        let ui = include_str!("../ui/index.html");
+        assert!(ui.contains("min-width") || ui.contains("overflow"), "inspector summary needs narrow viewport handling");
+        assert!(ui.contains("inspector") || ui.contains("Inspector"), "inspector UI should remain present");
+    }
+
+    #[test]
+    fn test_webkit_ui_inspector_values_do_not_clip_at_960_width() {
+        let ui = include_str!("../ui/index.html");
+        assert!(ui.contains("inspectTool") && ui.contains("inspectTimestamp"), "inspector summary fields must exist");
+        assert!(ui.contains("inspect-summary-value-breakfix"), "inspector values need the narrow viewport wrapping class");
+    }
+
+    #[test]
+    fn test_webkit_ui_mobile_nav_and_settings_toast_do_not_overlap() {
+        let ui = include_str!("../ui/index.html");
+        assert!(ui.contains("mobile-nav"), "mobile nav layout marker missing");
+        assert!(ui.contains("toast-stack"), "toast stacking marker missing");
+        assert!(ui.contains("safe-area"), "safe area spacing missing");
+    }
+
+    #[test]
+    fn test_webkit_ui_mobile_activity_uses_responsive_single_pane_mode() {
+        let ui = include_str!("../ui/index.html");
+        assert!(ui.contains("mobile-activity-mode"), "mobile activity mode marker missing");
+        assert!(ui.contains("@media (max-width: 700px)"), "mobile breakpoint missing");
+        assert!(ui.contains("paneSidebar") && ui.contains("paneStream") && ui.contains("paneInspector"), "activity panes must remain controllable");
+    }
+
+    #[test]
+    fn test_webkit_ui_mobile_sessions_pane_is_selectable() {
+        let ui = include_str!("../ui/index.html");
+        assert!(ui.contains("mobile-pane-sessions"), "mobile sessions pane state missing");
+        assert!(ui.contains("showMobileActivityPane('sessions')"), "sessions control missing");
+    }
+
+    #[test]
+    fn test_webkit_ui_mobile_overview_and_logs_have_responsive_modes() {
+        let ui = include_str!("../ui/index.html");
+        assert!(ui.contains("mobile-overview"), "mobile overview layout marker missing");
+        assert!(ui.contains("tunnel-row"), "mobile overview controls use stacked tunnel layout");
+        assert!(ui.contains("mobile-pane-log-events") && ui.contains("mobile-pane-log-details"), "mobile log modes missing");
+        assert!(ui.contains("mobile-pane-log"), "mobile log pane state missing");
+        assert!(ui.contains("mobile-tunnel-endpoint-stack"), "mobile tunnel endpoint stack missing");
+    }
+
+    #[test]
+    fn test_dashboard_metrics_do_not_claim_unmeasured_health_values() {
+        let ui = include_str!("../ui/index.html");
+        assert!(!ui.contains("(100% OK)"), "dashboard must not claim an unsupported success rate");
+        assert!(!ui.contains("42.8 MB"), "dashboard must not show an unsupported storage metric");
+        assert!(!ui.contains("0.4 ms"), "dashboard must not show an unsupported latency metric");
+        assert!(ui.contains("Sessions") || ui.contains("sessions"), "dashboard should retain measured session counts");
+        assert!(ui.contains("Operations") || ui.contains("operations"), "dashboard should retain measured operation counts");
     }
 }

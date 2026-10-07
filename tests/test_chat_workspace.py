@@ -236,14 +236,55 @@ def test_squat_foreign_owner_detected(manager):
         manager.create_or_bind("owner1")
 
 
-def test_max_workspaces_enforced_but_binding_unaffected(monkeypatch, tmp_path):
+def test_max_workspaces_ceiling_auto_deletes_lightest_workspace(monkeypatch, tmp_path):
     monkeypatch.setattr(app.config, "HOST_CHAT_MAX_WORKSPACES", 2, raising=False)
     mgr = cw.WorkspaceManager(tmp_path / "chats", bind_wait_seconds=0.25)
     mgr.create_or_bind("cap0001")
     mgr.create_or_bind("cap0002")
-    with pytest.raises(cw.CapacityError):
-        mgr.create_or_bind("cap0003")
-    assert mgr.create_or_bind("cap0001").created is False
+
+    # Make cap0002 heavier
+    (tmp_path / "chats" / "cap0002" / "notes" / "large.txt").write_text("x" * 5000)
+
+    # Creating cap0003 touches ceiling of 2 -> lightest (cap0001) is auto-deleted
+    res3 = mgr.create_or_bind("cap0003")
+    assert res3.created is True
+    assert not (tmp_path / "chats" / "cap0001").exists()
+    assert (tmp_path / "chats" / "cap0002").exists()
+    assert (tmp_path / "chats" / "cap0003").exists()
+
+    # Binding existing cap0002 does not delete anything
+    bind_existing = mgr.create_or_bind("cap0002")
+    assert bind_existing.created is False
+    assert (tmp_path / "chats" / "cap0002").exists()
+    assert (tmp_path / "chats" / "cap0003").exists()
+
+
+def test_max_workspaces_auto_delete_respects_mtime_tiebreaker(monkeypatch, tmp_path):
+    monkeypatch.setattr(app.config, "HOST_CHAT_MAX_WORKSPACES", 2, raising=False)
+    mgr = cw.WorkspaceManager(tmp_path / "chats", bind_wait_seconds=0.25)
+    mgr.create_or_bind("ws-first")
+    mgr.create_or_bind("ws-second")
+
+    # Set identical size but different mtimes
+    os.utime(tmp_path / "chats" / "ws-first", (1000.0, 1000.0))
+    os.utime(tmp_path / "chats" / "ws-second", (2000.0, 2000.0))
+
+    mgr.create_or_bind("ws-third")
+    # Older ws-first is evicted
+    assert not (tmp_path / "chats" / "ws-first").exists()
+    assert (tmp_path / "chats" / "ws-second").exists()
+    assert (tmp_path / "chats" / "ws-third").exists()
+
+
+def test_max_workspaces_capacity_error_when_protected(monkeypatch, tmp_path):
+    from app.chat_identity import bound_chat
+    monkeypatch.setattr(app.config, "HOST_CHAT_MAX_WORKSPACES", 1, raising=False)
+    mgr = cw.WorkspaceManager(tmp_path / "chats", bind_wait_seconds=0.25)
+    mgr.create_or_bind("prot0001")
+
+    with bound_chat("prot0001"):
+        with pytest.raises(cw.CapacityError):
+            mgr.create_or_bind("prot0002")
 
 
 # ---------------------------------------------------------------------------

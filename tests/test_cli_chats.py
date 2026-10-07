@@ -314,7 +314,7 @@ def test_prune_defaults_to_dry_run_and_apply_mutates(monkeypatch, tmp_path, caps
     workspace = _make_workspace(root, "idle-prune", mtime=1_000_000_000)
     monkeypatch.setattr("app.config.HOST_CHAT_IDLE_ARCHIVE_HOURS", 0)
     monkeypatch.setattr("app.config.HOST_CHAT_RETENTION_DAYS", 999999)
-    monkeypatch.setattr("app.config.HOST_CHAT_MAX_WORKSPACES", 128)
+    monkeypatch.setattr("app.config.HOST_CHAT_MAX_WORKSPACES", 500)
     monkeypatch.setattr("app.config.HOST_CHAT_ROOT_MAX_GB", 24)
 
     assert main(["chats", "prune", "--json"]) == 0

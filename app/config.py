@@ -1,4 +1,5 @@
 import codecs
+import math
 import os
 import re
 from pathlib import Path
@@ -146,7 +147,7 @@ if _dotenv_path is not None:
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 SERVICE_NAME = "botquanganh-host-mcp"
-VERSION = "1.0.0"
+VERSION = "2.0.0"
 
 MCP_BIND_HOST = os.getenv("MCP_BIND_HOST", "127.0.0.1")
 MCP_PORT = int(os.getenv("MCP_PORT", "18427"))
@@ -208,6 +209,88 @@ HOST_READ_DENY_GLOBS = [
     if item.strip()
 ]
 
+def _positive_int_env(key: str, default: str) -> int:
+    """Read a safety-critical positive integer setting."""
+    try:
+        parsed = int(os.getenv(key, default) or default)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{key} must be a positive integer.") from exc
+    if parsed < 1:
+        raise ValueError(f"{key} must be a positive integer (>= 1).")
+    return parsed
+
+
+def _non_negative_int_env(key: str, default: str) -> int:
+    """Read a non-negative integer setting."""
+    try:
+        parsed = int(os.getenv(key, default) or default)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{key} must be a non-negative integer.") from exc
+    if parsed < 0:
+        raise ValueError(f"{key} must be a non-negative integer (>= 0).")
+    return parsed
+
+
+def _finite_non_negative_float_env(key: str, default: str) -> float:
+    """Read a finite non-negative float setting.
+
+    Reject NaN and infinity from `.env` values.
+    """
+    raw = os.getenv(key, default) or default
+    try:
+        parsed = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{key} must be a finite number (>= 0).") from exc
+    if not math.isfinite(parsed):
+        raise ValueError(f"{key} must be a finite number (>= 0).")
+    if parsed < 0:
+        raise ValueError(f"{key} must be a finite number (>= 0).")
+    return parsed
+
+
+WORKSPACE_SEARCH_MAX_WORK_MATCHES = _positive_int_env(
+    "WORKSPACE_SEARCH_MAX_WORK_MATCHES", "20000"
+)
+WORKSPACE_SEARCH_MAX_SCANNED_FILES = _positive_int_env(
+    "WORKSPACE_SEARCH_MAX_SCANNED_FILES", "20000"
+)
+WORKSPACE_SEARCH_MAX_SCANNED_BYTES = _positive_int_env(
+    "WORKSPACE_SEARCH_MAX_SCANNED_BYTES", "200000000"
+)
+WORKSPACE_SEARCH_MAX_CONCURRENT = _positive_int_env(
+    "WORKSPACE_SEARCH_MAX_CONCURRENT", "4"
+)
+WORKSPACE_SEARCH_MAX_PER_CHAT = _positive_int_env(
+    "WORKSPACE_SEARCH_MAX_PER_CHAT", "2"
+)
+WORKSPACE_SEARCH_QUEUE_TIMEOUT_SECONDS = _finite_non_negative_float_env(
+    "WORKSPACE_SEARCH_QUEUE_TIMEOUT_SECONDS", "2"
+)
+WORKSPACE_SEARCH_DEFAULT_MAX_MATCHES = _positive_int_env(
+    "WORKSPACE_SEARCH_DEFAULT_MAX_MATCHES", "100"
+)
+WORKSPACE_SEARCH_MAX_RETURNED_MATCHES = _positive_int_env(
+    "WORKSPACE_SEARCH_MAX_RETURNED_MATCHES", "500"
+)
+WORKSPACE_SEARCH_MAX_LINE_CHARS = _positive_int_env(
+    "WORKSPACE_SEARCH_MAX_LINE_CHARS", "8192"
+)
+MCP_MAX_PAYLOAD_BYTES = _positive_int_env("MCP_MAX_PAYLOAD_BYTES", "512000")
+if MCP_MAX_PAYLOAD_BYTES < 1024:
+    raise ValueError("MCP_MAX_PAYLOAD_BYTES must be >= 1024.")
+MCP_TOOL_RESULT_OVERHEAD_BYTES = _non_negative_int_env(
+    "MCP_TOOL_RESULT_OVERHEAD_BYTES", "4096"
+)
+if MCP_TOOL_RESULT_OVERHEAD_BYTES > MCP_MAX_PAYLOAD_BYTES:
+    raise ValueError(
+        "MCP_TOOL_RESULT_OVERHEAD_BYTES must be <= MCP_MAX_PAYLOAD_BYTES."
+    )
+if WORKSPACE_SEARCH_DEFAULT_MAX_MATCHES > WORKSPACE_SEARCH_MAX_RETURNED_MATCHES:
+    raise ValueError(
+        "WORKSPACE_SEARCH_DEFAULT_MAX_MATCHES must be <= "
+        "WORKSPACE_SEARCH_MAX_RETURNED_MATCHES."
+    )
+
 HOST_COMMAND_POLICY = os.getenv("HOST_COMMAND_POLICY", "guarded").strip().lower()
 if HOST_COMMAND_POLICY not in {"guarded", "allowlist"}:
     raise ValueError("HOST_COMMAND_POLICY must be 'guarded' or 'allowlist'")
@@ -233,15 +316,18 @@ HOST_TOOL_CACHE_SECONDS = max(0, int(os.getenv("HOST_TOOL_CACHE_SECONDS", "300")
 
 MAX_SINGLE_FILE_BYTES = int(os.getenv("MAX_SINGLE_FILE_BYTES", "3000000"))
 MAX_OUTPUT_BYTES = int(os.getenv("MAX_OUTPUT_BYTES", "500000"))
+MAX_WORKSPACE_EXPLORE_ENTRIES = max(
+    1, int(os.getenv("MAX_WORKSPACE_EXPLORE_ENTRIES", "100"))
+)
 DEFAULT_TIMEOUT_SECONDS = max(0, int(os.getenv("DEFAULT_TIMEOUT_SECONDS", "60")))
 MAX_TIMEOUT_SECONDS = max(0, int(os.getenv("MAX_TIMEOUT_SECONDS", "300")))
 MAX_CONCURRENT_COMMANDS = max(1, int(os.getenv("MAX_CONCURRENT_COMMANDS", "100")))
 
-COMMAND_QUEUE_TIMEOUT_SECONDS = max(
-    0.0, float(os.getenv("COMMAND_QUEUE_TIMEOUT_SECONDS", "2"))
+COMMAND_QUEUE_TIMEOUT_SECONDS = _finite_non_negative_float_env(
+    "COMMAND_QUEUE_TIMEOUT_SECONDS", "2"
 )
-SEARCH_TEXT_DEADLINE_SECONDS = max(
-    0.0, float(os.getenv("SEARCH_TEXT_DEADLINE_SECONDS", "15"))
+SEARCH_TEXT_DEADLINE_SECONDS = _finite_non_negative_float_env(
+    "SEARCH_TEXT_DEADLINE_SECONDS", "15"
 )
 
 LOG_FILE = Path(os.getenv("LOG_FILE", str(BASE_DIR / "logs" / "gateway.log")))
@@ -283,4 +369,23 @@ HOST_CHAT_ROOT_MAX_GB = max(0.0, float(os.getenv("HOST_CHAT_ROOT_MAX_GB", "24"))
 HOST_CHAT_JOURNAL_MAX_BYTES = max(
     1024, int(os.getenv("HOST_CHAT_JOURNAL_MAX_BYTES", "8388608"))
 )
+HOST_TRASH_DIR = _resolve_config_path(
+    os.getenv("HOST_TRASH_DIR", "").strip(),
+    Path("~/Downloads/bqa-trash"),
+)
 
+# --- Background Task Management (Super-Tool 'task') ---------------------------
+HOST_TASK_MAX_PER_CHAT = max(1, int(os.getenv("HOST_TASK_MAX_PER_CHAT", "3")))
+HOST_TASK_MAX_GLOBAL = max(1, int(os.getenv("HOST_TASK_MAX_GLOBAL", "10")))
+HOST_TASK_WAIT_BEFORE_ASYNC_MS = max(
+    500, int(os.getenv("HOST_TASK_WAIT_BEFORE_ASYNC_MS", "5000"))
+)
+HOST_TASK_MAX_TAIL_BYTES = max(
+    1024, int(os.getenv("HOST_TASK_MAX_TAIL_BYTES", "65536"))
+)
+HOST_TASK_LOG_MAX_BYTES = max(
+    65536, int(os.getenv("HOST_TASK_LOG_MAX_BYTES", "2097152"))
+)
+HOST_TASK_KILL_GRACE_SECONDS = max(
+    1, int(os.getenv("HOST_TASK_KILL_GRACE_SECONDS", "3"))
+)

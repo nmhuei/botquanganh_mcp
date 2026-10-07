@@ -127,8 +127,8 @@ Add test in `tests/test_chat_tools_unit.py`:
 ```python
 @pytest.mark.asyncio
 async def test_host_workspace_bind_auto_hydrates_and_provides_resume_prompt(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr("app.tools.workspace_tools._chat_root", lambda: tmp_path)
-    monkeypatch.setattr("app.tools.workspace_tools._workspaces_enabled", lambda: True)
+    monkeypatch.setattr("app.tools.workspace_context._chat_root", lambda: tmp_path)
+    monkeypatch.setattr("app.tools.workspace_context._workspaces_enabled", lambda: True)
 
     # 1. First bind
     res1 = await host_workspace_bind(label="my-task")
@@ -203,8 +203,8 @@ Add test in `tests/test_chat_tools_unit.py`:
 ```python
 @pytest.mark.asyncio
 async def test_host_workspace_list_returns_recent_workspaces(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr("app.tools.workspace_tools._chat_root", lambda: tmp_path)
-    monkeypatch.setattr("app.tools.workspace_tools._workspaces_enabled", lambda: True)
+    monkeypatch.setattr("app.tools.workspace_context._chat_root", lambda: tmp_path)
+    monkeypatch.setattr("app.tools.workspace_context._workspaces_enabled", lambda: True)
 
     # Create two workspaces
     res1 = await host_workspace_bind(label="crawler-job", new=True)
@@ -288,7 +288,7 @@ def test_guard_chat_id_falls_back_to_latest_workspace_under_enforce(monkeypatch,
     chat_id = bound.chat_id
 
     # Call _guard_chat_id without chat_id
-    from app.tools.host import _guard_chat_id
+    from app.host import _guard_chat_id
     validated, rejection = _guard_chat_id("host_write_file", None)
     assert rejection is None
     assert validated == chat_id

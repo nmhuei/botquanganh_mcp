@@ -30,6 +30,9 @@ ERROR_SPECS: dict[str, ErrorSpec] = {
     "POLICY_BLOCKED": ErrorSpec(
         "POLICY_BLOCKED", 403, "Check HOST_WORKSPACE_DIR and HOST_COMMAND_POLICY."
     ),
+    "FORBIDDEN_ORIGIN": ErrorSpec(
+        "FORBIDDEN_ORIGIN", 403, "Use an allowed origin for this gateway endpoint."
+    ),
     "FILE_NOT_FOUND": ErrorSpec(
         "FILE_NOT_FOUND", 404, "Check the requested path relative to HOST_WORKSPACE_DIR."
     ),
@@ -109,7 +112,27 @@ def format_error_code(
     return {"ok": False, "error": detail}
 
 
+_DOMAIN_ERROR_HTTP_STATUS: dict[str, int] = {
+    "E1": 400,
+    "E2": 409,
+    "E3": 413,
+    "E4": 507,
+    "E5": 409,
+    "E6": 400,
+    "E7": 401,
+}
+
+
 def format_exception_error(exc: Exception) -> dict[str, Any]:
+    try:
+        from app.chat_errors import to_tool_error
+
+        tool_err = to_tool_error(exc)
+        if tool_err.get("error", {}).get("code") != "INTERNAL":
+            return tool_err
+    except Exception:
+        pass
+
     spec = classify_exception(exc)
     return format_error_code(
         spec.code,
@@ -118,10 +141,21 @@ def format_exception_error(exc: Exception) -> dict[str, Any]:
 
 
 def http_status_for_error_code(code: str) -> int:
+    if code in _DOMAIN_ERROR_HTTP_STATUS:
+        return _DOMAIN_ERROR_HTTP_STATUS[code]
     return ERROR_SPECS.get(code, ERROR_SPECS["INTERNAL_ERROR"]).http_status
 
 
 def http_status_for_exception(exc: Exception) -> int:
+    try:
+        from app.chat_errors import to_tool_error
+
+        tool_err = to_tool_error(exc)
+        code = tool_err.get("error", {}).get("code")
+        if code and code != "INTERNAL":
+            return http_status_for_error_code(code)
+    except Exception:
+        pass
     return classify_exception(exc).http_status
 
 

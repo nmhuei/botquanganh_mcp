@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 import re
 import shutil
@@ -39,6 +40,17 @@ DEFAULTS: dict[str, str] = {
     "MAX_CONCURRENT_COMMANDS": "100",
     "COMMAND_QUEUE_TIMEOUT_SECONDS": "2",
     "SEARCH_TEXT_DEADLINE_SECONDS": "15",
+    "WORKSPACE_SEARCH_MAX_WORK_MATCHES": "20000",
+    "WORKSPACE_SEARCH_MAX_SCANNED_FILES": "20000",
+    "WORKSPACE_SEARCH_MAX_SCANNED_BYTES": "200000000",
+    "WORKSPACE_SEARCH_MAX_CONCURRENT": "4",
+    "WORKSPACE_SEARCH_MAX_PER_CHAT": "2",
+    "WORKSPACE_SEARCH_QUEUE_TIMEOUT_SECONDS": "2",
+    "WORKSPACE_SEARCH_DEFAULT_MAX_MATCHES": "100",
+    "WORKSPACE_SEARCH_MAX_RETURNED_MATCHES": "500",
+    "WORKSPACE_SEARCH_MAX_LINE_CHARS": "8192",
+    "MCP_MAX_PAYLOAD_BYTES": "512000",
+    "MCP_TOOL_RESULT_OVERHEAD_BYTES": "4096",
     "LOG_FILE": "./logs/gateway.log",
     "AUDIT_LOG_MAX_BYTES": "10000000",
     "AUDIT_LOG_BACKUP_COUNT": "5",
@@ -57,6 +69,21 @@ DEFAULTS: dict[str, str] = {
     "HOST_CHAT_SWEEP_INTERVAL_MINUTES": "60",
     "HOST_CHAT_SWEEP_APPLY": "false",
 }
+
+SEARCH_LIMIT_KEYS = (
+    "SEARCH_TEXT_DEADLINE_SECONDS",
+    "WORKSPACE_SEARCH_MAX_WORK_MATCHES",
+    "WORKSPACE_SEARCH_MAX_SCANNED_FILES",
+    "WORKSPACE_SEARCH_MAX_SCANNED_BYTES",
+    "WORKSPACE_SEARCH_MAX_CONCURRENT",
+    "WORKSPACE_SEARCH_MAX_PER_CHAT",
+    "WORKSPACE_SEARCH_QUEUE_TIMEOUT_SECONDS",
+    "WORKSPACE_SEARCH_DEFAULT_MAX_MATCHES",
+    "WORKSPACE_SEARCH_MAX_RETURNED_MATCHES",
+    "WORKSPACE_SEARCH_MAX_LINE_CHARS",
+    "MCP_MAX_PAYLOAD_BYTES",
+    "MCP_TOOL_RESULT_OVERHEAD_BYTES",
+)
 
 _BOOLEAN_KEYS = (
     "MCP_JSON_RESPONSE",
@@ -77,6 +104,16 @@ _INTEGER_LIMITS: dict[str, tuple[int, int | None]] = {
     "DEFAULT_TIMEOUT_SECONDS": (0, None),
     "MAX_TIMEOUT_SECONDS": (0, None),
     "MAX_CONCURRENT_COMMANDS": (1, 1024),
+    "WORKSPACE_SEARCH_MAX_WORK_MATCHES": (1, None),
+    "WORKSPACE_SEARCH_MAX_SCANNED_FILES": (1, None),
+    "WORKSPACE_SEARCH_MAX_SCANNED_BYTES": (1, None),
+    "WORKSPACE_SEARCH_MAX_CONCURRENT": (1, 64),
+    "WORKSPACE_SEARCH_MAX_PER_CHAT": (1, 64),
+    "WORKSPACE_SEARCH_DEFAULT_MAX_MATCHES": (1, None),
+    "WORKSPACE_SEARCH_MAX_RETURNED_MATCHES": (1, 5000),
+    "WORKSPACE_SEARCH_MAX_LINE_CHARS": (1, 100000),
+    "MCP_MAX_PAYLOAD_BYTES": (1024, None),
+    "MCP_TOOL_RESULT_OVERHEAD_BYTES": (0, None),
 
     "AUDIT_LOG_MAX_BYTES": (1024, None),
     "AUDIT_LOG_BACKUP_COUNT": (1, 1000),
@@ -92,6 +129,7 @@ _INTEGER_LIMITS: dict[str, tuple[int, int | None]] = {
 _FLOAT_LIMITS: dict[str, tuple[float, float | None]] = {
     "COMMAND_QUEUE_TIMEOUT_SECONDS": (0.0, None),
     "SEARCH_TEXT_DEADLINE_SECONDS": (0.0, None),
+    "WORKSPACE_SEARCH_QUEUE_TIMEOUT_SECONDS": (0.0, None),
     "HOST_CHAT_ROOT_MAX_GB": (0.0, None),
 }
 _TRUE_VALUES = {"1", "true", "yes", "on"}
@@ -122,6 +160,123 @@ def load_env(repo_root: Path) -> dict[str, str]:
         if key in os.environ:
             values[key] = os.environ[key]
     return values
+
+
+def read_env(repo_root: Path) -> dict[str, str]:
+    """Read raw `.env` file values without environment overrides."""
+    env_file = repo_root / ".env"
+    if not env_file.exists():
+        return {}
+    try:
+        from dotenv import dotenv_values  # local: keep python-dotenv off the CLI import path
+
+        return {
+            str(key): str(value)
+            for key, value in dotenv_values(env_file).items()
+            if value is not None
+        }
+    except OSError:
+        return {}
+
+
+def _validate_operational_value(key: str, value: str) -> str:
+    text = str(value).strip()
+    if key in _INTEGER_LIMITS:
+        minimum, maximum = _INTEGER_LIMITS[key]
+        valid, rendered = _parse_integer(text, minimum, maximum)
+        if not valid:
+            raise ValueError(f"{key} must be an integer in [{minimum}, {maximum}].")
+        extra_min = {"WORKSPACE_SEARCH_DEFAULT_MAX_MATCHES": 1}
+        _ = extra_min
+        return rendered
+    if key in _FLOAT_LIMITS:
+        minimum, maximum = _FLOAT_LIMITS[key]
+        valid, rendered = _parse_float(text, minimum, maximum)
+        if not valid:
+            raise ValueError(f"{key} must be a number >= {minimum}.")
+        return rendered
+    if key in _BOOLEAN_KEYS:
+        lowered = text.lower()
+        if lowered not in _TRUE_VALUES | _FALSE_VALUES:
+            raise ValueError(f"{key} must be a boolean value.")
+        return lowered
+    if key in DEFAULTS:
+        if "\n" in text or "\r" in text:
+            raise ValueError(f"{key} must not contain a line break.")
+        return text
+    raise ValueError(f"Unknown configuration key: {key}.")
+
+
+def set_operational_config(repo_root: Path, updates: Mapping[str, str]) -> dict[str, str]:
+    """Validate operational values and persist them atomically to `.env`."""
+    if not updates:
+        raise ValueError("No configuration updates were supplied.")
+    cleaned: dict[str, str] = {}
+    for key, value in updates.items():
+        cleaned[str(key)] = _validate_operational_value(str(key), str(value))
+    if (
+        "WORKSPACE_SEARCH_DEFAULT_MAX_MATCHES" in cleaned
+        or "WORKSPACE_SEARCH_MAX_RETURNED_MATCHES" in cleaned
+    ):
+        current = load_env(repo_root)
+        current.update(cleaned)
+        try:
+            default_cap = int(current.get("WORKSPACE_SEARCH_DEFAULT_MAX_MATCHES", "100"))
+            max_cap = int(current.get("WORKSPACE_SEARCH_MAX_RETURNED_MATCHES", "500"))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Search match caps must be integers.") from exc
+        if default_cap > max_cap:
+            raise ValueError(
+                "WORKSPACE_SEARCH_DEFAULT_MAX_MATCHES must be <= "
+                "WORKSPACE_SEARCH_MAX_RETURNED_MATCHES."
+            )
+    if "MCP_MAX_PAYLOAD_BYTES" in cleaned or "MCP_TOOL_RESULT_OVERHEAD_BYTES" in cleaned:
+        current = load_env(repo_root)
+        current.update(cleaned)
+        try:
+            ceiling = int(current.get("MCP_MAX_PAYLOAD_BYTES", "512000"))
+            overhead = int(current.get("MCP_TOOL_RESULT_OVERHEAD_BYTES", "4096"))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("MCP payload limits must be integers.") from exc
+        if overhead > ceiling:
+            raise ValueError(
+                "MCP_TOOL_RESULT_OVERHEAD_BYTES must be <= MCP_MAX_PAYLOAD_BYTES."
+            )
+    return _persist_env_updates(repo_root, cleaned)
+
+
+def rust_settings_payload(values: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Mirror the Rust desktop settings contract for operational values."""
+    source = dict(values) if values is not None else dict(DEFAULTS)
+    payload: dict[str, str] = {}
+    for key in (*SEARCH_LIMIT_KEYS, "HOST_CHAT_MAX_WORKSPACES", "HOST_CHAT_QUOTA_MB", "HOST_CHAT_ROOT_MAX_GB"):
+        if key in source:
+            payload[key] = str(source[key])
+        elif key in DEFAULTS:
+            payload[key] = DEFAULTS[key]
+    return payload
+
+
+def desktop_search_limit_fields() -> list[dict[str, str]]:
+    """Describe Search Limits controls for desktop settings surfaces."""
+    hints = {
+        "SEARCH_TEXT_DEADLINE_SECONDS": "seconds",
+        "WORKSPACE_SEARCH_MAX_WORK_MATCHES": "matches",
+        "WORKSPACE_SEARCH_MAX_SCANNED_FILES": "files",
+        "WORKSPACE_SEARCH_MAX_SCANNED_BYTES": "bytes",
+        "WORKSPACE_SEARCH_MAX_CONCURRENT": "slots",
+        "WORKSPACE_SEARCH_MAX_PER_CHAT": "slots",
+        "WORKSPACE_SEARCH_QUEUE_TIMEOUT_SECONDS": "seconds",
+        "WORKSPACE_SEARCH_DEFAULT_MAX_MATCHES": "matches",
+        "WORKSPACE_SEARCH_MAX_RETURNED_MATCHES": "matches",
+        "WORKSPACE_SEARCH_MAX_LINE_CHARS": "chars",
+        "MCP_MAX_PAYLOAD_BYTES": "bytes",
+        "MCP_TOOL_RESULT_OVERHEAD_BYTES": "bytes",
+    }
+    return [
+        {"key": key, "default": DEFAULTS[key], "unit": hints.get(key, "")}
+        for key in SEARCH_LIMIT_KEYS
+    ]
 
 
 def bool_value(values: Mapping[str, str], key: str, default: bool = False) -> bool:
@@ -235,6 +390,8 @@ def _parse_float(value: str, minimum: float, maximum: float | None) -> tuple[boo
     try:
         parsed = float(value)
     except (TypeError, ValueError):
+        return False, str(value)
+    if not math.isfinite(parsed):
         return False, str(value)
     valid = parsed >= minimum and (maximum is None or parsed <= maximum)
     return valid, str(parsed)

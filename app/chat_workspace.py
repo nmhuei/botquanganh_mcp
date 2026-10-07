@@ -14,6 +14,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import threading
 import time
 from collections.abc import Callable, Iterable, Mapping
@@ -69,9 +70,47 @@ _BIND_POLL_SECONDS = 0.01
 class SquatError(RuntimeError):
     """A directory exists under the root without valid ownership metadata."""
 
+    def __init__(
+        self,
+        message: str = "Squat detected.",
+        *,
+        path: str | Path | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.path = str(path) if path is not None else None
+
 
 class CapacityError(RuntimeError):
     """Configured workspace capacity prevents creating another workspace."""
+
+    def __init__(
+        self,
+        message: str = "Workspace capacity reached.",
+        *,
+        count: int | None = None,
+        limit: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.count = count
+        self.limit = limit
+
+
+class RootFullError(RuntimeError):
+    """Workspace root disk has insufficient free bytes."""
+
+    def __init__(
+        self,
+        message: str = "Workspace root is full.",
+        *,
+        free_bytes: int | None = None,
+        required_bytes: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.free_bytes = free_bytes
+        self.required_bytes = required_bytes
+
+
+WorkspaceRootFullError = RootFullError
 
 
 class ResumeUnauthorizedError(RuntimeError):
@@ -794,6 +833,7 @@ class WorkspaceManager:
         require_token: bool = False,
     ) -> BindResult:
         self.root.mkdir(parents=True, exist_ok=True)
+        self._enforce_root_space()
 
         # Resolve latest / @latest alias
         if chat_id in {"latest", "@latest"} or (isinstance(chat_id, str) and chat_id.startswith("latest:")):
@@ -803,8 +843,10 @@ class WorkspaceManager:
                 return self.create_or_bind(None, label=label or filter_label)
             chat_id = resolved_id
 
+        result: BindResult
         if chat_id is None:
             self._enforce_capacity()
+            allocated = False
             for _ in range(10):
                 generated = generate_chat_id(label)
                 with self._lock_for(generated):
@@ -813,46 +855,133 @@ class WorkspaceManager:
                         os.mkdir(ws)
                     except FileExistsError:
                         continue
-                    return self._initialize(generated, ws)
-            raise CapacityError("Unable to allocate a unique workspace directory.")
+                    result = self._initialize(generated, ws)
+                    allocated = True
+                    break
+            if not allocated:
+                raise CapacityError("Unable to allocate a unique workspace directory.")
+        else:
+            validated = validate_chat_id(chat_id)
+            with self._lock_for(validated):
+                ws = self.root / validated
+                archived_ws = self.root / ARCHIVE_DIR_NAME / validated
 
-        validated = validate_chat_id(chat_id)
-        with self._lock_for(validated):
-            ws = self.root / validated
-            archived_ws = self.root / ARCHIVE_DIR_NAME / validated
+                # Auto un-archive if workspace was archived
+                if not ws.exists() and archived_ws.is_dir():
+                    try:
+                        archived_ws.rename(ws)
+                    except OSError:
+                        pass
 
-            # Auto un-archive if workspace was archived
-            if not ws.exists() and archived_ws.is_dir():
+                if not ws.exists():
+                    self._enforce_capacity(exclude_chat_id=validated)
                 try:
-                    archived_ws.rename(ws)
-                except OSError:
-                    pass
+                    os.mkdir(ws)
+                except FileExistsError:
+                    result = self._bind_existing(
+                        validated,
+                        ws,
+                        resume_token=resume_token,
+                        require_token=require_token,
+                    )
+                else:
+                    result = self._initialize(validated, ws)
 
-            if not ws.exists():
-                self._enforce_capacity()
-            try:
-                os.mkdir(ws)
-            except FileExistsError:
-                return self._bind_existing(
-                    validated,
-                    ws,
-                    resume_token=resume_token,
-                    require_token=require_token,
-                )
-            return self._initialize(validated, ws)
+        try:
+            from app.workspace_binding import register_workspace_binding
 
-    def _enforce_capacity(self) -> None:
+            meta_file = result.path / META_NAME
+            meta_created = None
+            if meta_file.is_file():
+                try:
+                    meta_created = json.loads(meta_file.read_text(encoding="utf-8")).get("created_at")
+                except Exception:
+                    meta_created = None
+            register_workspace_binding(self.root, result.chat_id, meta_created)
+        except Exception:
+            pass
+
+        return result
+
+    def _enforce_capacity(self, exclude_chat_id: str | None = None) -> None:
         max_workspaces = read_limits().max_workspaces
         if max_workspaces <= 0:
             return
         try:
-            count = sum(1 for entry in self.root.iterdir() if entry.is_dir() and not entry.name.startswith("."))
+            active_dirs = [
+                entry
+                for entry in self.root.iterdir()
+                if entry.is_dir() and not entry.name.startswith(".")
+            ]
         except OSError:
             return
-        if count >= max_workspaces:
-            raise CapacityError(
-                f"max_workspaces={max_workspaces} reached under {self.root}"
-            )
+
+        protected_ids = set()
+        if exclude_chat_id:
+            protected_ids.add(exclude_chat_id)
+        try:
+            from app.chat_identity import get_active_workspace, get_chat_id
+
+            bound_id = get_chat_id()
+            if bound_id:
+                protected_ids.add(bound_id)
+            active_id = get_active_workspace()
+            if active_id:
+                protected_ids.add(active_id)
+        except Exception:
+            pass
+
+        latest_id = self.get_latest_active_chat_id()
+        if latest_id:
+            protected_ids.add(latest_id)
+
+        while len(active_dirs) >= max_workspaces:
+            candidates = [
+                d for d in active_dirs if d.name not in protected_ids
+            ]
+            if not candidates:
+                raise CapacityError(
+                    f"max_workspaces={max_workspaces} reached under {self.root}",
+                    count=len(active_dirs),
+                    limit=max_workspaces,
+                )
+
+            def _candidate_key(entry: Path) -> tuple[int, float, str]:
+                try:
+                    mtime = entry.stat().st_mtime
+                except OSError:
+                    mtime = 0.0
+                return (_workspace_bytes(entry), mtime, entry.name)
+
+            candidates.sort(key=_candidate_key)
+            lightest = candidates[0]
+
+            with self._lock_for(lightest.name):
+                try:
+                    shutil.rmtree(lightest)
+                except OSError:
+                    pass
+
+            if lightest.exists():
+                raise CapacityError(
+                    f"Failed to evict lightest workspace {lightest.name} to enforce max_workspaces={max_workspaces}",
+                    count=len(active_dirs),
+                    limit=max_workspaces,
+                )
+            active_dirs.remove(lightest)
+
+    def _enforce_root_space(self) -> None:
+        try:
+            stat = shutil.disk_usage(self.root)
+            min_required = 1024 * 1024
+            if stat.free < min_required:
+                raise RootFullError(
+                    f"Workspace root disk full: {stat.free} free bytes under {self.root}",
+                    free_bytes=stat.free,
+                    required_bytes=min_required,
+                )
+        except OSError:
+            pass
 
     def _enforce_quota(
         self, ws: Path, chat_id: str, incoming_bytes: int | None = None

@@ -9,6 +9,7 @@ from app.cli.progress import ProgressReporter
 def _ensure_tty_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TERM", "xterm-256color")
     monkeypatch.delenv("BQA_NO_PROGRESS", raising=False)
+    monkeypatch.delenv("NO_COLOR", raising=False)
 
 
 class TTYBuffer(io.StringIO):
@@ -321,3 +322,16 @@ def test_diff_render_writes_only_changed_rows_in_multi_row_block():
     # Same 3-line shape: only the 2 changed cells are cleared and rewritten.
     assert delta.count("\x1b[2K") == 2
     assert "alpha" not in delta  # unchanged row produced zero output bytes
+
+
+def test_no_color_env_suppresses_progress_animation(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NO_COLOR", "1")
+    stream = TTYBuffer()
+    progress = ProgressReporter(
+        color_mode="auto",
+        output_mode=OutputMode.HUMAN,
+        message="Starting runtime...",
+        total=4,
+        stream=stream,
+    )
+    assert not progress.animated

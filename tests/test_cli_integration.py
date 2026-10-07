@@ -4,6 +4,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
+from app.config import VERSION
 from app.cli.main import main
 
 
@@ -139,7 +140,7 @@ def test_bin_wrapper_resolves_global_symlink(tmp_path):
         timeout=20,
         check=True,
     )
-    assert proc.stdout.strip() == "bqa 1.0.0"
+    assert proc.stdout.strip() == f"bqa {VERSION}"
 
 
 def test_usage_error_respects_json_contract(capsys):
@@ -186,7 +187,7 @@ def test_cli_install_and_uninstall_scripts(tmp_path):
         timeout=20,
         check=True,
     )
-    assert version.stdout.strip() == "bqa 1.0.0"
+    assert version.stdout.strip() == f"bqa {VERSION}"
 
     subprocess.run(
         [str(repo_root / "scripts" / "uninstall_cli.sh")],

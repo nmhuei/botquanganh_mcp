@@ -1,158 +1,90 @@
-# Host MCP Architecture
+# BQA MCP 2.0 Architecture
 
 ## Runtime flow
 
 ```text
 ChatGPT / bqa / REST client
-        │
-        ├── local HTTP
-        └── Cloudflare Tunnel (optional)
-                 │
-                 ▼
-       MetricsMiddleware (outermost)
-                 │
-                 ▼
-       TokenAuthMiddleware
-       └── gateway-token verification
-                 │
-                 ▼
-       FastMCP + Starlette application
-       ├── /healthz
-       ├── /mcp
-       │     └── MCP adapters
-       └── /api/v1
-             └── REST adapters
-                 │
-                 ▼
-       Shared host services
-       ├── paths.py       lexical/resolved workspace policy
-       ├── files.py       no-follow, bounded, locked/fsynced filesystem operations
-       ├── policy.py      command identity and guarded/allowlist policy
-       ├── executor.py    sanitized, bounded, capacity-controlled processes
-       └── inventory.py   guide/tool inventory and trusted version probes
+        |
+        +-- local HTTP
+        +-- Cloudflare Tunnel
+                |
+                v
+FastMCP + Starlette
+        |
+        +-- /healthz
+        +-- /mcp
+        +-- /api/v1
+                |
+                v
+Shared host services and chat workspaces
 ```
 
-## Dependency rules
+`app/host/` contains shared host logic. `app/tools/` adapts MCP requests.
+`app/rest_api.py` adapts REST requests. `app/cli/` calls REST and lifecycle scripts.
 
-- `app/host/` contains reusable host business logic and no MCP decorators or HTTP routes.
-- `app/tools/` adapts MCP calls to the host services.
-- `app/rest_api.py` adapts REST calls to the same host services.
-- `app/error_contract.py` is the shared public error/status/OpenAPI taxonomy.
-- `app/cli/` calls REST for host operations and wraps repository-owned lifecycle scripts for local process operations.
-- `knowledge/` contains documents and declarative tool metadata, not executable code.
-- Tool registration in `app/main.py` is explicit.
+## MCP tool surface
 
-## Tool surface
+The server exposes eight super-tools.
 
-The server exposes exactly 16 MCP tools:
+| Tool | Responsibility |
+| --- | --- |
+| `server_info` | Return health, limits, sandbox path and tool catalog. |
+| `workspace_context` | Bind and resume workspaces. Persist state, notes and hypotheses. |
+| `workspace_explore` | List directories and read bounded file windows. |
+| `workspace_edit` | Write, append and replace text with validation. |
+| `workspace_search` | Search file content and paths with bounded results. Returns partial results with `limit_reason` on deadline, work, scan, cap, queue, or payload budgets. |
+| `terminal_execute` | Run shell commands with adaptive task detachment. |
+| `task` | Manage detached task processes and their output. |
+| `web_intelligence` | Fetch and parse bounded HTTP or HTTPS content. |
 
-```text
-health_check
-get_capabilities
-host_list_directory
-host_read_file
-host_write_file
-host_replace_in_file
-host_append_file
-host_make_directory
-host_search_text
-host_check_command
-host_run_command
-ctf_fetch_url
-ctf_render_fetch_result
-host_knowledge
-host_workspace_bind
-host_save_note
-```
+Call `workspace_context(action="bind")` before workspace operations when
+`ATTRIBUTION_MODE=enforce`. `server_info` and `workspace_context` are exempt
+from this binding requirement.
 
-## Command execution flow
+## Process execution
 
-`host_run_command`:
+`terminal_execute` runs synchronously by default. It returns a task identifier
+when the caller sets `background=true`. It can also detach when the caller
+sets a non-default `wait_ms_before_async` value, leaves `timeout_seconds`
+unset, and does not set `background=false`. The `task` tool can wait, tail
+output, report status, list tasks, send input, or terminate a task process
+group.
 
-1. Acquires one bounded command-capacity slot.
-2. Validates timeout and command policy.
-3. Resolves `cwd` inside the workspace boundary.
-4. Builds a sanitized child environment.
-5. Starts an absolute Bash executable with `--noprofile --norc -c`.
-6. Drains stdout and stderr concurrently while retaining bounded bytes.
-7. Terminates the full process group on timeout.
-8. Returns the child exit code independently from HTTP transport success.
-9. Records a command hash, command identities, timing, truncation, and exit metadata.
-10. Releases capacity in every success/error path.
+The task manager drains standard output and error concurrently. It stores
+logs under `~/Downloads/bqa-trash/task-logs` and applies configured task
+quotas. The `task` tool bounds returned tail output.
 
-Overload behavior is deterministic: callers that cannot acquire capacity within `COMMAND_QUEUE_TIMEOUT_SECONDS` receive `SERVICE_BUSY` with HTTP 503.
+The shared REST command executor invokes Bash with `--noprofile --norc`.
+`terminal_execute` invokes `/bin/bash -lc`, so login shell profiles can affect
+that MCP tool. When REST command capacity is full, the service returns
+`SERVICE_BUSY` with HTTP status 503.
 
-## Filesystem flow
+## Workspace operations
 
-Public file operations:
+`workspace_explore`, `workspace_edit` and `workspace_search` resolve paths
+inside configured scopes. They journal attributable workspace operations and
+bound returned payloads. Search uses ripgrep when available and a Python
+fallback otherwise.
 
-1. Normalize the lexical path without following symlinks.
-2. Check the lexical workspace boundary.
-3. Reject existing symlink components.
-4. Resolve and check the final workspace boundary.
-5. Open the final component with no-follow semantics where supported.
-6. Require a regular file for file operations.
-7. Enforce byte limits.
-8. Mutate under an exclusive flock: full-file writes go through temp+rename (atomic); in-place replacement truncates, writes, and fsyncs the locked fd and is not atomic across a crash.
+`workspace_search` treats `path` as the search root. It enforces one
+wall-clock deadline (`SEARCH_TEXT_DEADLINE_SECONDS`), match-work and
+scan budgets, per-chat and global concurrency admission, and a linear
+response payload fit (`MCP_MAX_PAYLOAD_BYTES` minus
+`MCP_TOOL_RESULT_OVERHEAD_BYTES`). Exhausted work returns `ok=true` with
+`truncated=true`, a typed `limit_reason` (`deadline`, `work_matches`,
+`scanned_files`, `scanned_bytes`, `payload`, `result_cap`, `queue`), and `count_complete=false`. `exact_count`
+scans the full work budget and costs more than a capped search. Telemetry
+records query length and a keyed digest only, never raw queries or matches.
 
-Listings and search use lexical display paths and do not expose or traverse symlink targets.
+## Lifecycle
 
-## Error contract
+The supervisor manages the FastMCP server and observes the Cloudflare tunnel.
+The canonical tunnel URL is stored in `logs/tunnel_url.txt`. Server-only
+restart preserves the tunnel process and URL. Tunnel loss never causes an
+automatic Cloudflare restart.
 
-MCP, REST, middleware, CLI HTTP handling, and OpenAPI share these public codes:
+## Audit and observability
 
-```text
-INVALID_ARGUMENT
-AUTH_REQUIRED
-POLICY_BLOCKED
-FILE_NOT_FOUND
-TIMEOUT
-FILE_EXISTS
-RATE_LIMITED
-SERVICE_BUSY
-INTERNAL_ERROR
-```
-
-Unexpected internal exceptions return a generic public message. Known repository, workspace, and home paths are redacted from expected public errors.
-
-## Metrics and audit
-
-Metrics are recorded after the final HTTP response body and include authentication rejections. Health exposes status/path counts, client/server errors, auth failure counts, average/p50/p95 latency, in-flight/peak requests, and command capacity.
-
-Audit events are versioned JSONL records written to a rotating log. Sensitive keys, inline credential formats, and key material are redacted; long fields are truncated.
-
-## Lifecycle architecture
-
-```text
-run_mcp_tunnel.sh
-        │
-        ▼
-start_tunnel_server.sh supervisor
-        ├── FastMCP server process
-        └── cloudflared Quick Tunnel process
-```
-
-- Server and tunnel start independently.
-- The canonical tunnel URL is written atomically to `logs/tunnel_url.txt`.
-- Process ownership is validated through `/proc/<pid>/cmdline`, not PID liveness alone.
-- The supervisor self-heals a failed or unhealthy FastMCP server.
-- The tunnel is monitor-only: tunnel loss is logged and never triggers automatic cloudflared recreation.
-- The last-known URL remains available for diagnostics with `url_state=stale`, but `bqa url` refuses it.
-- `bqa restart` and `bqa server restart` converge on one server-only implementation and preserve tunnel PID/URL.
-- Cold start parses only cloudflared log bytes written by the current launch and publishes the URL only after local health, connector registration, and public health succeed.
-- Stop operations terminate the ownership controller first and refuse unrelated reused PIDs.
-
-## CLI and operations
-
-`bqa` has two execution modes:
-
-- local lifecycle operations through repository scripts;
-- host operations through the REST API using local, public, or explicit base URLs.
-
-The bootstrap wrapper resolves its real path, so the global symlink works from any directory. `scripts/install_cli.sh` and `scripts/uninstall_cli.sh` manage only the repository-owned symlink.
-
-`./scripts/quality_gate.sh` is the canonical source/runtime/full verification entry point. `scripts/collect_diagnostics.sh` creates a redacted support bundle.
-
-## Knowledge flow
-
-`host_knowledge` reads Markdown guides and `TOOL_CATALOG.json`, checks executable availability from `PATH`, and runs only catalog-declared version arguments against resolved executable paths. Callers cannot supply arbitrary version-probe commands.
+Audit records are versioned JSONL. Sensitive values are redacted. Transport
+metrics track HTTP requests, MCP messages, tool calls, latency and failures.
+The local-only `/debug/transport` route exposes bounded diagnostic metadata.

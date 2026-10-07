@@ -3,6 +3,8 @@ import os
 import subprocess
 import sys
 
+from app.config import VERSION
+
 
 def test_rest_api_reuses_host_services_and_preserves_mcp():
     env = {
@@ -149,6 +151,7 @@ print(json.dumps(result))
     assert result["openapi"]["json"]["openapi"] == "3.1.0"
     assert result["invalid"]["status"] == 400
     assert result["mcp"]["json"]["result"]["serverInfo"]["name"] == "BotQuangAnh Host MCP"
+    assert result["mcp"]["json"]["result"]["serverInfo"]["version"] == VERSION
 
 
 def test_rest_api_uses_existing_gateway_authentication():

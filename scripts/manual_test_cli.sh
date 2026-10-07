@@ -77,10 +77,11 @@ CURRENT_TEST="syntax and packaging"
 "$PYTHON" -m compileall -q app/cli
 bash -n bin/bqa scripts/manual_test_cli.sh
 "$PYTHON" -m pip install -e . --no-deps >/dev/null
+EXPECTED_VERSION="$("$PYTHON" -c 'from app.config import VERSION; print(VERSION)')"
 "$BQA" --help > "$TMP_DIR/help.txt"
 grep -q "{start,stop,restart,status,url,server,health,capabilities,fs,cmd,knowledge,logs,config,doctor,completion,version}" "$TMP_DIR/help.txt"
-[ "$("$BQA" version)" = "bqa 1.0.0" ]
-[ "$(.venv/bin/bqa version)" = "bqa 1.0.0" ]
+[ "$("$BQA" version)" = "bqa $EXPECTED_VERSION" ]
+[ "$(.venv/bin/bqa version)" = "bqa $EXPECTED_VERSION" ]
 pass "build, executable, packaging, help, version"
 
 CURRENT_TEST="completion"

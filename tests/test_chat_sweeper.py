@@ -145,7 +145,32 @@ def test_retention_deletes_only_inside_archive(tmp_path):
     assert survivor.is_dir()
 
 
-def test_count_overflow_orders_least_recent_first(tmp_path):
+def test_count_overflow_orders_smallest_bytes_then_mtime_then_id(tmp_path):
+    root = tmp_path / "root"
+    root.mkdir()
+    now = time.time()
+    entries = [
+        ("aaaa", 20, now - 100),
+        ("bbbb", 0, now - 10),
+        ("cccc", 0, now - 200),
+        ("dddd", 0, now - 200),
+    ]
+    for name, size, mtime in entries:
+        ws = _make_ws(root, name, size_bytes=size)
+        _set_tree_mtime(ws, mtime)
+
+    actions = [
+        a
+        for a in plan_actions(
+            scan(root), SweepLimits(idle_archive_hours=48.0, max_workspaces=2)
+        )
+        if a["action"] == "ENFORCE_COUNT"
+    ]
+
+    assert [Path(a["target"]).name for a in actions] == ["cccc", "dddd"]
+
+
+def test_count_overflow_uses_size_before_mtime(tmp_path):
     root = tmp_path / "root"
     root.mkdir()
     hour = 3600.0
@@ -156,13 +181,13 @@ def test_count_overflow_orders_least_recent_first(tmp_path):
     limits = SweepLimits(idle_archive_hours=48.0, max_workspaces=2)
     actions = [a for a in plan_actions(scan(root), limits) if a["action"] == "ENFORCE_COUNT"]
 
-    assert [Path(a["target"]).name for a in actions] == ["ws-10h", "ws-8h"]
+    assert [Path(a["target"]).name for a in actions] == ["ws-8h", "ws-6h"]
     assert all("max_workspaces" in a["reason"] for a in actions)
 
     apply_actions(actions, root, dry_run=False)
-    assert (root / "ws-6h").is_dir() and (root / "ws-2h").is_dir()
-    assert (root / ARCHIVE_DIR_NAME / "ws-10h").is_dir()
+    assert (root / "ws-10h").is_dir() and (root / "ws-2h").is_dir()
     assert (root / ARCHIVE_DIR_NAME / "ws-8h").is_dir()
+    assert (root / ARCHIVE_DIR_NAME / "ws-6h").is_dir()
 
 
 def test_root_size_enforcement_archives_largest_first(tmp_path):

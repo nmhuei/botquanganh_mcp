@@ -83,3 +83,43 @@ def test_openapi_exposes_shared_error_contract():
 
 def test_error_schema_is_json_serializable():
     json.dumps(openapi_document())
+
+
+def test_domain_exceptions_not_masked():
+    from app.chat_workspace import CapacityError, QuotaError, RootFullError, SquatError
+    from app.chat_errors import ChatCatalogError
+
+    # E2
+    e2 = format_exception_error(CapacityError(count=5, limit=5))
+    assert e2["ok"] is False
+    assert e2["error"]["code"] == "E2"
+    assert "5 of 5" in e2["error"]["message"]
+    assert http_status_for_exception(CapacityError()) == 409
+
+    # E3
+    e3 = format_exception_error(QuotaError("over quota", chat_id="chat-1", used_bytes=100, quota_bytes=50))
+    assert e3["ok"] is False
+    assert e3["error"]["code"] == "E3"
+    assert "100 of 50" in e3["error"]["message"]
+    assert http_status_for_exception(QuotaError("x")) == 413
+
+    # E4
+    e4 = format_exception_error(RootFullError(free_bytes=500, required_bytes=1000))
+    assert e4["ok"] is False
+    assert e4["error"]["code"] == "E4"
+    assert "500 free bytes" in e4["error"]["message"]
+    assert http_status_for_exception(RootFullError()) == 507
+
+    # E5
+    e5 = format_exception_error(SquatError(path="/tmp/squat"))
+    assert e5["ok"] is False
+    assert e5["error"]["code"] == "E5"
+    assert "/tmp/squat" in e5["error"]["message"]
+    assert http_status_for_exception(SquatError()) == 409
+
+    # E6
+    e6 = format_exception_error(ChatCatalogError("E6", chat_id="chat-bound-1"))
+    assert e6["ok"] is False
+    assert e6["error"]["code"] == "E6"
+    assert http_status_for_exception(ChatCatalogError("E6")) == 400
+

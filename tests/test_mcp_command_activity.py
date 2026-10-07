@@ -26,7 +26,7 @@ def test_records_and_reads_mcp_command_output_with_secret_redaction(tmp_path, mo
 
     records = activity.read_mcp_command_activity()
     assert len(records) == 1
-    assert records[0]["tool"] == "host_run_command"
+    assert records[0]["tool"] == "terminal_execute"
     assert records[0]["exit_code"] == 0
     assert "super-secret" not in records[0]["command"]
     assert "abc.def.ghi" not in records[0]["stdout"]

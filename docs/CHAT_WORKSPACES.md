@@ -1,166 +1,90 @@
-# Chat Workspaces (DRAFT)
+# Chat Workspaces
 
-> **DRAFT** — tính năng đang phát triển trên nhánh `feature/new-features`, **chưa có** trong bản phát hành hiện tại; mọi khóa cấu hình và hành vi dưới đây có thể thay đổi trước khi release.
+Each chat can use an isolated workspace below `HOST_CHAT_ROOT`. The default
+root is `~/Downloads/bqa-workspaces`. Workspace state supports session resume,
+operation journaling and safe lifecycle cleanup.
 
-Mỗi session ChatGPT một workspace riêng dưới `~/Downloads/bqa-workspaces/<chat_id>`; log nằm ngay trong workspace nên khi chat chết, chỉ cần đọc lại `STATE.md` là hồi sinh được ngữ cảnh, không phải làm lại từ đầu.
+## Start or resume work
 
-## Bắt tay 3 bước
+1. Call `workspace_context(action="list")` to inspect prior workspaces.
+2. Call `workspace_context(action="bind")` for a new workspace.
+3. Call `workspace_context(action="bind", resume_id="latest")` to resume.
+4. Reuse the returned `chat_id` for workspace operations.
 
-1. GPT gửi `chat_id` cho MCP.
-2. MCP kiểm tra/tạo workspace tương ứng với `chat_id`.
-3. MCP trả về đường dẫn workspace; GPT làm việc bằng đường dẫn tương đối trong đó.
+When `ATTRIBUTION_MODE=enforce`, prior to binding only `server_info`,
+`workspace_context(action="bind")` and `workspace_context(action="list")`
+are permitted. All other operations (including `workspace_context` note,
+state, hypotheses, resume, and all operational tools) require an
+active bound workspace session.
 
-## Cấu hình
+`workspace_search` accepts `path` as the search root. It returns bounded
+partial results with `truncated`, `limit_reason`, `scanned_files`,
+`scanned_bytes`, and `count_complete` fields. Tune budgets in Desktop
+Settings under Search Limits; saves persist atomically to `.env`.
 
-Toàn bộ nằm trong `.env`, nạp khi khởi động (xem thêm bảng chung trong README).
+## Configuration
 
-| Khóa | Mặc định | Ý nghĩa |
+| Key | Default | Purpose |
 | --- | --- | --- |
-| `ATTRIBUTION_MODE` | `enforce` | Gán thao tác host về chat: `off` tắt; `tag` gắn nhãn `chat_id` vào log/kết quả; `strict` từ chối thao tác ghi không mang `chat_id` hợp lệ; `enforce` từ chối toàn bộ thao tác (kể cả đọc) nếu chưa bind |
-| `HOST_CHAT_WORKSPACES` | `true` | Công tắc bật/tắt cả tính năng workspace theo chat |
-| `HOST_CHAT_ROOT` | `~/Downloads/bqa-workspaces` | Thư mục gốc chứa mọi workspace |
-| `HOST_CHAT_IDLE_ARCHIVE_HOURS` | `72` | Số giờ không hoạt động trước khi workspace bị archive |
-| `HOST_CHAT_RETENTION_DAYS` | `30` | Số ngày giữ (kể cả đã archive) trước khi xóa vĩnh viễn |
-| `HOST_CHAT_MAX_WORKSPACES` | `128` | Trần số workspace tồn tại đồng thời trên root |
-| `HOST_CHAT_QUOTA_MB` | `2048` | Dung lượng tối đa của một workspace (MB) |
-| `HOST_CHAT_ISOLATE` | `false` | Khi bật: chặn ghi ra ngoài workspace của chính chat đó |
-| `HOST_CHAT_RESUME_HINT_MINUTES` | `30` | Khoảng lặng (phút) sau đó MCP nhắc GPT đọc `STATE.md` để hồi sinh phiên |
-| `HOST_CHAT_ROOT_MAX_GB` | `24` | Trần dung lượng toàn bộ root (GB) |
-| `HOST_CHAT_JOURNAL_MAX_BYTES` | `8388608` | Giới hạn kích thước tối đa của `journal.jsonl` (8 MB) |
+| `ATTRIBUTION_MODE` | `enforce` | Require attributable workspace operations. |
+| `HOST_CHAT_WORKSPACES` | `true` | Enable chat workspaces. |
+| `HOST_CHAT_ROOT` | `~/Downloads/bqa-workspaces` | Workspace root. |
+| `HOST_CHAT_IDLE_ARCHIVE_HOURS` | `72` | Archive idle workspaces after this period. |
+| `HOST_CHAT_RETENTION_DAYS` | `30` | Retain archived workspaces for this period. |
+| `HOST_CHAT_MAX_WORKSPACES` | `128` | Maximum workspace count. |
+| `HOST_CHAT_QUOTA_MB` | `2048` | Maximum size of one workspace. |
+| `HOST_CHAT_ROOT_MAX_GB` | `24` | Maximum size of the complete workspace root. |
+| `HOST_CHAT_JOURNAL_MAX_BYTES` | `8388608` | Maximum journal size. |
 
-## Layout workspace
+## Layout
 
 ```text
 <chat_id>/
-├── journal.jsonl   # nhật ký hai pha: op_started → op_result cho từng thao tác
-├── STATE.md        # cache chiếu bất biến từ journal — nguồn thật vẫn là journal
-├── meta.json       # thông tin workspace: chat_id, thời điểm tạo/hoạt động, trạng thái
-└── notes/          # ghi chú dài hạn do GPT tự quản
+├── CURRENT.json
+├── STATE.md
+├── journal.jsonl
+├── meta.json
+└── notes/
 ```
 
-`STATE.md` có thể bị xây lại từ `journal.jsonl` bất cứ lúc nào; journal mới là dữ liệu bất biến.
+`journal.jsonl` is the durable operation ledger. `STATE.md` is a readable
+resume summary. `workspace_context` manages notes, state updates and the
+hypotheses matrix.
 
-## Log workspace: ghi, phân loại và hiển thị
+## Operation records
 
-Journal trên đĩa cố ý giữ record JSONL nhỏ gọn để giảm write amplification và không làm rotation sớm. Khi đọc, MCP chiếu record sang schema observability giàu thông tin hơn; vì vậy log cũ cũng được phân loại mà không cần rewrite/migrate file lịch sử.
-
-Mỗi operation dùng cùng một `op`/`interaction_id` và được ghi theo write-ahead hai pha:
-
-1. `op_started` được fsync/ghi vào journal **trước khi** host operation chạy; nếu process chết giữa chừng, operation còn lại trong `Pending Operations`.
-2. `op_result` được ghi sau khi operation kết thúc. Reader tương quan hai record để kế thừa `kind`, tính duration và xác định outcome.
-
-Projection khi đọc có các trường chính:
-
-| Trường | Ý nghĩa |
-| --- | --- |
-| `event_dataset` | nguồn ổn định `bqa.workspace` |
-| `event_action` | host tool/action cụ thể, ví dụ `host_read_file`, `host_run_command` |
-| `event_category` | nhóm chuẩn hóa: `api`, `configuration`, `file`, `host`, `process`, `session` |
-| `operation_phase` | `started` hoặc `result` |
-| `event_outcome` | `unknown`, `success`, `failure` |
-| `severity_text` / `severity_number` | mức chuẩn hóa dùng cho filter/UI; `DEBUG=5`, `INFO=9`, `WARN=13`, `ERROR=17` |
-| `interaction_id` | cùng giá trị `op` để nối start/result |
-| `event_duration_ms` | thời gian từ start đến result khi có đủ timestamp |
-
-Payload được sanitize cả lúc ghi và lúc đọc. Các key/chuỗi phổ biến chứa password, token, API key, authorization, session id và Bearer token bị thay bằng `<redacted>`; command output không được chép nguyên vào journal. Lỗi của chính cơ chế journal được đẩy sang audit event `WORKSPACE_JOURNAL_ERROR` bằng loại lỗi/phase thay vì nuốt im lặng hoặc ghi message có thể chứa secret.
-
-### CLI
-
-```bash
-bqa chats logs <chat-id>
-bqa chats logs <chat-id> --min-severity error
-bqa chats logs <chat-id> --category process --outcome failure
-bqa chats logs <chat-id> --action host_run_command --phase result --limit 100
-bqa chats logs <chat-id> --json
-```
-
-`bqa chats show <chat-id>` đếm cả `journal.jsonl.1` lẫn `journal.jsonl`; `STATE.md` có `Log Summary` theo category/severity/outcome. REST `/api/v1/activity` cũng trả projection đã redact và hỗ trợ filter `severity`, `category`, `outcome`, `action`, `phase` khi đọc journal.
-
-Thiết kế này lấy ý tưởng từ OpenTelemetry Logs (severity/event name/correlation) và Elastic Common Schema (category/action/outcome), nhưng **không tuyên bố journal JSONL là wire-format tương thích OTel/ECS**.
-
-## Lỗi
-
-| Mã | Ý nghĩa |
-| --- | --- |
-| `E1` | `chat_id` thiếu hoặc sai định dạng |
-| `E2` | Vượt trần số workspace (`HOST_CHAT_MAX_WORKSPACES`) khi tạo mới |
-| `E3` | Vượt quota: workspace đầy (`HOST_CHAT_QUOTA_MB`) hoặc journal chạm trần (`HOST_CHAT_JOURNAL_MAX_BYTES`) |
-| `E4` | Root đầy (`HOST_CHAT_ROOT_MAX_GB`) |
-| `E5` | Phát hiện chiếm chỗ: thư mục workspace tồn tại nhưng không có `meta.json` hợp lệ |
-| `E6` | Chưa bind workspace (`host_workspace_bind`) khi đang bật `ATTRIBUTION_MODE=enforce` |
-
-## Vòng đời
-
-- Không hoạt động quá 72 giờ (`HOST_CHAT_IDLE_ARCHIVE_HOURS`) → archive.
-- Archive quá 30 ngày (`HOST_CHAT_RETENTION_DAYS`) → xóa vĩnh viễn.
-- Trần cứng: 128 workspace · 2 GB mỗi workspace · 24 GB tổng root.
-
-## Quy tắc cho GPT
-
-- Bind workspace (bắt tay 3 bước) **trước** khi làm việc bất cứ việc gì.
-- Ghi chú dài hạn vào `notes/`; trạng thái ngắn nằm ở `STATE.md`.
-- Khi hồi sinh phiên: đọc `STATE.md` trước, không đoán lại ngữ cảnh cũ.
-- Không ghi ra ngoài workspace của mình khi chưa được mở rộng quyền.
-
-
-## Structured workspace logs
-
-`journal.jsonl` is both the crash-recovery ledger and the structured per-chat log. New records use journal schema v2; older records are normalized at read time, so no in-place migration is required.
-
-Stable classification fields:
+Each workspace operation records an `op_started` event and an `op_result`
+event. The reader correlates them with the operation identifier.
 
 | Field | Meaning |
 | --- | --- |
-| `log_source` | Stable producer (`workspace_journal`) |
-| `event_dataset` | Stable dataset (`bqa.workspace`) |
-| `event_name` | Low-cardinality lifecycle event name (`workspace.operation.started` / `workspace.operation.result`) |
-| `event_category` | Coarse class: `file`, `process`, `session`, `host`, `configuration`, `api` |
-| `event_action` | Exact tool/action name, e.g. `host_read_file` |
-| `event_outcome` | `success`, `failure`, or `unknown` |
-| `operation_phase` | `started` or `result` |
-| `severity_text` / `severity_number` | OTel-style normalized severity (`DEBUG=5`, `INFO=9`, `WARN=13`, `ERROR=17`) |
-| `interaction_id` | High-cardinality operation correlation id; never use it as a coarse category |
-| `event_duration_ms` | Derived start-to-result duration when both records are available |
+| `event_dataset` | Stable value `bqa.workspace`. |
+| `event_action` | Active tool or task action, such as `workspace_edit` or `terminal_execute`. |
+| `event_category` | `file`, `process`, `session`, `host`, `configuration` or `api`. |
+| `event_outcome` | `success`, `failure` or `unknown`. |
+| `operation_phase` | `started` or `result`. |
+| `interaction_id` | Identifier that links start and result events. |
 
-Result records now persist their own `kind`; readers additionally correlate historical start/result pairs by `op` so schema-v1 result records receive the correct action/category and duration without rewriting the journal.
+Commands and secret-looking values are redacted before persistence or display.
 
-Commands are never exposed verbatim by the normalized workspace log. The compatibility `payload.command` field is replaced by `<redacted>` and `payload.command_sha256` is retained for correlation. Secret-looking keys and common bearer/token/password forms are recursively redacted before storage/display.
+## Lifecycle
 
-Inspect and filter one workspace:
+- Idle workspaces move to `.archive` after `HOST_CHAT_IDLE_ARCHIVE_HOURS`.
+- Archived workspaces are removed after `HOST_CHAT_RETENTION_DAYS`.
+- The sweeper stays dry-run unless `HOST_CHAT_SWEEP_APPLY=true`.
+- Capacity eviction protects active and bound workspaces.
 
-```bash
-bqa chats logs <chat-id>
-bqa chats logs <chat-id> --min-severity error
-bqa chats logs <chat-id> --category process --phase result
-bqa chats logs <chat-id> --outcome failure
-bqa chats logs <chat-id> --action host_read_file --json
-```
+Use `bqa chats list`, `bqa chats show`, `bqa chats logs`, `bqa chats archive`,
+`bqa chats restore`, `bqa chats delete` and `bqa chats prune` for local
+workspace administration.
 
-The REST activity feed accepts the same classification dimensions through `severity`, `category`, `outcome`, `action`, and `phase` query parameters. Without classification filters its legacy response shape is preserved. With a workspace classification filter, unclassified job-registry rows are omitted rather than mixed into a misleading result set.
+## Errors
 
-Host tools bracket execution with durable `op_started` and `op_result` writes. `STATE.md` is refreshed after the start write, so a crash or interrupted long-running command remains visible as a pending operation. Workspace journal failures are best-effort for the host action itself but emit a `WORKSPACE_JOURNAL_ERROR` audit event with tool, chat id, phase, and exception type; raw exception details are not copied into the audit payload.
-
-
-### Live SSE stream and Control Center
-
-`GET /api/v1/activity/stream` exposes normalized workspace journal records as Server-Sent Events (`text/event-stream`). It uses the same `severity`, `category`, `outcome`, `action`, `phase`, and optional `chat_id` filters as the snapshot activity endpoint.
-
-Key transport behavior:
-
-- event type: `workspace_log`;
-- opaque stable `id` per journal record, suitable for `Last-Event-ID` resume without exposing chat/path/payload data in the cursor;
-- `retry: 2000` reconnect hint;
-- heartbeat comments every ~15 seconds while idle;
-- `Cache-Control: no-cache, no-transform` and `X-Accel-Buffering: no` to avoid proxy buffering;
-- bounded initial replay (`replay=0..200`, default `50`);
-- bounded server-side seen-id window and bounded desktop cache so long-lived streams do not grow memory without limit.
-
-Example:
-
-```bash
-curl -N \
-  -H 'Accept: text/event-stream' \
-  'http://127.0.0.1:18427/api/v1/activity/stream?category=process&replay=25'
-```
-
-The native QML Control Center exposes this stream under `Logs > Events`. The event cache is bounded, newest matching events remain first, and local filters support severity/category/outcome/chat/operation/action terms. Selecting an event exposes normalized metadata/payload and stable `operation_id` correlation back to Activity. Runtime service evidence is kept separate under `Logs > Runtime services`. Disconnects update the stream state and automatically reconnect using the last SSE event id.
+| Code | Meaning |
+| --- | --- |
+| `E1` | Missing or invalid chat identifier. |
+| `E2` | Workspace capacity limit reached. |
+| `E3` | Workspace or journal quota reached. |
+| `E4` | Workspace root capacity reached. |
+| `E5` | Existing workspace directory has invalid metadata. |
+| `E6` | Bind with `workspace_context(action="bind")` before retrying. |

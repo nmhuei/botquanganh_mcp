@@ -283,7 +283,7 @@ def command_activity_human_output(
     translator = translator or DesktopTranslator()
     return "\n".join(
         [
-            f"$ {record.get('command') or '(empty command)'}",
+            f"$ {record.get('command_summary') or record.get('command') or '(empty command)' }",
             translator.text(
                 "activity.human.workplace",
                 workplace=record.get("chat_id") or translator.text("activity.shared"),

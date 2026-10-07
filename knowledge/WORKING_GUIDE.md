@@ -1,26 +1,35 @@
 # Working Guide
 
-## Trình tự làm việc đề xuất
+## Recommended sequence
 
-1. Khi sử dụng chat workspaces / `ATTRIBUTION_MODE=enforce`: Gọi `host_workspace_bind(chat_id="<id>")` để khởi tạo/khôi phục workspace trước khi gọi bất kỳ tool nào khác.
-2. Gọi `host_knowledge(section="overview")` để đọc workspace, policy và danh sách tài liệu.
-3. Gọi `host_knowledge(section="tools", query="<tool>")` trước khi giả định một command đã được cài.
-4. Dùng `host_list_directory`, `host_read_file` và `host_search_text` để hiểu project trước khi sửa.
-5. Dùng `host_check_command` cho command có tác động lớn hoặc khó đoán.
-6. Sửa file bằng `host_write_file` hoặc `host_replace_in_file` khi có thể.
-7. Chạy test/lint bằng `host_run_command` và báo lại bằng chứng thực tế.
+1. Call `server_info` to inspect status, limits and the active catalog.
+2. Call `workspace_context(action="bind")` to create or resume a workspace.
+3. Use `workspace_explore` to inspect directories and bounded file windows.
+4. Use `workspace_search` for text, regex and path searches.
+   - Pass `path` as the search root.
+   - Expect partial results with `truncated` and `limit_reason` on budgets.
+   - Prefer capped searches; use `exact_count` only when a full total is required.
+   - Tune `SEARCH_TEXT_DEADLINE_SECONDS` and Search Limits in Settings.
+5. Use `workspace_edit` for writes, appends and verified replacements.
+6. Use `terminal_execute` for commands. Use `task` for long-running commands.
+7. Use `web_intelligence` only for required HTTP or HTTPS research.
 
-## Quy tắc sửa code
+## Code-change rules
 
-- Không ghi đè thay đổi sẵn có nếu chưa kiểm tra `git status` và `git diff`.
-- Ưu tiên thay đổi nhỏ, có test và có thể rollback.
-- Không khẳng định đã sửa xong nếu chưa chạy kiểm tra phù hợp.
-- Không ghi secret, token hoặc toàn bộ command nhạy cảm vào log/tài liệu.
-- Dùng đường dẫn tương đối từ `HOST_WORKSPACE_DIR` khi có thể.
+- Check `git status` and `git diff` before editing.
+- Make small changes with relevant tests.
+- Report test evidence before claiming a fix.
+- Do not write secrets or sensitive command output into logs or documents.
+- Prefer paths relative to `HOST_WORKSPACE_DIR`.
 
-## Khi chạy command
+## Commands and tasks
 
-- Đặt `cwd` đúng project.
-- Dùng timeout phù hợp.
-- Đọc `exit_code`, `stdout`, `stderr` và cờ `*_truncated`.
-- Nếu command bị policy chặn, không cố bypass từ phía caller; thay đổi config phía server hoặc chọn cách an toàn hơn.
+- Set the correct working directory before execution.
+- Read the exit code, standard output, standard error and truncation fields.
+- Use `task(action="wait")` instead of repeated polling.
+- Do not bypass a policy rejection from the caller.
+
+## Scratch location
+
+Use `~/Downloads/bqa-trash/` for temporary downloads, test data and unpacked
+archives. Keep repository roots free from test artifacts.

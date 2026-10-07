@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "botquanganh-host-mcp"
-version = "1.0.0"
+dynamic = ["version"]
 description = "Host MCP server and bqa operations CLI"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -24,6 +24,9 @@ bqa = "app.cli.main:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["app*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "app.config.VERSION"}
 
 [tool.setuptools.package-data]
 "app.qml_ui" = ["qml/*.qml"]

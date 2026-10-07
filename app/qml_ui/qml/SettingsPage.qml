@@ -13,6 +13,32 @@ Item {
     required property var tr
     required property var labels
 
+    function loadSearchLimits() {
+        try {
+            var values = JSON.parse(root.backend.searchLimitsJson || "{}");
+            var apply = function(id, key) {
+                var item = root.findChild(id);
+                if (item && values[key] !== undefined && values[key] !== "") {
+                    item.text = String(values[key]);
+                }
+            };
+            apply("searchDeadlineField", "SEARCH_TEXT_DEADLINE_SECONDS");
+            apply("searchWorkField", "WORKSPACE_SEARCH_MAX_WORK_MATCHES");
+            apply("searchScannedFilesField", "WORKSPACE_SEARCH_MAX_SCANNED_FILES");
+            apply("searchScannedBytesField", "WORKSPACE_SEARCH_MAX_SCANNED_BYTES");
+            apply("searchConcurrentField", "WORKSPACE_SEARCH_MAX_CONCURRENT");
+            apply("searchPerChatField", "WORKSPACE_SEARCH_MAX_PER_CHAT");
+            apply("searchQueueField", "WORKSPACE_SEARCH_QUEUE_TIMEOUT_SECONDS");
+            apply("searchDefaultCapField", "WORKSPACE_SEARCH_DEFAULT_MAX_MATCHES");
+            apply("searchMaxCapField", "WORKSPACE_SEARCH_MAX_RETURNED_MATCHES");
+            apply("searchLineCharsField", "WORKSPACE_SEARCH_MAX_LINE_CHARS");
+            apply("searchPayloadField", "MCP_MAX_PAYLOAD_BYTES");
+            apply("searchOverheadField", "MCP_TOOL_RESULT_OVERHEAD_BYTES");
+        } catch (e) {}
+    }
+
+    Component.onCompleted: loadSearchLimits()
+
     FolderDialog {
         id: workspaceFolderDialog
         title: root.tr("Choose host workspace", "Chọn host workspace")
@@ -245,6 +271,99 @@ Item {
                                     text: root.tr("Apply workspace", "Áp dụng workspace")
                                     enabled: workspaceField.text.length > 0 && !root.backend.actionBusy
                                     onClicked: root.backend.applyWorkspace(workspaceField.text)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: root.theme.sm
+
+                    Text {
+                        text: root.tr("Search Limits", "Giới hạn tìm kiếm")
+                        color: root.theme.text
+                        font.pixelSize: root.theme.font(12)
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        text: root.tr(
+                            "Bounded workspace search. Saving restarts the bridge only and preserves the connector.",
+                            "Tìm kiếm có giới hạn. Lưu sẽ chỉ khởi động lại bridge và giữ connector."
+                        )
+                        color: root.theme.textMuted
+                        font.pixelSize: root.theme.font(9)
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                    }
+
+                    ClassicPanel {
+                        Layout.fillWidth: true
+                        theme: root.theme
+
+                        ColumnLayout {
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: root.theme.xl
+                            spacing: root.theme.sm
+
+                            GridLayout {
+                                Layout.fillWidth: true
+                                columns: 2
+                                columnSpacing: root.theme.xl
+                                rowSpacing: root.theme.md
+
+                                Text { text: "SEARCH_TEXT_DEADLINE_SECONDS (s)"; color: root.theme.textMuted; font.pixelSize: root.theme.font(9) }
+                                TextField { id: searchDeadlineField; objectName: "searchDeadlineField"; text: ""; Layout.fillWidth: true }
+                                Text { text: "WORKSPACE_SEARCH_MAX_WORK_MATCHES"; color: root.theme.textMuted; font.pixelSize: root.theme.font(9) }
+                                TextField { id: searchWorkField; objectName: "searchWorkField"; text: ""; Layout.fillWidth: true }
+                                Text { text: "WORKSPACE_SEARCH_MAX_SCANNED_FILES"; color: root.theme.textMuted; font.pixelSize: root.theme.font(9) }
+                                TextField { id: searchScannedFilesField; objectName: "searchScannedFilesField"; text: ""; Layout.fillWidth: true }
+                                Text { text: "WORKSPACE_SEARCH_MAX_SCANNED_BYTES"; color: root.theme.textMuted; font.pixelSize: root.theme.font(9) }
+                                TextField { id: searchScannedBytesField; objectName: "searchScannedBytesField"; text: ""; Layout.fillWidth: true }
+                                Text { text: "WORKSPACE_SEARCH_MAX_CONCURRENT"; color: root.theme.textMuted; font.pixelSize: root.theme.font(9) }
+                                TextField { id: searchConcurrentField; objectName: "searchConcurrentField"; text: ""; Layout.fillWidth: true }
+                                Text { text: "WORKSPACE_SEARCH_MAX_PER_CHAT"; color: root.theme.textMuted; font.pixelSize: root.theme.font(9) }
+                                TextField { id: searchPerChatField; objectName: "searchPerChatField"; text: ""; Layout.fillWidth: true }
+                                Text { text: "WORKSPACE_SEARCH_QUEUE_TIMEOUT_SECONDS (s)"; color: root.theme.textMuted; font.pixelSize: root.theme.font(9) }
+                                TextField { id: searchQueueField; objectName: "searchQueueField"; text: ""; Layout.fillWidth: true }
+                                Text { text: "WORKSPACE_SEARCH_DEFAULT_MAX_MATCHES"; color: root.theme.textMuted; font.pixelSize: root.theme.font(9) }
+                                TextField { id: searchDefaultCapField; objectName: "searchDefaultCapField"; text: ""; Layout.fillWidth: true }
+                                Text { text: "WORKSPACE_SEARCH_MAX_RETURNED_MATCHES"; color: root.theme.textMuted; font.pixelSize: root.theme.font(9) }
+                                TextField { id: searchMaxCapField; objectName: "searchMaxCapField"; text: ""; Layout.fillWidth: true }
+                                Text { text: "WORKSPACE_SEARCH_MAX_LINE_CHARS"; color: root.theme.textMuted; font.pixelSize: root.theme.font(9) }
+                                TextField { id: searchLineCharsField; objectName: "searchLineCharsField"; text: ""; Layout.fillWidth: true }
+                                Text { text: "MCP_MAX_PAYLOAD_BYTES"; color: root.theme.textMuted; font.pixelSize: root.theme.font(9) }
+                                TextField { id: searchPayloadField; objectName: "searchPayloadField"; text: ""; Layout.fillWidth: true }
+                                Text { text: "MCP_TOOL_RESULT_OVERHEAD_BYTES"; color: root.theme.textMuted; font.pixelSize: root.theme.font(9) }
+                                TextField { id: searchOverheadField; objectName: "searchOverheadField"; text: ""; Layout.fillWidth: true }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Item { Layout.fillWidth: true }
+                                ClassicButton {
+                                    objectName: "applySearchLimitsButton"
+                                    theme: root.theme
+                                    primary: true
+                                    text: root.tr("Save search limits", "Lưu giới hạn tìm kiếm")
+                                    enabled: !root.backend.actionBusy
+                                    onClicked: root.backend.applySearchLimits(JSON.stringify({
+                                        "SEARCH_TEXT_DEADLINE_SECONDS": searchDeadlineField.text,
+                                        "WORKSPACE_SEARCH_MAX_WORK_MATCHES": searchWorkField.text,
+                                        "WORKSPACE_SEARCH_MAX_SCANNED_FILES": searchScannedFilesField.text,
+                                        "WORKSPACE_SEARCH_MAX_SCANNED_BYTES": searchScannedBytesField.text,
+                                        "WORKSPACE_SEARCH_MAX_CONCURRENT": searchConcurrentField.text,
+                                        "WORKSPACE_SEARCH_MAX_PER_CHAT": searchPerChatField.text,
+                                        "WORKSPACE_SEARCH_QUEUE_TIMEOUT_SECONDS": searchQueueField.text,
+                                        "WORKSPACE_SEARCH_DEFAULT_MAX_MATCHES": searchDefaultCapField.text,
+                                        "WORKSPACE_SEARCH_MAX_RETURNED_MATCHES": searchMaxCapField.text,
+                                        "WORKSPACE_SEARCH_MAX_LINE_CHARS": searchLineCharsField.text,
+                                        "MCP_MAX_PAYLOAD_BYTES": searchPayloadField.text,
+                                        "MCP_TOOL_RESULT_OVERHEAD_BYTES": searchOverheadField.text
+                                    }))
                                 }
                             }
                         }

@@ -181,7 +181,7 @@ Selecting a workplace filters the command table to that chat id; `Disable`
 keeps the folder but marks its UI tab off, while `Close tab` hides it until the
 next command for that session arrives.
 
-Each MCP `host_run_command` is journaled as one operation: it receives an opaque
+Each MCP `terminal_execute` call is journaled as one operation: it receives an opaque
 `operation_id`, emits `started/running` after policy and CWD validation just
 before the process is spawned, then emits `completed` with `succeeded`,
 `failed`, or `timed_out`. The UI joins those events into one command row. While

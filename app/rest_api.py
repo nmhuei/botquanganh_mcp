@@ -32,6 +32,7 @@ from app.host.files import (
     search_text,
     write_text_file,
 )
+from app.host.inventory import get_tool_inventory, read_guides
 from app.host.policy import inspect_host_command
 from app.jobs_registry import JOB_STATUSES, get_jobs_registry
 from app.security import format_error_response
@@ -629,13 +630,13 @@ async def api_index(_request: Request) -> JSONResponse:
 
 
 async def api_health(_request: Request) -> JSONResponse:
-    from app.tools.health import health_check
+    from app.tools.server_info import health_check
 
     return await _call_nowait(health_check)
 
 
 async def api_capabilities(_request: Request) -> JSONResponse:
-    from app.tools.health import get_capabilities
+    from app.tools.server_info import get_capabilities
 
     return await _call_nowait(get_capabilities)
 
@@ -781,18 +782,21 @@ async def api_run_command(request: Request) -> JSONResponse:
 
 async def api_knowledge(request: Request) -> JSONResponse:
     try:
-        from app.tools.host_knowledge import host_knowledge
-
-        return await _call(
-            host_knowledge,
-            section=request.query_params.get("section", "overview"),
-            query=request.query_params.get("query", ""),
-            category=request.query_params.get("category", ""),
-            available_only=_query_bool(request, "available_only", True),
-            include_versions=_query_bool(request, "include_versions", False),
-            include_uncatalogued=_query_bool(request, "include_uncatalogued", False),
-            refresh=_query_bool(request, "refresh", False),
-        )
+        section = request.query_params.get("section", "overview")
+        query = request.query_params.get("query", "")
+        if section == "guides":
+            return await _call(read_guides, query=query)
+        if section in {"tools", "overview"}:
+            return await _call(
+                get_tool_inventory,
+                available_only=_query_bool(request, "available_only", True),
+                category=request.query_params.get("category", ""),
+                query=query,
+                include_versions=_query_bool(request, "include_versions", False),
+                include_uncatalogued=_query_bool(request, "include_uncatalogued", False),
+                refresh=_query_bool(request, "refresh", False),
+            )
+        return await _call(read_guides, query=query)
     except Exception as exc:
         return JSONResponse(format_error_response(exc), status_code=_error_status(exc))
 
@@ -915,7 +919,7 @@ def openapi_document() -> dict[str, Any]:
         "openapi": "3.1.0",
         "info": {
             "title": "BotQuangAnh Host REST API",
-            "version": "1.0.0",
+            "version": app.config.VERSION,
             "description": "REST access to the same host services exposed through MCP.",
         },
         "servers": [{"url": "/"}],

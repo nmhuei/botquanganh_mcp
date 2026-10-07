@@ -197,7 +197,7 @@ async def op_tools_list(client: httpx.AsyncClient, index: int) -> tuple[int, dic
     return response.status_code, payload
 
 
-async def op_tool_health(client: httpx.AsyncClient, index: int) -> tuple[int, dict[str, Any] | None]:
+async def op_tool_server_info(client: httpx.AsyncClient, index: int) -> tuple[int, dict[str, Any] | None]:
     response = await client.post(
         "/mcp",
         headers=MCP_HEADERS,
@@ -205,14 +205,14 @@ async def op_tool_health(client: httpx.AsyncClient, index: int) -> tuple[int, di
             "jsonrpc": "2.0",
             "id": index + 1,
             "method": "tools/call",
-            "params": {"name": "health_check", "arguments": {}},
+            "params": {"name": "server_info", "arguments": {}},
         },
     )
     payload = response.json()
     if response.status_code == 200:
         result = payload.get("result")
         if not isinstance(result, dict) or result.get("isError") is True:
-            raise RuntimeError(f"health_check tool failed: {payload}")
+            raise RuntimeError(f"server_info tool failed: {payload}")
     return response.status_code, payload
 
 
@@ -255,7 +255,7 @@ async def run_soak(
     async def worker(worker_id: int) -> None:
         nonlocal counter
         local_index = worker_id * 1_000_000
-        operations = (op_health, op_tools_list, op_tool_health)
+        operations = (op_health, op_tools_list, op_tool_server_info)
         while time.monotonic() < deadline:
             operation = operations[local_index % len(operations)]
             started = time.perf_counter()
@@ -297,7 +297,7 @@ async def main_async(args: argparse.Namespace) -> dict[str, Any]:
 
     async with httpx.AsyncClient(base_url=args.base.rstrip("/"), timeout=timeout, limits=limits) as client:
         # Warm up the app, HTTP connection pool, tool catalog and Python imports.
-        for operation in (op_health, op_initialize, op_tools_list, op_tool_health):
+        for operation in (op_health, op_initialize, op_tools_list, op_tool_server_info):
             status, _payload = await operation(client, 0)
             if status != 200:
                 raise RuntimeError(f"warmup failed with HTTP {status}")
@@ -337,7 +337,7 @@ async def main_async(args: argparse.Namespace) -> dict[str, Any]:
                 "mcp_health_tool",
                 args.mcp_calls,
                 args.mcp_call_concurrency,
-                op_tool_health,
+                op_tool_server_info,
                 client,
             )
         )

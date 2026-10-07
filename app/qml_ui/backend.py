@@ -25,6 +25,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QFontDatabase, QGuiApplication
 
 from app.activity_log import read_mcp_command_activity
+from app.config import VERSION
 from app.cli.center.invariants import check_tunnel_invariant
 from app.cli.config_view import resolve_config_path, set_workspace_config
 from app.cli.desktop_views.activity import (
@@ -37,7 +38,7 @@ from app.cli.desktop_views.workspace_logs import (
     workspace_log_row_from_mapping,
 )
 from app.cli.lifecycle import restart, start, status_data
-from app.tools.health import health_check
+from app.tools.server_info import health_check
 from app.cli.ui_preferences import UIPreferencesStore
 from app.cli.center.persistence import CenterWindowStateStore
 from app.qml_ui.models import (
@@ -1540,6 +1541,44 @@ class CenterQmlBackend(QObject):
 
         self._run_action("apply workspace", work)
 
+    @Property(str, notify=stateChanged)
+    def searchLimitsJson(self) -> str:
+        from app.cli.config_view import SEARCH_LIMIT_KEYS, load_env
+
+        try:
+            values = load_env(Path(self.ctx.repo_root))
+        except (OSError, ValueError):
+            values = dict(getattr(self.ctx, "values", {}) or {})
+        return _json_text({key: str(values.get(key, "")) for key in SEARCH_LIMIT_KEYS})
+
+    @Slot(str)
+    def applySearchLimits(self, payload: str) -> None:
+        import json as _json
+
+        from app.cli.config_view import set_operational_config
+
+        try:
+            updates = dict(_json.loads(str(payload or "{}")))
+        except (TypeError, ValueError) as exc:
+            self._set_toast("error", f"Invalid search limits: {exc}")
+            return
+
+        def work() -> dict[str, Any]:
+            if self.safe_actions:
+                return {"ok": True, "message": "SAFE VERIFY: search limits validated"}
+            saved = set_operational_config(Path(self.ctx.repo_root), updates)
+            self.ctx.values.update(saved)
+            values = dict(self.ctx.values)
+            before = status_data(Path(self.ctx.repo_root), values)
+            result = restart(Path(self.ctx.repo_root), values)
+            after = status_data(Path(self.ctx.repo_root), values)
+            invariant = check_tunnel_invariant(before, after)
+            if not invariant.ok:
+                return {"ok": False, "message": f"SAFETY VIOLATION: {invariant.error}"}
+            return {"ok": bool((result or {}).get("ok", True)), "message": "Search limits saved"}
+
+        self._run_action("apply search limits", work)
+
     def _run_action(self, name: str, work: Callable[[], dict[str, Any]]) -> None:
         if self._action_busy:
             return
@@ -1870,7 +1909,7 @@ class CenterQmlBackend(QObject):
             "capacity": {"commands": {"in_use": 2, "limit": 100}},
         }
         self._capabilities = {
-            "version": "1.0.0",
+            "version": VERSION,
             "host": {"command_policy": "guarded"},
             "limits": {
                 "max_timeout_seconds": 300,

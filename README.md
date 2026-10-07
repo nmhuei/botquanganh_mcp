@@ -64,6 +64,12 @@ Toàn bộ cấu hình nằm trong `.env` ở thư mục repo, được nạp kh
 | `HOST_CHAT_MAX_WORKSPACES` | `128` | Giới hạn số lượng workspace tồn tại đồng thời |
 | `HOST_CHAT_SWEEP_INTERVAL_MINUTES` | `60` | Chu kỳ quét định kỳ dọn dẹp chat workspace (phút) |
 | `HOST_CHAT_SWEEP_APPLY` | `false` | Áp dụng xóa vĩnh viễn workspace hết hạn khi quét (`false` = dry-run) |
+| `HOST_TRASH_DIR` | `~/Downloads/bqa-trash` | Thư mục scratch bền vững cho tác vụ tạm và task logs. |
+| `HOST_TASK_MAX_PER_CHAT` | `3` | Số task đang chạy tối đa cho mỗi chat. |
+| `HOST_TASK_MAX_GLOBAL` | `10` | Số task đang chạy tối đa cho toàn server. |
+| `HOST_TASK_WAIT_BEFORE_ASYNC_MS` | `5000` | Ngưỡng chờ cho chế độ async khi caller truyền giá trị khác mặc định. |
+| `HOST_TASK_MAX_TAIL_BYTES` | `65536` | Giới hạn byte khi `task` trả output cuối. |
+| `HOST_TASK_KILL_GRACE_SECONDS` | `3` | Thời gian chờ SIGTERM trước khi task dùng SIGKILL. |
 
 Các tuỳ chọn giao diện của **BQA Studio (Rust Native)** như 16 chủ đề (themes), trạng thái cột (splitter widths), bộ lọc và session active được lưu tự động trong Webview Storage của ứng dụng. Giao diện Python QML Center lưu cấu hình riêng tại `$XDG_CONFIG_HOME/bqa-center/ui.json`.
 
@@ -137,6 +143,22 @@ Chat workspace cục bộ mặc định nằm dưới `~/Downloads/bqa-workspace
 
 Probe sức khỏe trực tiếp: `curl -s http://127.0.0.1:18427/healthz` · endpoint MCP: `<URL>/mcp`.
 
+## MCP 2.0 super-tools
+
+Gọi `server_info` để xem trạng thái service, giới hạn và catalog tool. Gọi
+`workspace_context(action="bind")` trước thao tác workspace khi enforce mode bật.
+
+| Tool | Chức năng |
+| --- | --- |
+| `server_info` | Trạng thái server, giới hạn và catalog tám tool. |
+| `workspace_context` | Bind, resume, state, note và hypothesis của workspace. |
+| `workspace_explore` | Liệt kê thư mục hoặc đọc file theo cửa sổ dòng. |
+| `workspace_edit` | Ghi, append và replace có kiểm tra an toàn. |
+| `workspace_search` | Tìm text, regex hoặc đường dẫn trong workspace. Trả kết quả từng phần có giới hạn khi hết thời gian, ngân sách hoặc dung lượng. |
+| `terminal_execute` | Chạy lệnh thích ứng và trả task khi lệnh kéo dài. |
+| `task` | Wait, tail, status, list, kill và gửi input cho task. |
+| `web_intelligence` | Đọc HTTP/HTTPS và trích xuất nội dung web có giới hạn. |
+
 ## Tài liệu
 
-[Hướng dẫn Toàn Diện BQA CLI & Rust Studio](docs/CLI_USAGE.md) · [Kiến trúc](docs/ARCHITECTURE.md) · [Vận hành](docs/OPERATIONS_RUNBOOK.md) · [Checklist phát hành](docs/RELEASE_CHECKLIST.md) · [Bảo mật](SECURITY.md) · [Giao diện CLI](docs/CLI_UI.md) · [Chat workspaces](docs/CHAT_WORKSPACES.md)
+[Hướng dẫn Toàn Diện BQA CLI & Rust Studio](docs/CLI_USAGE.md) · [Kiến trúc](docs/ARCHITECTURE.md) · [Vận hành](docs/OPERATIONS_RUNBOOK.md) · [Checklist phát hành](docs/RELEASE_CHECKLIST.md) · [Bảo mật](SECURITY.md) · [Giao diện CLI](docs/CLI_UI.md) · [Chat workspaces](docs/CHAT_WORKSPACES.md) · [Tài liệu lịch sử](docs/old_docs/README.md)

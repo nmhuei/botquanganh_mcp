@@ -211,6 +211,61 @@ class MCPForensicsMiddleware(Middleware):
         error = False
         try:
             result = await call_next(context)
+            if result is not None:
+                from app.tools_common import bridge_payload_ceiling, enforce_bridge_payload_limit
+                from mcp.types import TextContent
+
+                ceiling = bridge_payload_ceiling()
+
+                def _wire_size(val: Any) -> int:
+                    try:
+                        if hasattr(val, "model_dump"):
+                            dumped = val.model_dump(mode="json", by_alias=True, exclude_none=True)
+                            return len(json.dumps(dumped, ensure_ascii=False).encode("utf-8"))
+                    except Exception:
+                        pass
+                    total = 0
+                    if hasattr(val, "content") and val.content:
+                        for it in val.content:
+                            if hasattr(it, "text") and isinstance(it.text, str):
+                                total += len(it.text.encode("utf-8"))
+                    for attr in ("structuredContent", "structured_content"):
+                        if hasattr(val, attr):
+                            s = getattr(val, attr)
+                            if s:
+                                total += len(json.dumps(s, ensure_ascii=False).encode("utf-8"))
+                    return total
+
+                if hasattr(result, "content") and result.content:
+                    for item in result.content:
+                        if hasattr(item, "text") and isinstance(item.text, str):
+                            if len(item.text.encode("utf-8")) > ceiling:
+                                try:
+                                    parsed = json.loads(item.text)
+                                except Exception:
+                                    parsed = {"output": item.text}
+                                bounded = enforce_bridge_payload_limit(parsed, tool_name=tool_name)
+                                item.text = json.dumps(bounded, ensure_ascii=False)
+                                if hasattr(result, "structured_content"):
+                                    result.structured_content = bounded
+                                if hasattr(result, "structuredContent"):
+                                    result.structuredContent = bounded
+                                setattr(result, "is_error", True)
+                                if hasattr(result, "isError"):
+                                    setattr(result, "isError", True)
+
+                if _wire_size(result) > ceiling:
+                    oversized = {"output": "x" * (ceiling + 1000)}
+                    bounded = enforce_bridge_payload_limit(oversized, tool_name=tool_name)
+                    result.content = [TextContent(type="text", text=json.dumps(bounded, ensure_ascii=False))]
+                    if hasattr(result, "structured_content"):
+                        result.structured_content = None
+                    if hasattr(result, "structuredContent"):
+                        result.structuredContent = None
+                    setattr(result, "is_error", True)
+                    if hasattr(result, "isError"):
+                        setattr(result, "isError", True)
+
             error = bool(
                 getattr(result, "is_error", getattr(result, "isError", False))
             )

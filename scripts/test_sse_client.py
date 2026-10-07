@@ -111,11 +111,11 @@ async def main():
                 tools = [t["name"] for t in list_res.get("result", {}).get("tools", [])]
                 print(f"\n[INFO] Available tools list parsed from result: {tools}")
                 
-            # 4. Call health_check tool
+            # 4. Call server_info tool
             await send_request(
                 "tools/call",
                 {
-                    "name": "health_check",
+                    "name": "server_info",
                     "arguments": {}
                 },
                 "3"

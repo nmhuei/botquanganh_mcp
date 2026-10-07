@@ -1,7 +1,7 @@
 """Host execution core used by the MCP host tool profile.
 
 This package contains no MCP decorators.  The public MCP surface lives in
-``app.tools.host`` and delegates to these modules.
+``app.host`` and delegates to these modules.
 """
 
 from app.host.executor import execute_host_command

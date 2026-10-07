@@ -11,7 +11,7 @@ collecting an incident's first evidence set.
 tail -F logs/gateway.log | grep --line-buffered -E 'HTTP|MCP|TOOL|AUDIT_EVENT|ERROR|WARN'
 ```
 
-At the failing ChatGPT turn, record the UTC timestamp. Call `health_check` in
+At the failing ChatGPT turn, record the UTC timestamp. Call `server_info` in
 the affected conversation and immediately repeat it in a new conversation.
 Check local origin independently:
 

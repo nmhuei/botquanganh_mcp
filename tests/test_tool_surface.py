@@ -3,26 +3,18 @@ import os
 import subprocess
 import sys
 
-EXPECTED_TOOLS = {
-    "health_check",
-    "get_capabilities",
-    "host_list_directory",
-    "host_read_file",
-    "host_write_file",
-    "host_replace_in_file",
-    "host_append_file",
-    "host_make_directory",
-    "host_search_text",
-    "host_check_command",
-    "host_run_command",
-    "ctf_fetch_url",
-    "ctf_render_fetch_result",
-    "host_knowledge",
-    "host_workspace_bind",
-    "host_workspace_list",
-    "host_save_note",
+SUPER_TOOLS = {
+    "workspace_explore",
+    "workspace_edit",
+    "workspace_search",
+    "terminal_execute",
+    "web_intelligence",
+    "server_info",
+    "workspace_context",
+    "task",
 }
 
+EXPECTED_TOOLS = SUPER_TOOLS
 
 
 def _list_tools() -> set[str]:
@@ -54,5 +46,55 @@ asyncio.run(main())
     return set(json.loads(proc.stdout))
 
 
-def test_tool_surface_is_exactly_host_core():
+def test_tool_surface_is_exactly_8_super_tools():
     assert _list_tools() == EXPECTED_TOOLS
+
+
+def test_server_info_description_covers_discovery():
+    env = {
+        **os.environ,
+        "REQUIRE_AUTH": "false",
+        "HOST_WORKSPACE_DIR": os.getcwd(),
+    }
+    code = """
+import asyncio
+import json
+import app.main
+from app.mcp_server import mcp
+
+async def main():
+    tools = await mcp.list_tools()
+    server = next(tool for tool in tools if tool.name == "server_info")
+    print(json.dumps(server.description))
+
+asyncio.run(main())
+"""
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=True,
+    )
+
+    description = json.loads(proc.stdout).lower()
+    assert "server discovery" in description or "status" in description
+
+
+
+def test_tool_surface_excludes_retired_legacy_operations():
+    tools = _list_tools()
+    assert len(tools) == 8
+    assert not tools.intersection(
+        {
+            "host_workspace_bind",
+            "host_workspace_list",
+            "host_save_note",
+            "host_session_bind",
+            "host_session_list",
+            "health_check",
+            "host_knowledge",
+            "ctf_fetch",
+        }
+    )

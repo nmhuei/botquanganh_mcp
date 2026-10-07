@@ -474,3 +474,34 @@ def test_new_activity_selects_first_session_only_when_nothing_is_selected(tmp_pa
     assert view.reveal_session_for_activity("chat-1") is True
     assert view.session_selected_id == "chat-1"
     assert view.visible_session_ids == {"chat-1"}
+
+
+def test_mcp_activity_writer_reader_projection_human_display_regression(tmp_path, monkeypatch):
+    import app.activity_log as activity_log
+
+    journal = tmp_path / "mcp_command_activity.jsonl"
+    monkeypatch.setattr(activity_log, "MCP_COMMAND_ACTIVITY_LOG", journal)
+
+    activity_log.record_mcp_command_activity(
+        command="printf 'token=super-secret'",
+        cwd="/workspace",
+        operation_id="op-regression",
+        phase="completed",
+        status="succeeded",
+        result={
+            "ok": True,
+            "command_summary": "terminal_execute",
+            "exit_code": 0,
+            "stdout": "hello",
+            "stderr": "",
+        },
+    )
+
+    records = activity_log.read_mcp_command_activity()
+    projected = project_command_activity_records(records)
+    human = command_activity_human_output(projected[0])
+
+    assert projected[0]["command_summary"] != "terminal_execute"
+    assert "printf" in projected[0]["command_summary"]
+    assert "super-secret" not in human
+    assert "hello" in human

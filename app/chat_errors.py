@@ -69,7 +69,7 @@ CHAT_ERROR_CATALOG: dict[str, ChatErrorCode] = {
     # - A chat_id counts as present when it is either supplied as the
     #   tool's ``chat_id`` parameter or already bound to the request
     #   context (app.chat_identity).
-    # - The ONLY exempt tool is ``host_workspace_bind`` itself: binding
+    # - The ONLY exempt tool is ``workspace_context(action="bind")``: binding
     #   must stay reachable while unbound, otherwise no session could ever
     #   start.
     # - A present-but-invalid chat id (fails CHAT_ID_PATTERN) is rejected
@@ -90,9 +90,9 @@ CHAT_ERROR_CATALOG: dict[str, ChatErrorCode] = {
     "E6": ChatErrorCode(
         "E6",
         "BIND_REQUIRED",
-        "Chat binding required: call host_workspace_bind with a valid chat id "
+        "Chat binding required: call workspace_context(action=\"bind\") with a valid chat id "
         "(current: {chat_id}) before using any other host tool.",
-        "Invoke host_workspace_bind with a valid chat id first, then retry "
+        "Invoke workspace_context(action=\"bind\") with a valid chat id first, then retry "
         "this tool.",
     ),
     "E7": ChatErrorCode(

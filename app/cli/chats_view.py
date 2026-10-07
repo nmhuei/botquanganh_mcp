@@ -9,7 +9,7 @@ from typing import Any
 
 from app import chat_sweeper
 from app import config as host_config
-from app.chat_workspace import read_journal_records, summarize_journal_records
+from app.chat_workspace import read_journal_records, read_limits, summarize_journal_records
 from app.cli.context import CLIContext
 from app.cli.errors import EXIT_USAGE, CLIError, NotFoundCLIError
 from app.cli.output import emit_json, emit_quiet, external_text, renderer_for
@@ -478,11 +478,12 @@ def _delete_workspace(ctx: CLIContext, raw_chat_id: str, *, confirmed: bool) -> 
 
 
 def _sweep_limits() -> chat_sweeper.SweepLimits:
+    limits = read_limits()
     return chat_sweeper.SweepLimits(
-        idle_archive_hours=float(getattr(host_config, "HOST_CHAT_IDLE_ARCHIVE_HOURS", 72)),
-        retention_days=float(getattr(host_config, "HOST_CHAT_RETENTION_DAYS", 30)),
-        max_workspaces=int(getattr(host_config, "HOST_CHAT_MAX_WORKSPACES", 128)),
-        root_max_gb=float(getattr(host_config, "HOST_CHAT_ROOT_MAX_GB", 24)),
+        idle_archive_hours=float(limits.idle_archive_hours),
+        retention_days=float(limits.retention_days),
+        max_workspaces=int(limits.max_workspaces),
+        root_max_gb=float(limits.root_max_gb),
     )
 
 
