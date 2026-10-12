@@ -1,0 +1,9 @@
+{
+  "chat_id": "bench-chat-perf-01",
+  "label": "benchmark",
+  "status": "active",
+  "created_at": "2026-10-07T12:50:50.718725+00:00",
+  "objective": "Profile latency",
+  "current_task": "Benchmarking all tools",
+  "updated_at": "2026-10-07T12:50:50.719472+00:00"
+}

@@ -1,0 +1,20 @@
+[
+  {
+    "user": "alice",
+    "role": "guest",
+    "tag": 217,
+    "tag_hex": "0xd9"
+  },
+  {
+    "user": "bob",
+    "role": "member",
+    "tag": 162,
+    "tag_hex": "0xa2"
+  },
+  {
+    "user": "charlie",
+    "role": "viewer",
+    "tag": 45,
+    "tag_hex": "0x2d"
+  }
+]

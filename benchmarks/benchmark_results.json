@@ -1,0 +1,24 @@
+{
+  "summary": {
+    "server_info": 0.3243510000174865,
+    "workspace_context_list_prebind": 2.505057000234956,
+    "workspace_context_bind": 7.906466999884287,
+    "workspace_context_note": 0.26216400056000566,
+    "workspace_context_state": 0.34544199934316566,
+    "workspace_context_hypotheses": 0.32155999997485196,
+    "workspace_context_resume": 0.27356699956726516,
+    "workspace_edit_write": 12.303016000259959,
+    "workspace_edit_append": 12.204614000438596,
+    "workspace_edit_replace": 11.932247000004281,
+    "workspace_explore_list": 9.510075999969558,
+    "workspace_explore_read": 11.775822999879892,
+    "terminal_execute": 29.519556000195735,
+    "task_list": 0.7515659999626223
+  },
+  "search_profiling": {
+    "ripgrep_content_duration_ms": 18.873600000006263,
+    "ripgrep_path_duration_ms": 17.56481799930043,
+    "ripgrep_regex_duration_ms": 21.20309800011455,
+    "python_fallback_content_duration_ms": 17.87148299990804
+  }
+}

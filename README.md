@@ -127,6 +127,15 @@ All 790 integration, regression, and stress tests pass with full assertion cover
 
 ---
 
+## Documentation
+
+- [Architecture Guide](docs/ARCHITECTURE.md)
+- [Operations Runbook](docs/OPERATIONS_RUNBOOK.md)
+- [Release Checklist](docs/RELEASE_CHECKLIST.md)
+- [Security Policy](SECURITY.md)
+
+---
+
 ## License
 
 MIT License. See [SECURITY.md](SECURITY.md) for vulnerability disclosure policies.

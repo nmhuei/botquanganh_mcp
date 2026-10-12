@@ -1,0 +1,9 @@
+[
+  {
+    "hypothesis": "Memory copy causes latency",
+    "result": "rejected",
+    "do_not_retry": true,
+    "reason": "Zero-copy fits ceiling safely",
+    "timestamp": "2026-10-07T12:50:50.719836+00:00"
+  }
+]

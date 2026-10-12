@@ -19,5 +19,6 @@ manual_test_workspace_*/
 artifacts/*-diagnostics/
 artifacts/live-forensics/
 artifacts/stress/
+artifacts/
 target/
 bqa-trash/

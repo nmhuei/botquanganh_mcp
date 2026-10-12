@@ -1,0 +1,41 @@
+{
+  "timestamp": "2026-10-06T08:09:15.809620+00:00",
+  "platform": "CyLab Security Academy (learn.cylabacademy.org)",
+  "model": "gpt-5-6-thinking",
+  "workers": 5,
+  "total_processed": 10,
+  "total_solved": 2,
+  "solve_rate_pct": 20.0,
+  "total_duration_seconds": 453.02,
+  "throughput_challenges_per_min": 1.32,
+  "average_challenge_duration_seconds": 190.53,
+  "category_breakdown": {
+    "General Skills": {
+      "total": 1,
+      "solved": 1,
+      "points_earned": 1,
+      "points_total": 1
+    },
+    "Forensics": {
+      "total": 3,
+      "solved": 1,
+      "points_earned": 1,
+      "points_total": 3
+    },
+    "Web Exploitation": {
+      "total": 1,
+      "solved": 0,
+      "points_earned": 0,
+      "points_total": 1
+    },
+    "Artificial Intelligence": {
+      "total": 5,
+      "solved": 0,
+      "points_earned": 0,
+      "points_total": 5
+    }
+  },
+  "rca_breakdown": {
+    "TIMEOUT": 8
+  }
+}

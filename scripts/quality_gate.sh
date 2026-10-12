@@ -107,7 +107,7 @@ run_clean_stderr_gate "QML wheel package" \
 run_gate "bash syntax" bash -n \
     run_mcp_tunnel.sh \
     bin/bqa \
-    manual_test_tunnel_logic.sh \
+    scripts/manual_test_tunnel_logic.sh \
     scripts/collect_diagnostics.sh \
     scripts/collect_mcp_forensics.sh \
     scripts/install_basic.sh \
@@ -140,7 +140,7 @@ if [ "$RUN_RUNTIME" -eq 1 ]; then
 fi
 if [ "$RUN_FULL" -eq 1 ]; then
     run_gate "public runtime doctor" .venv/bin/bqa doctor --json
-    run_gate "isolated tunnel lifecycle" ./manual_test_tunnel_logic.sh
+    run_gate "isolated tunnel lifecycle" ./scripts/manual_test_tunnel_logic.sh
 fi
 
 printf 'ALL_QUALITY_GATES=PASS\n' | tee -a "$RESULT_FILE"

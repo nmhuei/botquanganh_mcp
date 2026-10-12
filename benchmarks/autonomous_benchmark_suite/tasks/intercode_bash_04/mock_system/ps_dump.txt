@@ -1,0 +1,10 @@
+UID        PID   PPID  C STIME TTY          TIME CMD
+root         1      0  0 08:00 ?        00:00:02 /sbin/init
+root       320      1  0 08:00 ?        00:00:00 /usr/lib/systemd/systemd-journald
+root       541      1  0 08:01 ?        00:00:00 /usr/sbin/sshd -D
+www-data  1204    541  0 08:15 ?        00:00:01 nginx: worker process
+www-data  3410   1204  0 09:20 ?        00:00:00 /bin/bash /tmp/dropper.sh
+www-data  4921   3410  0 09:22 ?        00:00:04 /usr/local/bin/hidden_daemon --stealth
+www-data  4922   4921  0 09:22 ?        00:00:00 sh -c nc -lvnp 4444
+light     5102    541  0 09:30 ?        00:00:00 sshd: light@pts/0
+light     5103   5102  0 09:30 pts/0    00:00:00 -bash
