@@ -22,7 +22,7 @@ elif [ -f "$PWD/pyproject.toml" ] && [ -f "$PWD/bin/bqa" ]; then
     # Supports: cat install.sh | bash while the shell is inside the repository.
     ROOT_DIR="$PWD"
 else
-    TARGET_REPO_URL="${BQA_REPO_URL:-https://github.com/nmhuei/botquanganh_mcp.git}"
+    TARGET_REPO_URL="${BQA_REPO_URL:-https://github.com/nmhuei/bqa-mcp.git}"
     TARGET_INSTALL_DIR="${BQA_INSTALL_DIR:-$HOME/.botquanganh_mcp}"
     TARGET_BRANCH="${BQA_BRANCH:-main}"
 

@@ -1,7 +1,7 @@
 # BotQuangAnh Host MCP
 
-[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/nmhuei/botquanganh_mcp)
-[![Tests](https://img.shields.io/badge/tests-790%20passed-success.svg)](https://github.com/nmhuei/botquanganh_mcp)
+[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/nmhuei/bqa-mcp)
+[![Tests](https://img.shields.io/badge/tests-790%20passed-success.svg)](https://github.com/nmhuei/bqa-mcp)
 [![Python](https://img.shields.io/badge/python-%3E%3D3.10-informational.svg)](https://python.org)
 [![Rust](https://img.shields.io/badge/desktop-Rust%20%2B%20WebKitGTK-orange.svg)](https://rust-lang.org)
 [![FastMCP](https://img.shields.io/badge/fastmcp-3.4.7-purple.svg)](https://github.com/jlowin/fastmcp)
@@ -52,7 +52,7 @@ BQA MCP 2.0 provides eight structured tools:
 Run the official installer script:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nmhuei/botquanganh_mcp/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/nmhuei/bqa-mcp/main/install.sh | bash
 ```
 
 The installer configures virtual environment `.venv`, builds native desktop binaries if Rust is available, generates `.env`, and links `bqa` into `~/.local/bin/`.
