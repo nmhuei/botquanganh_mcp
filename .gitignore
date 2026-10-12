@@ -20,3 +20,4 @@ artifacts/*-diagnostics/
 artifacts/live-forensics/
 artifacts/stress/
 target/
+bqa-trash/
