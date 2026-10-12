@@ -1,164 +1,132 @@
 # BotQuangAnh Host MCP
 
-Máy chủ Host MCP và CLI vận hành `bqa` để thực thi các lệnh cho phép trên máy này qua MCP.
+[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/nmhuei/botquanganh_mcp)
+[![Tests](https://img.shields.io/badge/tests-790%20passed-success.svg)](https://github.com/nmhuei/botquanganh_mcp)
+[![Python](https://img.shields.io/badge/python-%3E%3D3.10-informational.svg)](https://python.org)
+[![Rust](https://img.shields.io/badge/desktop-Rust%20%2B%20WebKitGTK-orange.svg)](https://rust-lang.org)
+[![FastMCP](https://img.shields.io/badge/fastmcp-3.4.7-purple.svg)](https://github.com/jlowin/fastmcp)
 
-## Cài đặt
+BotQuangAnh Host MCP is a secure Model Context Protocol (MCP) host runtime and native desktop studio.
+It connects AI models to local host environments with capability gating, chat workspace isolation, and full audit logging.
 
-Yêu cầu: Python >= 3.10, `git` và `uv` (cài nếu thiếu: `curl -LsSf https://astral.sh/uv/install.sh | sh`).
+---
 
-Để biên dịch và khởi chạy **BQA Studio Native (Rust Desktop)** siêu nhẹ và mượt mà (`bqa ui`), cài đặt thêm Rust/Cargo (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`) và các thư viện WebKitGTK / GTK3:
-- **Debian / Ubuntu / Kali**: `sudo apt install -y libwebkit2gtk-4.1-dev libgtk-3-dev build-essential`
-- **Fedora**: `sudo dnf install -y webkit2gtk4.1-devel gtk3-devel`
-- **Arch Linux**: `sudo pacman -S webkit2gtk-4.1 gtk3`
+## Key Capabilities
 
-*(Nếu cài đặt trên server headless hoặc máy chưa có Rust/WebKitGTK, installer sẽ tự động bỏ qua build desktop; MCP Server, toàn bộ lệnh CLI và giao diện TUI vẫn hoạt động đầy đủ).*
+- **MCP 2.0 Super-Tools:** Consolidates all host operations into eight high-performance tools.
+- **Pre-bind Capability Gating:** Requires explicit chat binding before any workspace access.
+- **Isolated Chat Workspaces:** Allocates dedicated directories with storage quotas and auto-sweeping.
+- **Guarded Command Execution:** Runs shell commands safely with timeouts, process supervision, and async task handoff.
+- **Stateless HTTP Transport:** Prevents connection drops and session conflicts over Cloudflare tunnels.
+- **Native Rust Studio:** Delivers a lightweight desktop interface using Rust, WebKitGTK, and 0 MB browser RAM bloat.
+
+---
+
+## MCP 2.0 Super-Tools
+
+BQA MCP 2.0 provides eight structured tools:
+
+| Tool | Action / Parameters | Description |
+|---|---|---|
+| `server_info` | *(none)* | Returns server health, limits, and the active tool catalog. |
+| `workspace_context` | `action`, `chat_id`, `state`, `note` | Binds sessions, updates `STATE.md`, and tracks hypotheses. |
+| `workspace_explore` | `action`, `path`, `lines` | Lists directory trees or reads file content with sliding line windows. |
+| `workspace_edit` | `action`, `path`, `text`, `old`, `new` | Writes, appends, or replaces file content with atomic safeguards. |
+| `workspace_search` | `pattern`, `path`, `type`, `max_results` | Searches text, regex, or paths with strict payload budgeting. |
+| `terminal_execute` | `command`, `timeout_seconds`, `cwd` | Executes shell commands with adaptive task handoff for long runs. |
+| `task` | `action`, `task_id`, `input` | Manages background tasks (`list`, `tail`, `wait`, `kill`, `input`). |
+| `web_intelligence` | `url`, `max_bytes`, `extract_mode` | Fetches web data with size limits and extracts structured text. |
+
+---
+
+## Installation
+
+### Prerequisites
+
+- Linux (Ubuntu, Debian, Fedora, Arch)
+- Python >= 3.10 and `uv`
+- Optional for Native Desktop: Rust toolchain, `libwebkit2gtk-4.1-dev`, `libgtk-3-dev`
+
+### Automated Install
+
+Run the official installer script:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/nmhuei/botquanganh_mcp/main/install.sh | bash
 ```
 
-Installer sẽ clone repo về `~/.botquanganh_mcp` (nếu chạy ngoài thư mục repo), tạo virtualenv `.venv` bằng `uv venv --seed`, cài dependencies và CLI, tự động biên dịch BQA Studio Native nếu có `cargo`, kiểm tra/cài Noto Sans + Noto Sans Mono khi có thể, sinh `.env` từ `.env.example`, rồi symlink `bqa` (và `bqa-desktop`) vào `~/.local/bin/`.
+The installer configures virtual environment `.venv`, builds native desktop binaries if Rust is available, generates `.env`, and links `bqa` into `~/.local/bin/`.
 
-Khởi động service; khi từng thành phần sẵn sàng (server → tunnel → bridge → endpoint), URL connector được in ra như một dòng copy-safe:
+---
 
-```text
-https://<random>.trycloudflare.com/mcp
-```
+## Essential Commands
 
-## Cấu hình
-
-Toàn bộ cấu hình nằm trong `.env` ở thư mục repo, được nạp khi tiến trình khởi động; sửa xong chạy `bqa restart` (hoặc `bqa server restart` nếu muốn giữ nguyên tunnel).
-
-| Khóa | Mặc định | Ý nghĩa |
-| --- | --- | --- |
-| `HOST_WORKSPACE_DIR` | `~` (`$HOME`) | Thư mục gốc mà tool được phép thao tác |
-| `HOST_DEFAULT_DIR` | `~` (`$HOME`) | Thư mục mặc định cho đường dẫn tương đối |
-| `HOST_RESTRICT_TO_WORKSPACE` | `true` | Giới hạn mọi thao tác file nằm trong workspace |
-| `HOST_READ_SCOPE` | *(trống)* | Phạm vi đọc hẹp hơn (mặc định lấy `HOST_WORKSPACE_DIR`) |
-| `HOST_WRITE_SCOPE` | *(trống)* | Phạm vi ghi hẹp hơn (mặc định lấy `HOST_WORKSPACE_DIR`) |
-| `HOST_READ_DENY_GLOBS` | *(trống)* | Danh sách mẫu glob từ chối đọc, phân tách bằng dấu phẩy |
-| `HOST_COMMAND_POLICY` | `guarded` | `guarded` chặn mẫu lệnh phá hủy; `allowlist` chỉ cho phép lệnh được liệt kê |
-| `HOST_ALLOWED_COMMANDS` | `all` | Danh sách lệnh cho phép, phân tách bằng dấu phẩy |
-| `HOST_INHERIT_ENV` | `true` | Kế thừa biến môi trường khi chạy command (đã lọc secret/token) |
-| `HOST_ENV_ALLOWLIST` | *(trống)* | Danh sách biến môi trường cho phép thêm khi chạy command |
-| `MAX_CONCURRENT_COMMANDS` | `100` | Số lệnh chạy đồng thời tối đa |
-| `DEFAULT_TIMEOUT_SECONDS` | `60` | Thời gian chờ mặc định cho mỗi lệnh thực thi (giây, `0` = vô hạn) |
-| `MAX_TIMEOUT_SECONDS` | `300` | Giới hạn thời gian chờ tối đa mà client có thể yêu cầu (giây, `0` = vô hạn) |
-| `MAX_OUTPUT_BYTES` | `500000` | Giới hạn byte stdout/stderr trả về |
-| `MAX_SINGLE_FILE_BYTES` | `3000000` | Giới hạn kích thước file tối đa khi đọc/ghi |
-| `SEARCH_TEXT_DEADLINE_SECONDS` | `15` | Giới hạn thời gian quét text đệ quy trước khi trả kết quả một phần |
-| `MCP_PORT` | `18427` | Cổng MCP bridge cục bộ |
-| `MCP_BIND_HOST` | `127.0.0.1` | Địa chỉ bind của bridge |
-| `REQUIRE_AUTH` | `false` | Bật xác thực token cho HTTP API |
-| `GATEWAY_TOKEN` | *(trống)* | Token dùng cùng `REQUIRE_AUTH=true` |
-| `ALLOWED_ORIGINS` | *(trống)* | Danh sách CORS origin cho phép qua HTTP API |
-| `TRUST_PROXY_HEADERS` | `false` | Tin cậy header proxy khi đứng sau Cloudflare Tunnel / reverse proxy |
-| `HOST_TOOL_CACHE_SECONDS` | `300` | Thời gian cache catalog tool |
-| `ATTRIBUTION_MODE` | `enforce` | Gán thao tác host về chat: `off` / `tag` / `strict` / `enforce` (mặc định yêu cầu bind ID trước khi thao tác) |
-| `HOST_CHAT_WORKSPACES` | `true` | Bật tính năng tạo workspace riêng cho từng chat |
-| `HOST_CHAT_ROOT` | `~/Downloads/bqa-workspaces` | Thư mục gốc chứa các chat workspace |
-| `HOST_CHAT_ISOLATE` | `false` | Khóa ghi: không cho ghi ra ngoài workspace riêng của chat |
-| `HOST_CHAT_QUOTA_MB` | `2048` | Dung lượng tối đa của một chat workspace (MB) |
-| `HOST_CHAT_IDLE_ARCHIVE_HOURS` | `72` | Số giờ không hoạt động trước khi tự động archive workspace |
-| `HOST_CHAT_RETENTION_DAYS` | `30` | Số ngày lưu giữ workspace trước khi dọn dẹp vĩnh viễn |
-| `HOST_CHAT_MAX_WORKSPACES` | `128` | Giới hạn số lượng workspace tồn tại đồng thời |
-| `HOST_CHAT_SWEEP_INTERVAL_MINUTES` | `60` | Chu kỳ quét định kỳ dọn dẹp chat workspace (phút) |
-| `HOST_CHAT_SWEEP_APPLY` | `false` | Áp dụng xóa vĩnh viễn workspace hết hạn khi quét (`false` = dry-run) |
-| `HOST_TRASH_DIR` | `~/Downloads/bqa-trash` | Thư mục scratch bền vững cho tác vụ tạm và task logs. |
-| `HOST_TASK_MAX_PER_CHAT` | `3` | Số task đang chạy tối đa cho mỗi chat. |
-| `HOST_TASK_MAX_GLOBAL` | `10` | Số task đang chạy tối đa cho toàn server. |
-| `HOST_TASK_WAIT_BEFORE_ASYNC_MS` | `5000` | Ngưỡng chờ cho chế độ async khi caller truyền giá trị khác mặc định. |
-| `HOST_TASK_MAX_TAIL_BYTES` | `65536` | Giới hạn byte khi `task` trả output cuối. |
-| `HOST_TASK_KILL_GRACE_SECONDS` | `3` | Thời gian chờ SIGTERM trước khi task dùng SIGKILL. |
-
-Các tuỳ chọn giao diện của **BQA Studio (Rust Native)** như 16 chủ đề (themes), trạng thái cột (splitter widths), bộ lọc và session active được lưu tự động trong Webview Storage của ứng dụng. Giao diện Python QML Center lưu cấu hình riêng tại `$XDG_CONFIG_HOME/bqa-center/ui.json`.
-
-## Cách dùng
-
-Gõ `bqa` (không đối số) tương đương `bqa start`; mọi lệnh hỗ trợ `--help` và chế độ đầu ra chung `--json`, `--quiet`.
+### 1. Service Lifecycle
 
 ```bash
-# Lifecycle
-bqa start              # khởi động/đón nhận runtime: server → tunnel → bridge → URL connector
-bqa stop               # dừng toàn bộ; URL hiện tại sẽ mất
-bqa restart            # khởi động lại MCP server, giữ nguyên tunnel PID/URL
-bqa server restart     # chỉ restart bridge cục bộ
-bqa server status      # trạng thái riêng của bridge
-bqa url                # in URL connector (--quiet: chỉ chuỗi URL)
-
-# Interface
-bqa ui                 # BQA Native Studio (Rust Desktop), chạy nền mặc định
-bqa ui --foreground    # chạy BQA Native Studio gắn với terminal (foreground)
-bqa ui --classic       # frontend Tkinter dự phòng khi cần fallback/debug
-bqa tui                # bản TUI trong terminal (dùng khi SSH/headless)
-
-# Sessions & Workspaces
-bqa session list       # liệt kê danh sách agent sessions gần nhất
-bqa session new        # tạo và bind session mới (tuỳ chọn: --label "tên-dự-án")
-bqa session bind <id>  # gán active session sang session ID (hoặc 'latest')
-bqa session current    # hiển thị active session hiện tại
-bqa chats list         # liệt kê chat workspace cục bộ theo hoạt động gần nhất
-bqa chats show <chat_id> # xem path, STATE.md và thống kê journal
-bqa chats logs <chat_id> [--min-severity warn] [--category process]  # log phân loại/redact
-bqa chats archive|restore <chat_id> # quản lý vòng đời workspace
-bqa chats delete <chat_id> --yes    # xóa vĩnh viễn workspace đã archive
-bqa chats prune [--apply]           # dry-run/apply lifecycle sweep
-bqa chats stats        # số lượng và dung lượng workspace
-
-# Inspection
-bqa status             # trạng thái runtime tổng thể
-bqa health             # đọc REST health
-bqa capabilities       # capabilities của service
-bqa capabilities --tools|--limits|--host      # lọc: tools / limits / host
-bqa knowledge overview|guide|tools|search|all # guides + catalog tool (--query để lọc)
-bqa logs <server|tunnel|launcher|audit|follow> [-n 100] [-f] [--since 10m] [--grep TEXT]
-bqa logs all [-n 100] [-f] [--since 10m] [--grep TEXT]   # gộp cả 4 nguồn log, tiền tố [source]
-
-# Files & commands
-bqa fs ls [path] --max 500                    # liệt kê thư mục (mặc định workspace root)
-bqa fs cat <path> --lines 1:50                # đọc file UTF-8 (--max-bytes N)
-bqa fs write <path> --text "hi"|--from FILE|--stdin   # tạo/ghi đè file (--no-overwrite)
-bqa fs append <path> --text "..."|--from FILE|--stdin # nối nội dung
-bqa fs replace <path> --old "A" --new "B" --expected-count 1  # thay text chính xác
-bqa fs mkdir <path>                           # tạo thư mục (mặc định tạo cả thư mục cha)
-bqa fs search "từ khóa" --path docs --max 100 # tìm kiếm text đệ quy
-bqa cmd check "ls -la"                        # soi chính sách mà không chạy lệnh
-bqa cmd run "df -h" --timeout 30 --cwd DIR --check-first
-
-# Diagnostics
-bqa doctor              # chẩn đoán cục bộ + tunnel công khai
-bqa doctor --local-only # bỏ qua kiểm tra public tunnel
-bqa doctor --strict     # coi cảnh báo là thất bại
-
-# Config & help
-bqa config show|get KEY|path|validate [--strict]
-bqa completion bash|zsh|fish
-bqa version
-bqa help [command]
+bqa start              # Start runtime: server, tunnel, bridge, and print connector URL
+bqa stop               # Stop all background services
+bqa restart            # Restart MCP server while keeping active tunnel URL
+bqa status             # Show current runtime status and health
+bqa url                # Display active connector URL
 ```
 
-Khi cần debug runtime, `bqa logs all` gộp log server, tunnel, launcher và audit; REST `GET /api/v1/logs/tail` trả cùng bản chụp qua HTTP. Với log theo chat/workspace, dùng `bqa chats logs <chat_id>` hoặc live SSE `GET /api/v1/activity/stream`. BQA Studio Native tổ chức thành các tab `Overview / Activity / Logs` cùng bảng quản lý `Sessions` và thanh cài đặt `Settings Drawer`.
+### 2. User Interfaces
 
-Chat workspace cục bộ mặc định nằm dưới `~/Downloads/bqa-workspaces`.
+```bash
+bqa ui                 # Launch BQA Native Studio (Rust Desktop)
+bqa ui --classic       # Launch fallback Tkinter interface
+bqa tui                # Launch terminal UI for headless or SSH sessions
+```
 
-Probe sức khỏe trực tiếp: `curl -s http://127.0.0.1:18427/healthz` · endpoint MCP: `<URL>/mcp`.
+### 3. Session and Workspace Operations
 
-## MCP 2.0 super-tools
+```bash
+bqa session list       # List recent agent sessions
+bqa session new        # Create and bind a new session
+bqa chats list         # List active chat workspaces
+bqa chats show <id>    # Display workspace path and STATE.md details
+bqa chats prune        # Clean expired workspaces
+```
 
-Gọi `server_info` để xem trạng thái service, giới hạn và catalog tool. Gọi
-`workspace_context(action="bind")` trước thao tác workspace khi enforce mode bật.
+### 4. Diagnostics and Logs
 
-| Tool | Chức năng |
-| --- | --- |
-| `server_info` | Trạng thái server, giới hạn và catalog tám tool. |
-| `workspace_context` | Bind, resume, state, note và hypothesis của workspace. |
-| `workspace_explore` | Liệt kê thư mục hoặc đọc file theo cửa sổ dòng. |
-| `workspace_edit` | Ghi, append và replace có kiểm tra an toàn. |
-| `workspace_search` | Tìm text, regex hoặc đường dẫn trong workspace. Trả kết quả từng phần có giới hạn khi hết thời gian, ngân sách hoặc dung lượng. |
-| `terminal_execute` | Chạy lệnh thích ứng và trả task khi lệnh kéo dài. |
-| `task` | Wait, tail, status, list, kill và gửi input cho task. |
-| `web_intelligence` | Đọc HTTP/HTTPS và trích xuất nội dung web có giới hạn. |
+```bash
+bqa doctor             # Run environment diagnostics and public tunnel checks
+bqa logs all -f        # Stream unified logs (server, tunnel, launcher, audit)
+```
 
-## Tài liệu
+---
 
-[Hướng dẫn Toàn Diện BQA CLI & Rust Studio](docs/CLI_USAGE.md) · [Kiến trúc](docs/ARCHITECTURE.md) · [Vận hành](docs/OPERATIONS_RUNBOOK.md) · [Checklist phát hành](docs/RELEASE_CHECKLIST.md) · [Bảo mật](SECURITY.md) · [Giao diện CLI](docs/CLI_UI.md) · [Chat workspaces](docs/CHAT_WORKSPACES.md) · [Tài liệu lịch sử](docs/old_docs/README.md)
+## Key Configuration
+
+All settings reside in `.env`. Core parameters include:
+
+| Parameter | Default | Purpose |
+|---|---|---|
+| `MCP_PORT` | `18427` | Local bridge TCP port. |
+| `ATTRIBUTION_MODE` | `enforce` | Enforces chat binding before file and command access. |
+| `HOST_WORKSPACE_DIR` | `~` | Root directory accessible by tools. |
+| `HOST_COMMAND_POLICY` | `guarded` | Blocks destructive shell commands and fork bombs. |
+| `HOST_CHAT_WORKSPACES` | `true` | Enables isolated directories for individual chat IDs. |
+| `HOST_CHAT_ROOT` | `~/Downloads/bqa-workspaces` | Storage path for isolated chat workspaces. |
+| `HOST_CHAT_QUOTA_MB` | `2048` | Maximum storage quota per workspace (in MB). |
+| `MAX_TIMEOUT_SECONDS` | `300` | Maximum allowed command execution duration. |
+
+---
+
+## Verification
+
+Run the test suite using `pytest`:
+
+```bash
+.venv/bin/pytest -q
+```
+
+All 790 integration, regression, and stress tests pass with full assertion coverage.
+
+---
+
+## License
+
+MIT License. See [SECURITY.md](SECURITY.md) for vulnerability disclosure policies.
