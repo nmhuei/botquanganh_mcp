@@ -163,6 +163,7 @@ def web_intelligence(
     max_bytes: int = _DEFAULT_MAX_BYTES,
     follow_redirects: bool = True,
     chat_id: Optional[str] = None,
+    intent: Optional[str] = None,
 ) -> dict[str, Any]:
     """Execute unbounded network reconnaissance and intelligent web content analysis."""
     validated, rejection = _guard_chat_id("web_intelligence", chat_id)
@@ -170,6 +171,8 @@ def web_intelligence(
         return enforce_bridge_payload_limit(rejection, "web_intelligence")
 
     journal_details = {"url": url, "method": method}
+    if intent:
+        journal_details["intent"] = str(intent).strip()[:300]
     journal_op = _begin_workspace_journal("web_intelligence", validated, journal_details)
 
     try:
@@ -242,11 +245,18 @@ def web_intelligence(
         result = format_error_response(exc)
 
     _record_tool_call("web_intelligence", validated)
+    finish_details = dict(journal_details)
+    if isinstance(result, dict) and result.get("ok"):
+        finish_details["status_code"] = result.get("status_code")
+        finish_details["bytes_received"] = result.get("bytes_received")
+        finish_details["content_type"] = result.get("content_type")
+        finish_details["stdout"] = result.get("body", "")[:5000]
+
     _finish_workspace_journal(
         "web_intelligence",
         validated,
         journal_op,
         ok=isinstance(result, dict) and bool(result.get("ok", False)),
-        details=journal_details,
+        details=finish_details,
     )
     return enforce_bridge_payload_limit(result, "web_intelligence")

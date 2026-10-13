@@ -18,6 +18,7 @@ async def task(
     lines: int = 50,
     timeout_ms: int = 30000,
     stdin_data: str | None = None,
+    intent: str | None = None,
 ) -> Any:
     """Manage tasks.
     Use wait for task completion.
@@ -52,6 +53,17 @@ async def task(
     else:
         coro = handler(task_id=task_id)
 
+    from app.tools_common import (
+        _begin_workspace_journal,
+        _finish_workspace_journal,
+        _record_tool_call,
+    )
+
+    journal_details = {"action": action, "task_id": task_id}
+    if intent:
+        journal_details["intent"] = str(intent).strip()[:300]
+    journal_op = _begin_workspace_journal("task", validated, journal_details)
+
     try:
         result = await bridge_task_coro(coro)
     except (TimeoutError, asyncio.TimeoutError):
@@ -68,7 +80,28 @@ async def task(
                 ),
             }
         else:
+            _record_tool_call("task", validated, ok=False)
+            _finish_workspace_journal("task", validated, journal_op, ok=False, details=journal_details)
             raise
+
+    _record_tool_call("task", validated)
+    finish_details = dict(journal_details)
+    if isinstance(result, str):
+        finish_details["stdout"] = result[:5000]
+    elif isinstance(result, dict):
+        finish_details["status"] = result.get("status")
+        finish_details["exit_code"] = result.get("exit_code")
+        if "output" in result:
+            finish_details["stdout"] = str(result["output"])[:5000]
+        elif "tail" in result:
+            finish_details["stdout"] = str(result["tail"])[:5000]
+    _finish_workspace_journal(
+        "task",
+        validated,
+        journal_op,
+        ok=isinstance(result, dict) and bool(result.get("ok", True)),
+        details=finish_details,
+    )
 
     return enforce_payload(result)
 

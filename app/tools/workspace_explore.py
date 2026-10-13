@@ -202,6 +202,7 @@ def workspace_explore(
     start_line: int = 1,
     line_count: int = _DEFAULT_LINE_COUNT,
     chat_id: Optional[str] = None,
+    intent: Optional[str] = None,
 ) -> dict[str, Any]:
     """Explore directories or inspect files in a windowed, context-safe manner."""
     validated, rejection = _guard_chat_id("workspace_explore", chat_id)
@@ -214,6 +215,8 @@ def workspace_explore(
         "start_line": start_line,
         "line_count": line_count,
     }
+    if intent:
+        journal_details["intent"] = str(intent).strip()[:300]
     journal_op = _begin_workspace_journal("workspace_explore", validated, journal_details)
 
     try:
@@ -307,12 +310,27 @@ def workspace_explore(
         result = format_error_response(exc)
 
     _record_tool_call("workspace_explore", validated)
+    finish_details = dict(journal_details)
+    if isinstance(result, dict) and result.get("ok"):
+        finish_details["mode"] = result.get("mode")
+        if result.get("mode") == "read":
+            finish_details["start_line"] = result.get("start_line")
+            finish_details["end_line"] = result.get("end_line")
+            finish_details["total_lines"] = result.get("total_lines")
+            finish_details["lines_count"] = len(result.get("lines", []))
+            raw_lines = [item.get("text", "") for item in result.get("lines", [])[:100]]
+            finish_details["stdout"] = "\n".join(raw_lines)
+        else:
+            finish_details["total_entries"] = result.get("total_entries")
+            entry_names = [e.get("name", "") for e in result.get("entries", [])[:100] if isinstance(e, dict)]
+            finish_details["stdout"] = "\n".join(entry_names)
+
     _finish_workspace_journal(
         "workspace_explore",
         validated,
         journal_op,
         ok=isinstance(result, dict) and bool(result.get("ok", False)),
-        details=journal_details,
+        details=finish_details,
     )
     if isinstance(result, dict):
         result = enforce_bridge_payload_limit(result, "workspace_explore")

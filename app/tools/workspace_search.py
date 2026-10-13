@@ -96,6 +96,7 @@ def _safe_search_details(
     regex: bool,
     max_matches: int,
     extra: dict[str, Any] | None = None,
+    intent: str | None = None,
 ) -> dict[str, Any]:
     details: dict[str, Any] = {
         "query_len": len(str(query or "")),
@@ -105,6 +106,8 @@ def _safe_search_details(
         "regex": regex,
         "max_matches": max_matches,
     }
+    if intent:
+        details["intent"] = str(intent).strip()[:300]
     if extra:
         details.update(extra)
     return details
@@ -208,6 +211,7 @@ def workspace_search(
     max_matches: Optional[int] = None,
     exact_count: bool = False,
     chat_id: Optional[str] = None,
+    intent: Optional[str] = None,
 ) -> dict[str, Any]:
     """Execute high-speed bounded search across workspace files and contents."""
     validated, rejection = _guard_chat_id("workspace_search", chat_id)
@@ -260,7 +264,7 @@ def workspace_search(
     started = time.monotonic()
     engine_started = started
     engine_name = "python"
-    journal_details = _safe_search_details(query, path, normalized_mode, regex, bounded_matches)
+    journal_details = _safe_search_details(query, path, normalized_mode, regex, bounded_matches, intent=intent)
     journal_op = _begin_workspace_journal("workspace_search", validated, journal_details)
     result: dict[str, Any] = {}
     outcome_counters: dict[str, Any] = {}
@@ -423,7 +427,7 @@ def workspace_search(
             "limit_reason": limit_value or result.get("limit_reason"),
             "error_class": error_class,
             **{f"counter_{k}": v for k, v in outcome_counters.items()},
-            **_safe_search_details(query, path, normalized_mode, regex, bounded_matches),
+            **_safe_search_details(query, path, normalized_mode, regex, bounded_matches, intent=intent),
         }
         # Never include raw query or match text in telemetry.
         safe_telemetry.pop("query", None)

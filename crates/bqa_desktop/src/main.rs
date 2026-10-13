@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -57,6 +59,12 @@ struct CommandItem {
     stderr: String,
     cwd: String,
     raw_json: String,
+    #[serde(default)]
+    action: String,
+    #[serde(default)]
+    target: String,
+    #[serde(default)]
+    output_type: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -327,6 +335,18 @@ fn validate_search_limit_updates(updates: &HashMap<String, String>) -> Result<()
                 let parsed: i64 = text.parse().map_err(|_| invalid(key, "must be an integer >= 0"))?;
                 if parsed < 0 {
                     return Err(invalid(key, "must be an integer >= 0"));
+                }
+            }
+            "HOST_CHAT_MAX_WORKSPACES" | "HOST_CHAT_QUOTA_MB" => {
+                let parsed: i64 = text.parse().map_err(|_| invalid(key, "must be an integer >= 1"))?;
+                if parsed < 1 {
+                    return Err(invalid(key, "must be an integer >= 1"));
+                }
+            }
+            "HOST_CHAT_ROOT_MAX_GB" => {
+                let parsed: f64 = text.parse().map_err(|_| invalid(key, "must be a positive number"))?;
+                if parsed <= 0.0 || !parsed.is_finite() {
+                    return Err(invalid(key, "must be a positive number"));
                 }
             }
             _ => {}
@@ -798,9 +818,15 @@ fn read_session_commands(paths: &AppPaths, chat_id: &str) -> Vec<CommandItem> {
             .unwrap_or("host_run_command");
         let payload = started.get("payload");
 
-        // Extract intent note if present in payload
+        // Extract authentic 3rd-party intent note if present in payload or mcp activity.
+        // Never synthesize, guess, or fabricate artificial intent context.
         let raw_intent = payload
             .and_then(|p| p.get("intent"))
+            .or_else(|| payload.and_then(|p| p.get("description")))
+            .or_else(|| payload.and_then(|p| p.get("summary")))
+            .or_else(|| mcp.and_then(|m| m.get("intent")))
+            .or_else(|| mcp.and_then(|m| m.get("description")))
+            .or_else(|| mcp.and_then(|m| m.get("summary")))
             .and_then(|v| v.as_str())
             .map(|s| s.trim())
             .filter(|s| !s.is_empty());
@@ -816,55 +842,132 @@ fn read_session_commands(paths: &AppPaths, chat_id: &str) -> Vec<CommandItem> {
                 let p_cmd = p.get("command").and_then(|v| v.as_str()).unwrap_or("");
                 if !p_cmd.is_empty() && p_cmd != "<redacted>" {
                     p_cmd.to_string()
-                } else if let Some(int) = raw_intent {
-                    int.to_string()
                 } else {
                     mcp_cmd.to_string()
                 }
-            } else if let Some(int) = raw_intent {
-                int.to_string()
             } else {
                 mcp_cmd.to_string()
             }
         } else if let Some(p) = payload {
             let p_cmd = p.get("command").and_then(|v| v.as_str()).unwrap_or("");
             let p_path = p.get("path").and_then(|v| v.as_str()).unwrap_or("");
-            let p_query = p.get("query").and_then(|v| v.as_str()).unwrap_or("");
+            let p_query = p.get("pattern").or_else(|| p.get("query")).and_then(|v| v.as_str()).unwrap_or("");
 
             if !p_cmd.is_empty() && p_cmd != "<redacted>" {
                 p_cmd.to_string()
             } else if (kind == "workspace_explore" || kind == "host_read_file") && !p_path.is_empty() {
                 let start = p.get("start_line").and_then(|v| v.as_i64()).unwrap_or(1);
                 let count = p.get("line_count").or_else(|| p.get("end_line")).and_then(|v| v.as_i64()).unwrap_or(150);
-                let rel_path = p_path.split('/').next_back().unwrap_or(p_path);
-                format!("explore {} (lines {}-{})", rel_path, start, start + count - 1)
+                if p.get("start_line").is_some() || p.get("line_count").is_some() || p.get("end_line").is_some() {
+                    format!("lines {}-{}", start, start + count - 1)
+                } else {
+                    "".to_string()
+                }
             } else if (kind == "workspace_edit" || kind == "host_write_file" || kind == "host_replace_in_file") && !p_path.is_empty() {
-                let act = p.get("action").and_then(|v| v.as_str()).unwrap_or("edit");
-                let rel_path = p_path.split('/').next_back().unwrap_or(p_path);
-                format!("{} {}", act, rel_path)
+                let act = p.get("action").and_then(|v| v.as_str()).unwrap_or("");
+                if !act.is_empty() && act != "edit" {
+                    act.to_string()
+                } else {
+                    "".to_string()
+                }
             } else if (kind == "workspace_search" || kind == "host_search_text") && !p_query.is_empty() {
-                format!("search '{}'", p_query)
+                if let Some(pth) = p.get("path").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+                    format!("in {}", pth)
+                } else {
+                    "".to_string()
+                }
             } else if kind == "terminal_execute" || kind == "host_run_command" {
-                let cmd = p.get("command").and_then(|v| v.as_str()).unwrap_or("bash");
-                format!("exec {}", cmd)
+                let raw_cmd = p.get("command").and_then(|v| v.as_str()).unwrap_or("");
+                let cmd = if raw_cmd == "<redacted>" || raw_cmd.is_empty() {
+                    mcp.and_then(|m| m.get("command")).and_then(|v| v.as_str()).unwrap_or(raw_cmd)
+                } else {
+                    raw_cmd
+                };
+                cmd.to_string()
+            } else if kind == "task" || kind == "task_manage" {
+                let act = p.get("action").and_then(|v| v.as_str()).unwrap_or("status");
+                act.to_string()
             } else if kind == "web_intelligence" || kind == "ctf_fetch_url" {
-                let url = p.get("url").and_then(|v| v.as_str()).unwrap_or("url");
-                format!("web_intel {}", url)
+                let url = p.get("url").and_then(|v| v.as_str()).unwrap_or("");
+                url.to_string()
             } else if kind == "workspace_context" || kind == "host_workspace_bind" {
-                let act = p.get("action").or_else(|| p.get("label")).and_then(|v| v.as_str()).unwrap_or("context");
-                format!("context {}", act)
+                let act = p.get("action").or_else(|| p.get("label")).and_then(|v| v.as_str()).unwrap_or("");
+                act.to_string()
             } else if kind == "server_info" || kind == "health_check" {
-                "server_info".to_string()
+                "".to_string()
             } else if kind == "host_knowledge" {
-                format!("docs: {}", p.get("section").and_then(|v| v.as_str()).unwrap_or("overview"))
-            } else if let Some(int) = raw_intent {
-                int.to_string()
+                p.get("section").and_then(|v| v.as_str()).unwrap_or("overview").to_string()
             } else {
-                p.get("summary").and_then(|v| v.as_str()).unwrap_or(kind).to_string()
+                p.get("summary").and_then(|v| v.as_str()).unwrap_or("").to_string()
             }
         } else {
             kind.to_string()
         };
+
+        let action = match kind {
+            "terminal_execute" | "host_run_command" => "EXEC",
+            "workspace_explore" | "host_read_file" | "host_list_directory" => "READ",
+            "workspace_edit" | "host_write_file" | "host_replace_in_file" => "EDIT",
+            "workspace_search" | "host_search_text" => "FIND",
+            "task" | "task_manage" => "TASK",
+            "web_intelligence" | "ctf_fetch_url" => "WEB",
+            "workspace_context" | "host_workspace_bind" => "CTX",
+            "server_info" | "health_check" => "INFO",
+            "host_knowledge" => "DOCS",
+            _ => "TOOL",
+        }.to_string();
+
+        let target = if let Some(p) = payload {
+            if kind == "workspace_search" || kind == "host_search_text" {
+                p.get("pattern").or_else(|| p.get("query")).or_else(|| p.get("path")).and_then(|v| v.as_str()).unwrap_or("").to_string()
+            } else if let Some(path_val) = p.get("path").and_then(|v| v.as_str()) {
+                path_val.to_string()
+            } else if let Some(cmd_val) = p.get("command").and_then(|v| v.as_str()) {
+                let effective_cmd = if cmd_val == "<redacted>" || cmd_val.is_empty() {
+                    mcp.and_then(|m| m.get("command")).and_then(|v| v.as_str()).unwrap_or(cmd_val)
+                } else {
+                    cmd_val
+                };
+                effective_cmd.trim().to_string()
+            } else if let Some(pat) = p.get("pattern").or_else(|| p.get("query")).and_then(|v| v.as_str()) {
+                pat.to_string()
+            } else if let Some(url) = p.get("url").and_then(|v| v.as_str()) {
+                url.to_string()
+            } else if let Some(tid) = p.get("task_id").and_then(|v| v.as_str()) {
+                tid.to_string()
+            } else if let Some(act) = p.get("action").or_else(|| p.get("section")).and_then(|v| v.as_str()) {
+                act.to_string()
+            } else {
+                "".to_string()
+            }
+        } else if let Some(m) = mcp {
+            m.get("path")
+                .or_else(|| m.get("command"))
+                .or_else(|| m.get("url"))
+                .or_else(|| m.get("pattern"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string()
+        } else {
+            "".to_string()
+        };
+
+        let output_type = match kind {
+            "terminal_execute" | "host_run_command" => "terminal",
+            "workspace_explore" | "host_read_file" => {
+                let mode = payload.and_then(|p| p.get("mode")).and_then(|v| v.as_str()).unwrap_or("");
+                if mode == "list" { "tree" } else { "code" }
+            }
+            "host_list_directory" => "tree",
+            "workspace_edit" | "host_write_file" | "host_replace_in_file" => "diff",
+            "workspace_search" | "host_search_text" => "search",
+            "task" | "task_manage" => "task",
+            "web_intelligence" | "ctf_fetch_url" => "web",
+            "workspace_context" | "host_workspace_bind" => "context",
+            "server_info" | "health_check" => "info",
+            "host_knowledge" => "docs",
+            _ => "text",
+        }.to_string();
 
         let mcp_completed = mcp
             .and_then(|m| m.get("phase"))
@@ -909,7 +1012,7 @@ fn read_session_commands(paths: &AppPaths, chat_id: &str) -> Vec<CommandItem> {
         let time_short = if timestamp.len() >= 16 {
             timestamp[5..16].replace('T', " ")
         } else {
-            "09-16 08:22".to_string()
+            "—".to_string()
         };
 
         let status = if !is_completed {
@@ -935,6 +1038,7 @@ fn read_session_commands(paths: &AppPaths, chat_id: &str) -> Vec<CommandItem> {
         let mut output = mcp.and_then(|m| m.get("stdout")).and_then(|v| v.as_str())
             .or_else(|| result.and_then(|r| r.get("payload")).and_then(|p| p.get("stdout")).and_then(|v| v.as_str()))
             .or_else(|| result.and_then(|r| r.get("payload")).and_then(|p| p.get("result")).and_then(|r| r.get("stdout")).and_then(|v| v.as_str()))
+            .or_else(|| result.and_then(|r| r.get("stdout")).and_then(|v| v.as_str()))
             .unwrap_or("")
             .to_string();
 
@@ -945,47 +1049,48 @@ fn read_session_commands(paths: &AppPaths, chat_id: &str) -> Vec<CommandItem> {
             .to_string();
 
         if output.is_empty() {
-            if kind == "terminal_execute" || kind == "host_run_command" {
-                if exit_code == 0 {
-                    output = "[Lệnh thực thi thành công (Mã thoát: 0)]".to_string();
-                } else {
-                    output = format!("[Lệnh kết thúc với lỗi (Mã thoát: {})]", exit_code);
+            if let Some(r) = result {
+                let res_p = r.get("payload").or_else(|| r.get("result")).unwrap_or(r);
+                if let Some(content) = res_p.get("content").and_then(|v| v.as_str()) {
+                    output = content.to_string();
+                } else if let Some(content_preview) = res_p.get("content_preview").and_then(|v| v.as_str()) {
+                    output = content_preview.to_string();
+                } else if let Some(diff) = res_p.get("diff_preview").or_else(|| res_p.get("diff")).and_then(|v| v.as_str()) {
+                    output = diff.to_string();
+                } else if let Some(preview) = res_p.get("preview").and_then(|v| v.as_str()) {
+                    output = preview.to_string();
+                } else if let Some(tail) = res_p.get("stdout_tail").and_then(|v| v.as_str()) {
+                    output = tail.to_string();
+                } else if let Some(body) = res_p.get("body_preview").or_else(|| res_p.get("text")).and_then(|v| v.as_str()) {
+                    output = body.to_string();
+                } else if let Some(entries) = res_p.get("entries").and_then(|v| v.as_array()) {
+                    let lines: Vec<String> = entries.iter().filter_map(|e| {
+                        if let Some(s) = e.as_str() {
+                            Some(s.to_string())
+                        } else if let Some(name) = e.get("name").and_then(|v| v.as_str()) {
+                            let is_dir = e.get("is_dir").and_then(|v| v.as_bool()).unwrap_or(false);
+                            Some(if is_dir { format!("{}/", name) } else { name.to_string() })
+                        } else {
+                            None
+                        }
+                    }).collect();
+                    output = lines.join("\n");
+                } else if let Some(matches) = res_p.get("matches").and_then(|v| v.as_array()) {
+                    let lines: Vec<String> = matches.iter().filter_map(|m| {
+                        if let Some(s) = m.as_str() {
+                            Some(s.to_string())
+                        } else if let Some(p) = m.get("path").and_then(|v| v.as_str()) {
+                            let line = m.get("line").and_then(|v| v.as_i64()).unwrap_or(0);
+                            let content = m.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                            Some(format!("{}:{}: {}", p, line, content))
+                        } else {
+                            None
+                        }
+                    }).collect();
+                    output = lines.join("\n");
+                } else if let Some(msg) = res_p.get("message").and_then(|v| v.as_str()) {
+                    output = msg.to_string();
                 }
-            } else if kind == "workspace_explore" || kind == "host_read_file" || kind == "host_list_directory" {
-                if let Some(p) = payload {
-                    let path_str = p.get("path").and_then(|v| v.as_str()).unwrap_or("");
-                    let start = p.get("start_line").and_then(|v| v.as_i64()).unwrap_or(1);
-                    let count = p.get("line_count").or_else(|| p.get("end_line")).and_then(|v| v.as_i64()).unwrap_or(150);
-                    output = format!("[Khám phá tệp/thư mục: {} (Dòng {}-{})]", path_str, start, start + count - 1);
-                }
-            } else if kind == "workspace_edit" || kind == "host_write_file" || kind == "host_replace_in_file" {
-                if let Some(p) = payload {
-                    let path_str = p.get("path").and_then(|v| v.as_str()).unwrap_or("");
-                    let action = p.get("action").and_then(|v| v.as_str()).unwrap_or("write");
-                    output = format!("[Chỉnh sửa tệp tin thành công]\nĐường dẫn: {}\nHành động: {}", path_str, action);
-                }
-            } else if kind == "workspace_search" || kind == "host_search_text" {
-                if let Some(p) = payload {
-                    let query = p.get("query").and_then(|v| v.as_str()).unwrap_or("");
-                    let path_str = p.get("path").and_then(|v| v.as_str()).unwrap_or("");
-                    output = format!("[Tìm kiếm văn bản trong '{}' với từ khóa '{}']", path_str, query);
-                }
-            } else if kind == "web_intelligence" || kind == "ctf_fetch_url" {
-                if let Some(p) = payload {
-                    let url = p.get("url").and_then(|v| v.as_str()).unwrap_or("");
-                    output = format!("[Trinh sát web và bóc tách thông tin: {}]", url);
-                }
-            } else if kind == "workspace_context" || kind == "host_workspace_bind" {
-                output = format!("[Quản lý không gian làm việc và bộ nhớ: {}]", chat_id);
-            } else if kind == "server_info" || kind == "health_check" {
-                output = "[Kiểm tra tình trạng và thông tin hệ thống máy chủ]".to_string();
-            } else if kind == "host_knowledge" {
-                if let Some(p) = payload {
-                    let section = p.get("section").and_then(|v| v.as_str()).unwrap_or("");
-                    output = format!("[Tra cứu tài liệu hệ thống: {}]", section);
-                }
-            } else if let Some(p) = payload {
-                output = format!("[Thực thi {}]\n{}", kind, serde_json::to_string_pretty(p).unwrap_or_default());
             }
         }
 
@@ -1018,6 +1123,9 @@ fn read_session_commands(paths: &AppPaths, chat_id: &str) -> Vec<CommandItem> {
             stderr: sanitize_honeypot_text(&stderr),
             cwd,
             raw_json,
+            action,
+            target,
+            output_type,
         });
     }
 
@@ -1038,14 +1146,47 @@ fn read_session_commands(paths: &AppPaths, chat_id: &str) -> Vec<CommandItem> {
         let raw_cmd = m.get("command").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let cmd = sanitize_honeypot_text(&raw_cmd);
         let exit_code = m.get("exit_code").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-        let duration = m.get("duration_ms").and_then(|v| v.as_f64()).map(|d| format!("{:.0}ms", d)).unwrap_or_else(|| "14ms".to_string());
+        let duration = m.get("duration_ms").and_then(|v| v.as_f64()).map(|d| format!("{:.0}ms", d)).unwrap_or_else(|| "—".to_string());
         let timestamp = m.get("timestamp").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let time_short = if timestamp.len() >= 16 { timestamp[5..16].replace('T', " ") } else { "09-16 08:22".to_string() };
+        let time_short = if timestamp.len() >= 16 { timestamp[5..16].replace('T', " ") } else { "—".to_string() };
         let status = if exit_code == 0 { "success".to_string() } else { "failure".to_string() };
         let output = sanitize_honeypot_text(m.get("stdout").and_then(|v| v.as_str()).unwrap_or(""));
         let stderr = sanitize_honeypot_text(m.get("stderr").and_then(|v| v.as_str()).unwrap_or(""));
         let cwd = m.get("cwd").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let raw_json = serde_json::to_string_pretty(&m).unwrap_or_default();
+
+        let action = match tool.as_str() {
+            "terminal_execute" | "host_run_command" => "EXEC",
+            "workspace_explore" | "host_read_file" | "host_list_directory" => "READ",
+            "workspace_edit" | "host_write_file" | "host_replace_in_file" => "EDIT",
+            "workspace_search" | "host_search_text" => "FIND",
+            "task" | "task_manage" => "TASK",
+            "web_intelligence" | "ctf_fetch_url" => "WEB",
+            "workspace_context" | "host_workspace_bind" => "CTX",
+            "server_info" | "health_check" => "INFO",
+            "host_knowledge" => "DOCS",
+            _ => "TOOL",
+        }.to_string();
+
+        let target = m.get("path")
+            .or_else(|| m.get("command"))
+            .or_else(|| m.get("url"))
+            .or_else(|| m.get("pattern"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let output_type = match tool.as_str() {
+            "terminal_execute" | "host_run_command" => "terminal",
+            "workspace_explore" | "host_read_file" | "host_list_directory" => "code",
+            "workspace_edit" | "host_write_file" | "host_replace_in_file" => "diff",
+            "workspace_search" | "host_search_text" => "search",
+            "task" | "task_manage" => "task",
+            "web_intelligence" | "ctf_fetch_url" => "web",
+            "workspace_context" | "host_workspace_bind" => "context",
+            "server_info" | "health_check" => "info",
+            _ => "text",
+        }.to_string();
 
         commands.push(CommandItem {
             id: item_id,
@@ -1062,6 +1203,9 @@ fn read_session_commands(paths: &AppPaths, chat_id: &str) -> Vec<CommandItem> {
             stderr,
             cwd,
             raw_json,
+            action,
+            target,
+            output_type,
         });
     }
 
@@ -1163,6 +1307,9 @@ fn read_runtime_status(paths: &AppPaths) -> serde_json::Value {
     let ws_dir = env_map.get("HOST_WORKSPACE_DIR").cloned().unwrap_or_else(|| "/home/light".to_string());
     let default_dir = env_map.get("HOST_DEFAULT_DIR").cloned().unwrap_or_default();
     let chat_root = env_map.get("HOST_CHAT_ROOT").cloned().unwrap_or_default();
+    let max_workspaces = env_map.get("HOST_CHAT_MAX_WORKSPACES").cloned().unwrap_or_else(|| "20".to_string());
+    let quota_mb = env_map.get("HOST_CHAT_QUOTA_MB").cloned().unwrap_or_else(|| "50".to_string());
+    let root_max_gb = env_map.get("HOST_CHAT_ROOT_MAX_GB").cloned().unwrap_or_else(|| "5".to_string());
     let policy = env_map.get("HOST_COMMAND_POLICY").cloned().unwrap_or_else(|| "prompt".to_string());
     let default_timeout = env_map.get("DEFAULT_TIMEOUT_SECONDS").cloned().unwrap_or_else(|| "30".to_string());
     let max_timeout = env_map.get("MAX_TIMEOUT_SECONDS").cloned().unwrap_or_else(|| "300".to_string());
@@ -1210,6 +1357,12 @@ fn read_runtime_status(paths: &AppPaths) -> serde_json::Value {
         "workspace_root": ws_dir,
         "default_dir": default_dir,
         "chat_root": chat_root,
+        "max_workspaces": max_workspaces,
+        "quota_mb": quota_mb,
+        "root_max_gb": root_max_gb,
+        "HOST_CHAT_MAX_WORKSPACES": max_workspaces,
+        "HOST_CHAT_QUOTA_MB": quota_mb,
+        "HOST_CHAT_ROOT_MAX_GB": root_max_gb,
         "policy": policy,
         "default_timeout": default_timeout,
         "max_timeout": max_timeout,
@@ -1652,6 +1805,81 @@ mod tests {
         assert_eq!(item.intent.as_deref(), Some("Test the enumerated usernames"));
         assert_eq!(item.exit_code, 0);
         assert_eq!(item.status, "success");
+        assert_eq!(item.action, "EXEC");
+        assert_eq!(item.output_type, "terminal");
+        assert_eq!(item.output, "supervisor\n");
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_read_mcp_super_tools_enrichment() {
+        let temp_dir = std::env::temp_dir().join(format!("bqa_test_mcp_enrich_{}", std::process::id()));
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let ws_name = "cw-20261013-test-mcp";
+        let target_ws = temp_dir.join("workspaces").join(ws_name);
+        fs::create_dir_all(&target_ws).unwrap();
+
+        let journal_data = r#"{"op":"op-exp","type":"op_started","tool":"workspace_explore","payload":{"path":"src/main.rs","mode":"read","start_line":10,"end_line":20}}
+{"op":"op-exp","type":"op_result","ok":true,"payload":{"content_preview":"fn main() {\n    println!(\"hello\");\n}"}}
+{"op":"op-edit","type":"op_started","tool":"workspace_edit","payload":{"path":"Cargo.toml","action":"append"}}
+{"op":"op-edit","type":"op_result","ok":true,"payload":{"diff_preview":"+ serde = \"1.0\""}}
+{"op":"op-search","type":"op_started","tool":"workspace_search","payload":{"pattern":"CommandItem","path":"crates/"}}
+{"op":"op-search","type":"op_result","ok":true,"payload":{"matches":[{"path":"crates/bqa_desktop/src/main.rs","line":45,"content":"struct CommandItem"}]}}
+{"op":"op-task","type":"op_started","tool":"task","payload":{"action":"status","task_id":"t-99"}}
+{"op":"op-task","type":"op_result","ok":true,"payload":{"stdout_tail":"Task running: 5s"}}
+{"op":"op-web","type":"op_started","tool":"web_intelligence","payload":{"url":"https://example.com/api"}}
+{"op":"op-web","type":"op_result","ok":true,"payload":{"body_preview":"{\"status\":\"healthy\"}"}}
+{"op":"op-term","type":"op_started","tool":"terminal_execute","payload":{"command":"whoami","intent":"Identify current user account"}}
+{"op":"op-term","type":"op_result","ok":true,"payload":{"exit_code":0,"stdout":"light\n"}}
+"#;
+        fs::write(target_ws.join("journal.jsonl"), journal_data).unwrap();
+
+        let mut paths = AppPaths::new();
+        paths.repo_root = temp_dir.clone();
+        paths.workspace_root = temp_dir.join("workspaces");
+
+        let cmds = read_session_commands(&paths, ws_name);
+        assert_eq!(cmds.len(), 6);
+
+        let web_cmd = cmds.iter().find(|c| c.id == "op-web").unwrap();
+        assert_eq!(web_cmd.action, "WEB");
+        assert_eq!(web_cmd.target, "https://example.com/api");
+        assert_eq!(web_cmd.output_type, "web");
+        assert_eq!(web_cmd.output, "{\"status\":\"healthy\"}");
+        assert_eq!(web_cmd.intent, None, "Unspecified intent must never be synthetically fabricated");
+
+        let task_cmd = cmds.iter().find(|c| c.id == "op-task").unwrap();
+        assert_eq!(task_cmd.action, "TASK");
+        assert_eq!(task_cmd.output_type, "task");
+        assert_eq!(task_cmd.output, "Task running: 5s");
+        assert_eq!(task_cmd.intent, None);
+
+        let search_cmd = cmds.iter().find(|c| c.id == "op-search").unwrap();
+        assert_eq!(search_cmd.action, "FIND");
+        assert_eq!(search_cmd.target, "CommandItem");
+        assert_eq!(search_cmd.output_type, "search");
+        assert!(search_cmd.output.contains("crates/bqa_desktop/src/main.rs:45: struct CommandItem"));
+        assert_eq!(search_cmd.intent, None);
+
+        let edit_cmd = cmds.iter().find(|c| c.id == "op-edit").unwrap();
+        assert_eq!(edit_cmd.action, "EDIT");
+        assert_eq!(edit_cmd.target, "Cargo.toml");
+        assert_eq!(edit_cmd.output_type, "diff");
+        assert_eq!(edit_cmd.output, "+ serde = \"1.0\"");
+        assert_eq!(edit_cmd.intent, None);
+
+        let exp_cmd = cmds.iter().find(|c| c.id == "op-exp").unwrap();
+        assert_eq!(exp_cmd.action, "READ");
+        assert_eq!(exp_cmd.target, "src/main.rs");
+        assert_eq!(exp_cmd.output_type, "code");
+        assert!(exp_cmd.output.contains("fn main()"));
+        assert_eq!(exp_cmd.intent, None);
+
+        let term_cmd = cmds.iter().find(|c| c.id == "op-term").unwrap();
+        assert_eq!(term_cmd.action, "EXEC");
+        assert_eq!(term_cmd.intent.as_deref(), Some("Identify current user account"), "Authentic 3rd-party intent must be accurately preserved");
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
@@ -2035,4 +2263,35 @@ mod tests {
         assert!(ui.contains("Sessions") || ui.contains("sessions"), "dashboard should retain measured session counts");
         assert!(ui.contains("Operations") || ui.contains("operations"), "dashboard should retain measured operation counts");
     }
+
+    #[test]
+    fn test_workspace_quota_env_validation_and_persistence() {
+        let mut updates = HashMap::new();
+        updates.insert("HOST_CHAT_MAX_WORKSPACES".to_string(), "25".to_string());
+        updates.insert("HOST_CHAT_QUOTA_MB".to_string(), "100".to_string());
+        updates.insert("HOST_CHAT_ROOT_MAX_GB".to_string(), "10.5".to_string());
+        assert!(validate_search_limit_updates(&updates).is_ok());
+
+        let mut invalid_ws = HashMap::new();
+        invalid_ws.insert("HOST_CHAT_MAX_WORKSPACES".to_string(), "0".to_string());
+        assert!(validate_search_limit_updates(&invalid_ws).is_err());
+
+        let mut invalid_gb = HashMap::new();
+        invalid_gb.insert("HOST_CHAT_ROOT_MAX_GB".to_string(), "-1".to_string());
+        assert!(validate_search_limit_updates(&invalid_gb).is_err());
+    }
+
+    #[test]
+    fn test_workspace_selection_anti_hijacking_and_persistence() {
+        let ui = include_str!("../ui/index.html");
+        // Verify localStorage persistence key
+        assert!(ui.contains("bqa_selected_workspace"), "selected workspace must be persisted in storage");
+        // Verify that polling auto-follow hijack condition is eliminated
+        assert!(!ui.contains("backendActiveId !== lastPersistedBackendActiveId"), "backend active change must not hijack activeChatId");
+        // Verify overview tab does not reset user selection
+        assert!(!ui.contains("userExplicitlySelectedSession = false;\n        if (pOverview)"), "overview navigation must not reset session selection");
+        // Verify live badge exists for backend active indicator
+        assert!(ui.contains("session-live-badge"), "session live badge must indicate backend-bound workspace");
+    }
 }
+

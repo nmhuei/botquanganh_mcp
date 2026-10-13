@@ -1078,20 +1078,27 @@
 
           <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-2.5 rounded-lg min-w-0">
             <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans whitespace-nowrap truncate">Thời gian</span>
-            <span id="inspectTimestamp" style="color: var(--text-main);" class="font-semibold mt-0.5 block inspect-summary-value-breakfix">2026-09-01 20:26:15</span>
+            <span id="inspectTimestamp" style="color: var(--text-main);" class="font-semibold mt-0.5 block inspect-summary-value-breakfix">—</span>
           </div>
 
           <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-2.5 rounded-lg min-w-0">
             <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans whitespace-nowrap truncate">Kết quả & Thời lượng</span>
-            <span id="inspectExit" style="color: var(--mint);" class="font-semibold mt-0.5 block truncate">0 (Success) · 1.42s</span>
+            <span id="inspectExit" style="color: var(--mint);" class="font-semibold mt-0.5 block truncate">—</span>
           </div>
         </div>
 
         <!-- Section: Output Tab View -->
         <div id="inspViewOutput" class="flex flex-col flex-1 min-h-[220px]">
-          <div style="color: var(--text-dim);" class="flex items-center justify-between text-[10px] uppercase font-sans mb-1 whitespace-nowrap">
-            <span>Terminal Console Output (ANSI Colorized)</span>
-            <span>UTF-8</span>
+          <div style="color: var(--text-dim);" class="flex items-center justify-between text-[10px] font-sans mb-1 whitespace-nowrap">
+            <div class="flex items-center gap-1.5 min-w-0">
+              <span id="inspectOutputModeBadge" class="font-mono text-[9px] px-1.5 py-0.5 rounded font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">STREAM</span>
+              <span id="inspectOutputSubtitle" class="text-[10px] text-text-sub font-mono truncate">STDOUT</span>
+            </div>
+            <div class="flex items-center gap-1 shrink-0">
+              <button id="btnToggleWrap" onclick="toggleInspectorWrap(this)" class="px-1.5 py-0.5 rounded border border-border text-[9.5px] font-sans hover:bg-surface transition" title="Bật/Tắt ngắt dòng">Wrap</button>
+              <button id="btnToggleAutoScroll" onclick="toggleInspectorAutoScroll(this)" class="px-1.5 py-0.5 rounded border border-border text-[9.5px] font-sans hover:bg-surface transition text-emerald-400" title="Bật/Tắt tự động cuộn">↓ Cuộn tự động</button>
+              <button id="btnCopyOutput" onclick="copyInspectorOutput(this)" class="px-1.5 py-0.5 rounded border border-border text-[9.5px] font-sans hover:bg-surface transition" title="Sao chép toàn bộ kết quả">Copy</button>
+            </div>
           </div>
           <pre id="inspectOutput" style="background-color: var(--bg-console); border-color: var(--border); color: var(--mint);" class="flex-1 border rounded-xl p-3.5 text-[11px] leading-relaxed overflow-auto select-text font-mono whitespace-pre-wrap"></pre>
         </div>
@@ -1121,7 +1128,7 @@
           <div id="inspectTargetFileCard" style="background-color: var(--bg-base); border-color: var(--border);" class="border p-3 rounded-lg min-w-0 hidden">
             <div class="flex items-center justify-between gap-2 mb-1.5">
               <div class="flex items-center gap-1.5 min-w-0">
-                <span style="color: var(--text-dim);" class="text-[10px] uppercase font-sans font-semibold whitespace-nowrap">Tệp thao tác (Target File)</span>
+                <span id="inspectTargetFileCardTitle" style="color: var(--text-dim);" class="text-[10px] uppercase font-sans font-semibold whitespace-nowrap">Tệp thao tác (Target File)</span>
                 <span id="inspectTargetFileBadge" class="px-1.5 py-0.5 rounded text-[9px] font-sans font-bold bg-sky-500/15 text-sky-400 border border-sky-500/30">FILE</span>
               </div>
               <button onclick="copyTargetFilePath(this)" style="color: var(--accent);" class="btn-action w-[84px] h-[24px] px-2 py-0.5 rounded text-[11px] font-sans whitespace-nowrap flex items-center justify-center gap-1 shrink-0 select-none leading-none" title="Copy File Path">
@@ -1133,12 +1140,42 @@
             <div id="inspectTargetFileDetails" style="color: var(--text-dim);" class="text-[10.5px] font-sans"></div>
           </div>
 
-          <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-3 rounded-lg min-w-0">
-            <span style="color: var(--text-dim);" class="text-[10px] block uppercase font-sans mb-1 whitespace-nowrap">Lệnh đầy đủ</span>
-            <div id="inspectCommand" style="color: var(--text-main);" class="select-text break-all font-mono">uv run pytest tests/test_qml_backend.py</div>
+          <!-- Shell Command Card (Dynamically shown for EXEC) -->
+          <div id="inspectCommandCard" style="background-color: var(--bg-base); border-color: var(--border);" class="border p-3 rounded-lg min-w-0">
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <div class="flex items-center gap-1.5 min-w-0">
+                <span style="color: var(--text-dim);" class="text-[10px] uppercase font-sans font-semibold whitespace-nowrap">Lệnh thực thi shell (Shell Command)</span>
+                <span class="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">EXEC</span>
+              </div>
+              <button onclick="copyCommandText(this)" style="color: var(--accent);" class="btn-action w-[84px] h-[24px] px-2 py-0.5 rounded text-[11px] font-sans whitespace-nowrap flex items-center justify-center gap-1 shrink-0 select-none leading-none" title="Copy Shell Command">
+                <svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                <span class="btn-copy-text whitespace-nowrap">Copy Cmd</span>
+              </button>
+            </div>
+            <div id="inspectCommand" style="color: var(--text-main);" class="select-text break-all font-mono text-xs leading-relaxed">—</div>
           </div>
 
-          <div style="background-color: var(--bg-base); border-color: var(--border);" class="border p-3 rounded-lg min-w-0">
+          <!-- Search Query Card (Dynamically shown for FIND) -->
+          <div id="inspectSearchQueryCard" style="background-color: var(--bg-base); border-color: var(--border);" class="border p-3 rounded-lg min-w-0 hidden">
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <span style="color: var(--text-dim);" class="text-[10px] uppercase font-sans font-semibold whitespace-nowrap">Truy vấn tìm kiếm (Search Query)</span>
+              <span class="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">FIND</span>
+            </div>
+            <div id="inspectSearchPattern" style="color: var(--text-main);" class="select-text break-all font-mono text-xs mb-1 font-semibold">—</div>
+            <div id="inspectSearchScope" style="color: var(--text-dim);" class="text-[10.5px] font-sans"></div>
+          </div>
+
+          <!-- Web Request Card (Dynamically shown for WEB) -->
+          <div id="inspectWebRequestCard" style="background-color: var(--bg-base); border-color: var(--border);" class="border p-3 rounded-lg min-w-0 hidden">
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <span style="color: var(--text-dim);" class="text-[10px] uppercase font-sans font-semibold whitespace-nowrap">Tài nguyên web (Web Target)</span>
+              <span class="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-sky-500/15 text-sky-400 border border-sky-500/30">WEB</span>
+            </div>
+            <div id="inspectWebUrl" style="color: var(--text-main);" class="select-text break-all font-mono text-xs mb-1 font-semibold">—</div>
+          </div>
+
+          <!-- Working Directory Card (Shown for terminal & host tools) -->
+          <div id="inspectCwdCard" style="background-color: var(--bg-base); border-color: var(--border);" class="border p-3 rounded-lg min-w-0">
             <div class="flex items-center justify-between gap-2 mb-1.5">
               <span style="color: var(--text-dim);" class="text-[10px] uppercase font-sans font-semibold whitespace-nowrap">Thư mục làm việc (CWD)</span>
               <button onclick="copyCwdPath(this)" style="color: var(--accent);" class="btn-action w-[84px] h-[24px] px-2 py-0.5 rounded text-[11px] font-sans whitespace-nowrap flex items-center justify-center gap-1 shrink-0 select-none leading-none" title="Copy Working Directory Path">
@@ -1146,7 +1183,7 @@
                 <span class="btn-copy-text whitespace-nowrap">Copy CWD</span>
               </button>
             </div>
-            <div id="inspectCwd" style="color: var(--text-sub);" class="select-text break-all font-mono text-[11px]">/home/light/GitHub/botquanganh_mcp</div>
+            <div id="inspectCwd" style="color: var(--text-sub);" class="select-text break-all font-mono text-[11px]">—</div>
           </div>
         </div>
 
@@ -1283,12 +1320,12 @@
 
     <!-- Scrollable content -->
     <div class="flex-1 overflow-y-auto p-3.5 space-y-2.5 text-xs">
-      <!-- MỤC 1: WORKSPACES & ĐƯỜNG DẪN -->
+      <!-- MỤC 1: WORKSPACES & HẠN NGẠCH LƯU TRỮ -->
       <div style="background-color: var(--bg-surface); border-color: var(--border);" class="settings-section-card border rounded-xl overflow-hidden shadow-xs">
         <button onclick="toggleSection('secPaths')" class="w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:opacity-90 transition">
           <div class="flex items-center gap-2">
             <span class="text-xs">📂</span>
-            <span style="color: var(--text-main);" class="font-semibold text-xs">Thư mục & Workspaces</span>
+            <span style="color: var(--text-main);" class="font-semibold text-xs">Không gian & Hạn ngạch Workspace</span>
           </div>
           <svg id="arrow-secPaths" style="color: var(--text-dim);" class="w-3.5 h-3.5 transform transition-transform duration-200 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
         </button>
@@ -1301,17 +1338,35 @@
 
           <div>
             <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Thư mục mặc định <span style="color: var(--text-dim);">(HOST_DEFAULT_DIR)</span></label>
-            <input id="cfgDefaultDir" type="text" value="/home/light/Downloads/bqa" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px]">
+            <input id="cfgDefaultDir" type="text" value="/home/light/Downloads/bqa" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px] focus:outline-hidden">
           </div>
 
           <div>
             <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Thư mục lưu phiên <span style="color: var(--text-dim);">(HOST_CHAT_ROOT)</span></label>
-            <input id="cfgChatRoot" type="text" value="/home/light/Downloads/bqa-workspaces" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px]">
+            <input id="cfgChatRoot" type="text" value="/home/light/Downloads/bqa-workspaces" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px] focus:outline-hidden">
+          </div>
+
+          <div class="pt-1 border-t" style="border-color: var(--border);">
+            <div class="grid grid-cols-3 gap-2">
+              <div>
+                <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5" title="Số lượng workspace tối đa">Tối đa WS</label>
+                <input id="cfgMaxWorkspaces" type="number" min="1" max="200" value="20" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px] focus:outline-hidden">
+              </div>
+              <div>
+                <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5" title="Hạn ngạch dung lượng mỗi workspace (MB)">Quota/WS (MB)</label>
+                <input id="cfgQuotaMb" type="number" min="1" value="50" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px] focus:outline-hidden">
+              </div>
+              <div>
+                <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5" title="Tổng dung lượng trần toàn bộ thư mục (GB)">Trần tổng (GB)</label>
+                <input id="cfgRootMaxGb" type="number" step="0.5" min="0.1" value="5" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px] focus:outline-hidden">
+              </div>
+            </div>
+            <p class="text-[9.5px] font-sans mt-1.5 opacity-70" style="color: var(--text-dim);">Tự động dọn dẹp workspace nhỏ nhất khi đầy theo Rule 2 & 4.</p>
           </div>
         </div>
       </div>
 
-      <!-- MỤC 2: CHÍNH SÁCH & TIMEOUT -->
+      <!-- MỤC 2: CHÍNH SÁCH THỰC THI & TIMEOUT -->
       <div style="background-color: var(--bg-surface); border-color: var(--border);" class="settings-section-card border rounded-xl overflow-hidden shadow-xs">
         <button onclick="toggleSection('secExecution')" class="w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:opacity-90 transition">
           <div class="flex items-center gap-2">
@@ -1325,91 +1380,25 @@
           <div class="grid grid-cols-2 gap-2 pt-2">
             <div>
               <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Chính sách (Policy)</label>
-              <select id="cfgPolicy" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2 py-1 text-[11px] cursor-pointer">
-                <option value="guarded" selected>guarded</option>
-                <option value="allowlist">allowlist</option>
+              <select id="cfgPolicy" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2 py-1 text-[11px] cursor-pointer focus:outline-hidden">
+                <option value="guarded" selected>guarded (Bảo vệ)</option>
+                <option value="allowlist">allowlist (Chỉ định)</option>
               </select>
             </div>
             <div>
               <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Timeout mặc định (s)</label>
-              <input id="cfgDefaultTimeout" type="number" value="60" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px]">
+              <input id="cfgDefaultTimeout" type="number" min="1" value="60" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px] focus:outline-hidden">
             </div>
           </div>
 
           <div class="grid grid-cols-2 gap-2">
             <div>
               <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Timeout tối đa (s)</label>
-              <input id="cfgMaxTimeout" type="number" value="300" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px]">
+              <input id="cfgMaxTimeout" type="number" min="1" value="300" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px] focus:outline-hidden">
             </div>
             <div>
               <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Max Output (Bytes)</label>
-              <input id="cfgMaxOutput" type="number" value="5000000" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px]">
-            </div>
-          </div>
-
-          <div class="grid grid-cols-2 gap-2">
-            <div>
-              <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Search deadline (s) · SEARCH_TEXT_DEADLINE_SECONDS</label>
-              <input id="cfgSearchDeadline" type="number" step="0.5" min="0" value="15" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px]">
-            </div>
-            <div>
-              <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Max concurrent · WORKSPACE_SEARCH_MAX_CONCURRENT</label>
-              <input id="cfgSearchConcurrent" type="number" min="1" max="64" value="4" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px]">
-            </div>
-          </div>
-
-          <div class="grid grid-cols-2 gap-2">
-            <div>
-              <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Max per chat · WORKSPACE_SEARCH_MAX_PER_CHAT</label>
-              <input id="cfgSearchPerChat" type="number" min="1" max="64" value="2" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px]">
-            </div>
-            <div>
-              <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Queue timeout (s) · WORKSPACE_SEARCH_QUEUE_TIMEOUT_SECONDS</label>
-              <input id="cfgSearchQueue" type="number" step="0.5" min="0" value="2" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px]">
-            </div>
-          </div>
-
-          <div class="grid grid-cols-2 gap-2">
-            <div>
-              <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Work matches · WORKSPACE_SEARCH_MAX_WORK_MATCHES</label>
-              <input id="cfgSearchWork" type="number" min="1" value="20000" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px]">
-            </div>
-            <div>
-              <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Scanned files · WORKSPACE_SEARCH_MAX_SCANNED_FILES</label>
-              <input id="cfgSearchScannedFiles" type="number" min="1" value="20000" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px]">
-            </div>
-          </div>
-
-          <div class="grid grid-cols-2 gap-2">
-            <div>
-              <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Scanned bytes · WORKSPACE_SEARCH_MAX_SCANNED_BYTES</label>
-              <input id="cfgSearchScannedBytes" type="number" min="1" value="200000000" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px]">
-            </div>
-            <div>
-              <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Line chars · WORKSPACE_SEARCH_MAX_LINE_CHARS</label>
-              <input id="cfgSearchLineChars" type="number" min="1" value="8192" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px]">
-            </div>
-          </div>
-
-          <div class="grid grid-cols-2 gap-2">
-            <div>
-              <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Default matches · WORKSPACE_SEARCH_DEFAULT_MAX_MATCHES</label>
-              <input id="cfgSearchDefaultCap" type="number" min="1" value="100" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px]">
-            </div>
-            <div>
-              <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Max matches · WORKSPACE_SEARCH_MAX_RETURNED_MATCHES</label>
-              <input id="cfgSearchMaxCap" type="number" min="1" value="500" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px]">
-            </div>
-          </div>
-
-          <div class="grid grid-cols-2 gap-2">
-            <div>
-              <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Payload ceiling · MCP_MAX_PAYLOAD_BYTES</label>
-              <input id="cfgMcpPayload" type="number" min="1024" value="512000" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px]">
-            </div>
-            <div>
-              <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Envelope reserve · MCP_TOOL_RESULT_OVERHEAD_BYTES</label>
-              <input id="cfgMcpOverhead" type="number" min="0" value="4096" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px]">
+              <input id="cfgMaxOutput" type="number" min="1024" value="5000000" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px] focus:outline-hidden">
             </div>
           </div>
         </div>
@@ -1420,16 +1409,16 @@
         <button onclick="toggleSection('secSecurity')" class="w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:opacity-90 transition">
           <div class="flex items-center gap-2">
             <span class="text-xs">🛡️</span>
-            <span style="color: var(--text-main);" class="font-semibold text-xs">Bảo mật & Xác thực (Auth)</span>
+            <span style="color: var(--text-main);" class="font-semibold text-xs">Bảo mật & Xác thực Gateway</span>
           </div>
           <svg id="arrow-secSecurity" style="color: var(--text-dim);" class="w-3.5 h-3.5 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
         </button>
 
         <div id="secSecurity" class="p-3 pt-0 border-t space-y-2 font-mono text-[11px] hidden" style="border-color: var(--border);">
           <div class="pt-2">
-            <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Gateway Token</label>
+            <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Gateway Token <span style="color: var(--text-dim);">(Bảo vệ kết nối MCP)</span></label>
             <div class="relative flex items-center">
-              <input id="cfgToken" type="password" value="" placeholder="••••••••••••••••" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 pr-20 text-[11px] font-mono">
+              <input id="cfgToken" type="password" value="" placeholder="••••••••••••••••" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 pr-20 text-[11px] font-mono focus:outline-hidden">
               <div class="absolute right-1 flex items-center gap-1.5">
                 <button type="button" id="btnToggleToken" onclick="toggleTokenMask()" class="px-2 py-0.5 text-[10px] rounded hover:opacity-80 transition cursor-pointer" style="background-color: var(--bg-card); color: var(--text-dim);" title="Hiện / Ẩn Token">👁</button>
                 <button type="button" onclick="copyTokenValue()" class="px-2 py-0.5 text-[10px] rounded hover:opacity-80 transition cursor-pointer" style="background-color: var(--bg-card); color: var(--text-dim);" title="Sao chép Token">📋</button>
@@ -1440,14 +1429,14 @@
           <div class="grid grid-cols-2 gap-2">
             <div>
               <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Bắt buộc Auth</label>
-              <select id="cfgRequireAuth" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2 py-1 text-[11px] cursor-pointer">
+              <select id="cfgRequireAuth" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2 py-1 text-[11px] cursor-pointer focus:outline-hidden">
                 <option value="false" selected>false (Tắt)</option>
                 <option value="true">true (Bật)</option>
               </select>
             </div>
             <div>
               <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Attribution Mode</label>
-              <select id="cfgAttribution" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2 py-1 text-[11px] cursor-pointer">
+              <select id="cfgAttribution" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2 py-1 text-[11px] cursor-pointer focus:outline-hidden">
                 <option value="enforce" selected>enforce</option>
                 <option value="strict">strict</option>
                 <option value="tag">tag</option>
@@ -1458,20 +1447,20 @@
         </div>
       </div>
 
-      <!-- MỤC 4: GIAO DIỆN & CHỦ ĐỀ (GỌN GÀNG, TIẾT KIỆM KHÔNG GIAN) -->
+      <!-- MỤC 4: GIAO DIỆN & MẠNG MCP -->
       <div style="background-color: var(--bg-surface); border-color: var(--border);" class="settings-section-card border rounded-xl overflow-hidden shadow-xs">
         <button onclick="toggleSection('secTheme')" class="w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:opacity-90 transition">
           <div class="flex items-center gap-2">
             <span class="text-xs">🎨</span>
-            <span style="color: var(--text-main);" class="font-semibold text-xs">Giao diện & Chủ đề (16 Themes)</span>
+            <span style="color: var(--text-main);" class="font-semibold text-xs">Giao diện & Mạng MCP</span>
           </div>
           <svg id="arrow-secTheme" style="color: var(--text-dim);" class="w-3.5 h-3.5 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
         </button>
 
         <div id="secTheme" class="p-3 pt-0 border-t space-y-2.5 hidden" style="border-color: var(--border);">
           <div class="pt-2">
-            <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-1">Theme hệ thống</label>
-            <select id="cfgThemeSelect" onchange="selectThemeFromDrawer(this.value)" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-xs cursor-pointer font-sans">
+            <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-1">Theme hệ thống (16 Themes)</label>
+            <select id="cfgThemeSelect" onchange="selectThemeFromDrawer(this.value)" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1.5 text-xs cursor-pointer font-sans focus:outline-hidden">
               <option value="vjp-terminal">🟢 UCS Terminal (VJP Mặc định)</option>
               <option value="vjp-command">🟩 Command Center (VJP)</option>
               <option value="vjp-light">⚪ UCS Light Pro (VJP)</option>
@@ -1520,28 +1509,15 @@
               </button>
             </div>
           </div>
-        </div>
-      </div>
 
-      <!-- MỤC 5: MẠNG & SOCKET -->
-      <div style="background-color: var(--bg-surface); border-color: var(--border);" class="settings-section-card border rounded-xl overflow-hidden shadow-xs">
-        <button onclick="toggleSection('secNetwork')" class="w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:opacity-90 transition">
-          <div class="flex items-center gap-2">
-            <span class="text-xs">🌐</span>
-            <span style="color: var(--text-main);" class="font-semibold text-xs">Mạng & Cổng Socket</span>
-          </div>
-          <svg id="arrow-secNetwork" style="color: var(--text-dim);" class="w-3.5 h-3.5 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-        </button>
-
-        <div id="secNetwork" class="p-3 pt-0 border-t space-y-2 font-mono text-[11px] hidden" style="border-color: var(--border);">
-          <div class="grid grid-cols-2 gap-2 pt-2">
+          <div class="grid grid-cols-2 gap-2 pt-2 border-t" style="border-color: var(--border);">
             <div>
-              <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">MCP_BIND_HOST</label>
-              <input id="cfgBindHost" type="text" value="0.0.0.0" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px]">
+              <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">MCP Port <span style="color: var(--text-dim);">(cổng socket)</span></label>
+              <input id="cfgPort" type="text" value="18427" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px] font-mono focus:outline-hidden">
             </div>
             <div>
-              <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">MCP_PORT <span style="color: var(--text-dim);">(cần restart)</span></label>
-              <input id="cfgPort" type="text" value="18427" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px]">
+              <label style="color: var(--text-sub);" class="text-[10px] font-sans font-semibold block mb-0.5">Bind Host</label>
+              <input id="cfgBindHost" type="text" value="0.0.0.0" style="background-color: var(--bg-base); border-color: var(--border); color: var(--text-main);" class="w-full border rounded-lg px-2.5 py-1 text-[11px] font-mono focus:outline-hidden">
             </div>
           </div>
         </div>
@@ -1789,33 +1765,24 @@
     // ==================== ENVIRONMENT HOT RELOAD ====================
     function applyEnvHotReload() {
       const btn = document.getElementById('btnHotReloadLabel');
-      if (btn) btn.innerText = 'Reloading .env...';
+      if (btn) btn.innerText = 'Đang lưu .env...';
 
       const configPayload = {
         HOST_WORKSPACE_DIR: document.getElementById('cfgWorkspaceDir')?.value || '',
         HOST_DEFAULT_DIR: document.getElementById('cfgDefaultDir')?.value || '',
         HOST_CHAT_ROOT: document.getElementById('cfgChatRoot')?.value || '',
-        HOST_COMMAND_POLICY: document.getElementById('cfgPolicy')?.value || 'prompt',
+        HOST_CHAT_MAX_WORKSPACES: document.getElementById('cfgMaxWorkspaces')?.value || '20',
+        HOST_CHAT_QUOTA_MB: document.getElementById('cfgQuotaMb')?.value || '50',
+        HOST_CHAT_ROOT_MAX_GB: document.getElementById('cfgRootMaxGb')?.value || '5',
+        HOST_COMMAND_POLICY: document.getElementById('cfgPolicy')?.value || 'guarded',
         DEFAULT_TIMEOUT_SECONDS: document.getElementById('cfgDefaultTimeout')?.value || '30',
         MAX_TIMEOUT_SECONDS: document.getElementById('cfgMaxTimeout')?.value || '300',
-        MAX_OUTPUT_BYTES: document.getElementById('cfgMaxOutput')?.value || '1048576',
+        MAX_OUTPUT_BYTES: document.getElementById('cfgMaxOutput')?.value || '5000000',
         GATEWAY_TOKEN: document.getElementById('cfgToken')?.value || '',
         REQUIRE_AUTH: document.getElementById('cfgRequireAuth')?.value || 'false',
-        ATTRIBUTION_MODE: document.getElementById('cfgAttribution')?.value || 'full',
+        ATTRIBUTION_MODE: document.getElementById('cfgAttribution')?.value || 'enforce',
         MCP_BIND_HOST: document.getElementById('cfgBindHost')?.value || '0.0.0.0',
-        MCP_PORT: document.getElementById('cfgPort')?.value || '18427',
-        SEARCH_TEXT_DEADLINE_SECONDS: document.getElementById('cfgSearchDeadline')?.value || '15',
-        WORKSPACE_SEARCH_MAX_WORK_MATCHES: document.getElementById('cfgSearchWork')?.value || '20000',
-        WORKSPACE_SEARCH_MAX_SCANNED_FILES: document.getElementById('cfgSearchScannedFiles')?.value || '20000',
-        WORKSPACE_SEARCH_MAX_SCANNED_BYTES: document.getElementById('cfgSearchScannedBytes')?.value || '200000000',
-        WORKSPACE_SEARCH_MAX_CONCURRENT: document.getElementById('cfgSearchConcurrent')?.value || '4',
-        WORKSPACE_SEARCH_MAX_PER_CHAT: document.getElementById('cfgSearchPerChat')?.value || '2',
-        WORKSPACE_SEARCH_QUEUE_TIMEOUT_SECONDS: document.getElementById('cfgSearchQueue')?.value || '2',
-        WORKSPACE_SEARCH_DEFAULT_MAX_MATCHES: document.getElementById('cfgSearchDefaultCap')?.value || '100',
-        WORKSPACE_SEARCH_MAX_RETURNED_MATCHES: document.getElementById('cfgSearchMaxCap')?.value || '500',
-        WORKSPACE_SEARCH_MAX_LINE_CHARS: document.getElementById('cfgSearchLineChars')?.value || '8192',
-        MCP_MAX_PAYLOAD_BYTES: document.getElementById('cfgMcpPayload')?.value || '512000',
-        MCP_TOOL_RESULT_OVERHEAD_BYTES: document.getElementById('cfgMcpOverhead')?.value || '4096'
+        MCP_PORT: document.getElementById('cfgPort')?.value || '18427'
       };
 
       sendToRust('save_env', configPayload);
@@ -1855,7 +1822,6 @@
       });
 
       if (page === 'overview') {
-        userExplicitlySelectedSession = false;
         if (pOverview) { pOverview.classList.remove('hidden'); pOverview.classList.add('page-view'); }
         const tab = document.getElementById('tabOverview');
         if (tab) {
@@ -2460,7 +2426,7 @@
 
       updateResetButtonVisibility();
 
-      const currentListHash = currentWorkspaces.map(w => `${w.chat_id}:${w.ops_count}:${w.created_ts}`).join('|');
+      const currentListHash = currentWorkspaces.map(w => `${w.chat_id}:${w.ops_count}:${w.created_ts}:${w.active ? 1 : 0}`).join('|');
       const dataChanged = currentListHash !== lastWorkspacesHash;
       lastWorkspacesHash = currentListHash;
 
@@ -2492,24 +2458,27 @@
         metricCommands.appendChild(unitSpan);
       }
 
-      // Keep track of backend's persisted active session ID (.last_session)
+      // Check backend's persisted active session ID (.last_session)
       const backendActiveWorkspace = currentWorkspaces.find(w => w.active);
       const backendActiveId = backendActiveWorkspace ? backendActiveWorkspace.chat_id : null;
 
-      // If backend active session changed externally (e.g. via bqa session bind), follow it unless user explicitly selected another
-      if (backendActiveId && lastPersistedBackendActiveId && backendActiveId !== lastPersistedBackendActiveId && !userExplicitlySelectedSession) {
-        activeChatId = backendActiveId;
-      }
-      lastPersistedBackendActiveId = backendActiveId;
-
-      // If activeChatId not set or not in list, prioritize the persisted active session from backend (.last_session)
+      // Strictly protect user's activeChatId from being hijacked by background tasks/agents.
+      // Invariant: Once activeChatId is set and exists in currentWorkspaces, it NEVER auto-switches.
       if (!activeChatId || !currentWorkspaces.some(w => w.chat_id === activeChatId)) {
-        if (backendActiveId) {
+        const savedChatId = safeGetStorage('bqa_selected_workspace');
+        if (savedChatId && currentWorkspaces.some(w => w.chat_id === savedChatId)) {
+          activeChatId = savedChatId;
+        } else if (backendActiveId && currentWorkspaces.some(w => w.chat_id === backendActiveId)) {
           activeChatId = backendActiveId;
+          safeSetStorage('bqa_selected_workspace', activeChatId);
         } else if (currentWorkspaces.length > 0) {
           activeChatId = currentWorkspaces[0].chat_id;
+          safeSetStorage('bqa_selected_workspace', activeChatId);
+        } else {
+          activeChatId = null;
         }
       }
+      lastPersistedBackendActiveId = backendActiveId;
 
       const listContainer = document.getElementById('sessionListContainer');
       const hasItems = listContainer && listContainer.children.length > 0 && !listContainer.innerText.includes('Chưa có');
@@ -2534,7 +2503,9 @@
     };
 
     function selectSession(chatId) {
+      if (!chatId) return;
       userExplicitlySelectedSession = true;
+      safeSetStorage('bqa_selected_workspace', chatId);
       if (activeChatId === chatId && currentRenderedChatId === chatId) return;
       activeChatId = chatId;
       userPinnedCommandKey = null;
@@ -2654,6 +2625,7 @@
       if (success && activeChatId === chatId) {
         activeChatId = null;
         userExplicitlySelectedSession = false;
+        safeSetStorage('bqa_selected_workspace', '');
         currentRenderedChatId = null;
         const streamTitle = document.getElementById('streamTitle');
         if (streamTitle) streamTitle.innerText = '--';
@@ -2716,6 +2688,16 @@
 
         const rightDiv = document.createElement('div');
         rightDiv.className = 'flex items-center gap-1 shrink-0 ml-1';
+
+        if (w.active) {
+          const liveBadge = document.createElement('span');
+          liveBadge.className = 'session-live-badge text-[9px] px-1 py-0.2 rounded font-sans font-medium select-none';
+          liveBadge.style.backgroundColor = 'rgba(16, 185, 129, 0.15)';
+          liveBadge.style.color = '#10b981';
+          liveBadge.title = 'Workspace đang liên kết với backend / MCP (.last_session)';
+          liveBadge.textContent = 'Live';
+          rightDiv.appendChild(liveBadge);
+        }
 
         const opsBadge = document.createElement('span');
         opsBadge.style.color = isActive ? 'var(--accent)' : 'var(--text-dim)';
@@ -3033,44 +3015,193 @@
       }
     }
 
+    function getActionBadgeStyle(action) {
+      const act = String(action || '').toUpperCase();
+      switch (act) {
+        case 'EXEC':
+          return 'background-color: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent);';
+        case 'READ':
+          return 'background-color: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3);';
+        case 'EDIT':
+          return 'background-color: rgba(251, 191, 36, 0.15); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.3);';
+        case 'FIND':
+          return 'background-color: rgba(52, 211, 153, 0.15); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.3);';
+        case 'TASK':
+          return 'background-color: rgba(232, 121, 249, 0.15); color: #e879f9; border: 1px solid rgba(232, 121, 249, 0.3);';
+        case 'WEB':
+          return 'background-color: rgba(96, 165, 250, 0.15); color: #60a5fa; border: 1px solid rgba(96, 165, 250, 0.3);';
+        case 'CTX':
+          return 'background-color: rgba(167, 139, 250, 0.15); color: #a78bfa; border: 1px solid rgba(167, 139, 250, 0.3);';
+        default:
+          return 'background-color: var(--bg-surface); color: var(--text-sub); border: 1px solid var(--border);';
+      }
+    }
+
+    function parseCommandPayload(c) {
+      if (!c) return {};
+      if (c._parsedPayload) return c._parsedPayload;
+      let payload = {};
+      if (c.raw_json) {
+        try {
+          const parsed = typeof c.raw_json === 'string' ? JSON.parse(c.raw_json) : c.raw_json;
+          payload = parsed.payload || (parsed.started && parsed.started.payload) || parsed.args || {};
+        } catch (_) {}
+      }
+      c._parsedPayload = payload;
+      return payload;
+    }
+
+    function extractSearchInfo(c) {
+      const payload = parseCommandPayload(c);
+      let pattern = payload.pattern || payload.query || '';
+      let scope = payload.path || '';
+      if (!pattern && c.target) pattern = c.target;
+      if (!pattern && c.cmd) {
+        const m = c.cmd.match(/search\s+"([^"]+)"(?:\s+in\s+(.+))?/i);
+        if (m) {
+          pattern = m[1];
+          if (m[2] && !scope) scope = m[2];
+        } else {
+          pattern = c.cmd;
+        }
+      }
+      return { pattern, scope };
+    }
+
+    function renderCommandRowHtml(c, isNew) {
+      const commandState = commandStatusDisplay(c);
+      const timeDisplay = formatLocalTime(c.timestamp || c.time_short, 'short');
+      const act = (c.action || displayToolName(c.tool)).toUpperCase();
+      const badgeStyle = getActionBadgeStyle(act);
+      const payload = parseCommandPayload(c);
+
+      // Header: Tool Action Badge + NEW Tag + Time + Duration + Execution Status
+      const headerHtml = `
+        <div class="flex items-center justify-between gap-1 text-[11px] min-w-0 overflow-hidden">
+          <div class="flex items-center gap-1.5 min-w-0 truncate flex-1">
+            <span class="tool-name action-pill font-mono font-bold text-[9px] px-1.5 py-0.2 rounded shrink-0 uppercase select-none leading-tight" style="${badgeStyle}">${escapeHtml(act)}</span>
+            <span class="badge-latest ${isNew ? '' : 'hidden'}" style="color: var(--mint); background-color: var(--accent-soft); font-size: 8.5px; padding: 0 4px; border-radius: 4px; font-weight: 600; letter-spacing: 0.02em;" title="Lệnh mới chưa xem">NEW</span>
+          </div>
+          <div class="flex items-center gap-1 shrink-0 whitespace-nowrap text-[10px]">
+            <span style="color: var(--text-dim);" class="time-display whitespace-nowrap">${timeDisplay} · ${commandElapsedDisplay(c)}</span>
+            <span class="status-display font-semibold whitespace-nowrap" style="color: ${commandState.color};">${commandState.text}</span>
+          </div>
+        </div>
+      `;
+
+      // Body: Tailored domain-specific visual template
+      let bodyHtml = '';
+      if (act === 'EXEC') {
+        // TERMINAL COMMAND: 100% intact shell string, never split or truncated
+        const fullCmd = (c.cmd || c.target || '').trim();
+        bodyHtml = `
+          <div class="flex items-center gap-1.5 px-2 py-1 rounded font-mono text-[11px] min-w-0 mt-0.5" style="background-color: var(--bg-console); border: 1px solid var(--border);">
+            <span class="font-bold select-none shrink-0" style="color: var(--mint);">$</span>
+            <span class="truncate font-mono select-text" style="color: var(--text-main);" title="${escapeHtml(fullCmd)}">${escapeHtml(fullCmd)}</span>
+          </div>
+        `;
+      } else if (act === 'READ' || act === 'TREE') {
+        const targetPath = c.target || payload.path || c.cmd || '';
+        const fileName = targetPath.includes('/') ? (targetPath.split('/').pop() || targetPath) : targetPath;
+        const parentDir = targetPath.includes('/') ? targetPath.substring(0, targetPath.lastIndexOf('/') + 1) : '';
+        const isTree = act === 'TREE' || c.output_type === 'tree' || (c.cmd && c.cmd.toLowerCase().startsWith('list')) || (payload.mode === 'list');
+        let lineBadge = '';
+        if (payload.start_line != null || payload.end_line != null) {
+          lineBadge = `L${payload.start_line || 1}-${payload.end_line || 'hết'}`;
+        } else if (c.cmd) {
+          const lm = c.cmd.match(/lines?\s*(\d+\s*[-–]\s*\d+)/i);
+          if (lm) lineBadge = `L${lm[1]}`;
+        }
+        bodyHtml = `
+          <div class="flex items-center gap-1.5 min-w-0 mt-0.5">
+            <span class="text-xs shrink-0 select-none">${isTree ? '📁' : '📄'}</span>
+            <span class="font-mono text-[11px] font-semibold truncate" style="color: var(--text-main);" title="${escapeHtml(targetPath)}">${escapeHtml(fileName || (isTree ? 'Khám phá thư mục' : 'Đọc tệp'))}</span>
+            ${lineBadge ? `<span class="px-1.5 py-0.2 rounded text-[9px] font-mono shrink-0" style="background-color: var(--bg-card); color: var(--text-sub); border: 1px solid var(--border);">${escapeHtml(lineBadge)}</span>` : ''}
+            ${parentDir ? `<span class="text-[10px] truncate opacity-60 font-mono" style="color: var(--text-dim);" title="${escapeHtml(parentDir)}">${escapeHtml(parentDir)}</span>` : ''}
+          </div>
+        `;
+      } else if (act === 'EDIT') {
+        const targetPath = c.target || payload.path || '';
+        const fileName = targetPath.includes('/') ? (targetPath.split('/').pop() || targetPath) : targetPath;
+        const parentDir = targetPath.includes('/') ? targetPath.substring(0, targetPath.lastIndexOf('/') + 1) : '';
+        let editAction = payload.action || '';
+        if (!editAction && c.cmd) {
+          const first = c.cmd.split(' ')[0].toLowerCase();
+          if (['append', 'replace', 'write', 'edit'].includes(first)) editAction = first;
+        }
+        bodyHtml = `
+          <div class="flex items-center gap-1.5 min-w-0 mt-0.5">
+            <span class="text-xs shrink-0 select-none">✏️</span>
+            <span class="font-mono text-[11px] font-semibold truncate" style="color: var(--text-main);" title="${escapeHtml(targetPath)}">${escapeHtml(fileName || 'Chỉnh sửa tệp')}</span>
+            ${editAction ? `<span class="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold uppercase shrink-0" style="background-color: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3);">${escapeHtml(editAction)}</span>` : ''}
+            ${parentDir ? `<span class="text-[10px] truncate opacity-60 font-mono" style="color: var(--text-dim);" title="${escapeHtml(parentDir)}">${escapeHtml(parentDir)}</span>` : ''}
+          </div>
+        `;
+      } else if (act === 'FIND') {
+        const searchInfo = extractSearchInfo(c);
+        const pattern = searchInfo.pattern || c.target || c.cmd || '';
+        const scope = searchInfo.scope;
+        bodyHtml = `
+          <div class="flex items-center gap-1.5 min-w-0 mt-0.5">
+            <span class="text-xs shrink-0 select-none">🔍</span>
+            <span class="font-mono text-[11px] font-semibold truncate" style="color: var(--text-main);" title="${escapeHtml(pattern)}">"${escapeHtml(pattern)}"</span>
+            ${scope ? `<span class="text-[10px] font-mono truncate opacity-60" style="color: var(--text-dim);" title="${escapeHtml(scope)}">trong ${escapeHtml(scope)}</span>` : ''}
+          </div>
+        `;
+      } else if (act === 'TASK') {
+        const taskAction = payload.action || (c.cmd ? c.cmd.split(' ')[0] : 'status');
+        const taskId = payload.task_id || (c.target && c.target !== taskAction ? c.target : '');
+        bodyHtml = `
+          <div class="flex items-center gap-1.5 min-w-0 mt-0.5">
+            <span class="text-xs shrink-0 select-none">⚙️</span>
+            <span class="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold uppercase shrink-0" style="background-color: var(--bg-card); color: var(--text-sub); border: 1px solid var(--border);">${escapeHtml(taskAction)}</span>
+            ${taskId ? `<span class="font-mono text-[11px] font-semibold truncate" style="color: var(--text-main);">${escapeHtml(taskId)}</span>` : ''}
+          </div>
+        `;
+      } else if (act === 'WEB') {
+        const url = payload.url || c.target || c.cmd || '';
+        bodyHtml = `
+          <div class="flex items-center gap-1.5 min-w-0 mt-0.5">
+            <span class="text-xs shrink-0 select-none">🌐</span>
+            <span class="font-mono text-[11px] font-medium truncate" style="color: var(--text-main);" title="${escapeHtml(url)}">${escapeHtml(url)}</span>
+          </div>
+        `;
+      } else {
+        const targetDisplay = c.target || c.cmd || '';
+        bodyHtml = `
+          <div class="flex items-center gap-1.5 min-w-0 mt-0.5">
+            <span class="text-xs shrink-0 select-none">⚡</span>
+            <span class="font-mono text-[11px] font-semibold truncate" style="color: var(--text-main);" title="${escapeHtml(targetDisplay)}">${escapeHtml(targetDisplay)}</span>
+          </div>
+        `;
+      }
+
+      // Intent Footer: Only shown when authentic intent is supplied by caller
+      let intentHtml = '';
+      const intentStr = (c.intent != null) ? String(c.intent).trim() : '';
+      if (intentStr.length > 0 && intentStr !== c.cmd && intentStr !== c.target) {
+        intentHtml = `
+          <div class="flex items-center gap-1 text-[10px] min-w-0 truncate pl-0.5 mt-0.5" style="color: var(--sky);" title="${escapeHtml(intentStr)}">
+            <span class="shrink-0 select-none">🎯</span>
+            <span class="truncate font-sans font-medium">${escapeHtml(intentStr)}</span>
+          </div>
+        `;
+      }
+
+      return `${headerHtml}${bodyHtml}${intentHtml}`;
+    }
+
     function createCommandRow(c, isSelected) {
       const row = document.createElement('div');
       const key = c.id || `${c.timestamp}_${c.cmd}`;
       row.setAttribute('data-cmd-key', key);
-      const commandState = commandStatusDisplay(c);
-      row.className = `action-row ${isSelected ? 'selected shadow-xs' : ''} p-2 rounded-lg border cursor-pointer flex flex-col gap-0.5 min-w-0 overflow-hidden`;
+      row.className = `action-row ${isSelected ? 'selected shadow-xs' : ''} p-2 rounded-lg border cursor-pointer flex flex-col gap-1 min-w-0 overflow-hidden`;
       row.style.backgroundColor = isSelected ? 'var(--bg-selected)' : 'var(--bg-header)';
       row.style.borderColor = isSelected ? 'var(--accent)' : 'var(--border)';
 
-      const timeDisplay = formatLocalTime(c.timestamp || c.time_short, 'short');
-      const hasIntent = c.intent && c.intent.trim().length > 0 && c.intent !== c.cmd;
       const isNew = Boolean(c.is_latest) && !viewedCommandKeys.has(key);
+      row.innerHTML = renderCommandRowHtml(c, isNew);
 
-      row.innerHTML = `
-        <div class="flex items-center justify-between gap-1 text-[11px] min-w-0 overflow-hidden">
-          <div class="flex items-center gap-1 min-w-0 truncate">
-            <span style="color: var(--accent);" class="font-bold text-[11px] truncate whitespace-nowrap tool-name"></span>
-            <span class="badge-latest ${isNew ? '' : 'hidden'}" style="color: var(--mint); background-color: var(--accent-soft); font-size: 8.5px; padding: 0 4px; border-radius: 4px; font-weight: 600; letter-spacing: 0.02em;" title="Lệnh mới chưa xem">NEW</span>
-          </div>
-          <div class="flex items-center gap-1 shrink-0 whitespace-nowrap text-[10px]">
-            <span style="color: var(--text-dim);" class="time-display whitespace-nowrap"></span>
-            <span class="status-display font-semibold whitespace-nowrap"></span>
-          </div>
-        </div>
-        <div style="color: var(--text-main);" class="font-medium truncate text-[11px] min-w-0 mt-0.5 cmd-text font-mono"></div>
-      `;
-
-      const toolEl = row.querySelector('.tool-name');
-      if (toolEl) toolEl.textContent = displayToolName(c.tool);
-      const timeEl = row.querySelector('.time-display');
-      if (timeEl) timeEl.textContent = `${timeDisplay} · ${commandElapsedDisplay(c)}`;
-      const statusEl = row.querySelector('.status-display');
-      if (statusEl) {
-        statusEl.textContent = commandState.text;
-        statusEl.style.color = commandState.color;
-      }
-      const cmdEl = row.querySelector('.cmd-text');
-      if (cmdEl) cmdEl.textContent = c.cmd || '';
       row._commandData = c;
       row.onclick = () => {
         userPinnedCommandKey = key;
@@ -3173,29 +3304,12 @@
             selectCommand(row._commandData || c, true);
           };
 
-          const badgeLatest = row.querySelector('.badge-latest');
-          if (badgeLatest) {
-            const isNew = Boolean(c.is_latest) && !viewedCommandKeys.has(key);
-            if (isNew) badgeLatest.classList.remove('hidden');
-            else badgeLatest.classList.add('hidden');
+          const isNew = Boolean(c.is_latest) && !viewedCommandKeys.has(key);
+          const newHtml = renderCommandRowHtml(c, isNew);
+          if (row.innerHTML !== newHtml) {
+            row.innerHTML = newHtml;
           }
-          const statusEl = row.querySelector('.status-display');
-          if (statusEl) {
-            const commandState = commandStatusDisplay(c);
-            if (statusEl.innerText !== commandState.text) {
-              statusEl.innerText = commandState.text;
-              statusEl.style.color = commandState.color;
-            }
-          }
-          const timeEl = row.querySelector('.time-display');
-          if (timeEl) {
-            const newTime = `${formatLocalTime(c.timestamp || c.time_short, 'short')} · ${commandElapsedDisplay(c)}`;
-            if (timeEl.innerText !== newTime) timeEl.innerText = newTime;
-          }
-          const cmdEl = row.querySelector('.cmd-text');
-          if (cmdEl && cmdEl.innerText !== (c.cmd || '')) {
-            cmdEl.innerText = c.cmd || '';
-          }
+
           const isThisSelected = targetKey ? (key === targetKey) : false;
           if (isThisSelected) {
             if (activeActionRowEl && activeActionRowEl !== row) {
@@ -3350,11 +3464,199 @@
       return formatted + (hasOpenSpan ? '</span>' : '');
     }
 
+    function renderDiffOutput(text) {
+      if (!text) return '';
+      const lines = text.split('\n');
+      return lines.map(line => {
+        if (line.startsWith('+++ ') || line.startsWith('--- ')) {
+          return `<div class="font-bold text-sky-400 bg-sky-500/10 px-2 py-0.5 text-[10.5px]">${escapeHtml(line)}</div>`;
+        } else if (line.startsWith('@@')) {
+          return `<div class="text-sky-300/80 bg-sky-950/40 px-2 py-0.5 text-[10px] my-1 font-mono">${escapeHtml(line)}</div>`;
+        } else if (line.startsWith('+')) {
+          return `<div class="bg-emerald-500/15 text-emerald-300 px-2 py-0.5 border-l-2 border-emerald-500 font-mono">${escapeHtml(line)}</div>`;
+        } else if (line.startsWith('-')) {
+          return `<div class="bg-rose-500/15 text-rose-300 px-2 py-0.5 border-l-2 border-rose-500 font-mono">${escapeHtml(line)}</div>`;
+        } else {
+          return `<div class="px-2 py-0.5 text-text-sub font-mono opacity-80">${escapeHtml(line)}</div>`;
+        }
+      }).join('');
+    }
+
+    function renderCodeOutput(text, c) {
+      if (!text) return '';
+      const lines = text.split('\n');
+      let startLine = 1;
+      if (c && c.raw_json) {
+        try {
+          const p = typeof c.raw_json === 'string' ? JSON.parse(c.raw_json) : c.raw_json;
+          const payload = p.payload || (p.started && p.started.payload) || null;
+          if (payload && typeof payload.start_line === 'number') {
+            startLine = payload.start_line;
+          }
+        } catch (_) {}
+      }
+      return lines.map((line, idx) => {
+        const lineNum = startLine + idx;
+        return `<div class="flex items-start hover:bg-white/5 py-0.5 font-mono"><span class="w-10 text-right pr-3 select-none text-[10px] text-text-dim shrink-0 opacity-60">L${lineNum}</span><span class="flex-1 whitespace-pre-wrap">${escapeHtml(line)}</span></div>`;
+      }).join('');
+    }
+
+    function renderSearchOutput(text, pattern) {
+      if (!text) return '';
+      const lines = text.split('\n');
+      const patLower = (pattern || '').toLowerCase();
+      const fileGroups = new Map();
+      lines.forEach(line => {
+        if (!line.trim()) return;
+        const match = line.match(/^([^:]+):(\d+):(.*)$/);
+        if (match) {
+          const file = match[1];
+          const lineNum = match[2];
+          const content = match[3];
+          if (!fileGroups.has(file)) fileGroups.set(file, []);
+          fileGroups.get(file).push({ lineNum, content });
+        } else {
+          if (!fileGroups.has('')) fileGroups.set('', []);
+          fileGroups.get('').push({ lineNum: '', content: line });
+        }
+      });
+
+      let html = '';
+      fileGroups.forEach((items, file) => {
+        if (file) {
+          html += `<div class="mt-2 mb-1 pt-1.5 border-t border-border/40 first:border-0 first:mt-0"><div class="flex items-center gap-1.5 text-[11px] text-sky-400 font-semibold"><span class="opacity-70">📄</span> <span>${escapeHtml(file)}</span> <span class="text-text-dim text-[9.5px] font-normal font-sans">(${items.length} kết quả)</span></div></div>`;
+        }
+        items.forEach(item => {
+          let highlightedContent = escapeHtml(item.content);
+          if (patLower && highlightedContent.toLowerCase().includes(patLower)) {
+            const regex = new RegExp(`(${pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+            highlightedContent = highlightedContent.replace(regex, '<mark class="bg-amber-400/30 text-amber-200 px-1 rounded font-semibold">$1</mark>');
+          }
+          if (item.lineNum) {
+            html += `<div class="flex items-start hover:bg-white/5 py-0.5 font-mono text-[11px]"><span class="w-12 text-right pr-2.5 select-none text-[10px] text-text-dim shrink-0 opacity-60">L${item.lineNum}</span><span class="flex-1 whitespace-pre-wrap text-text-main">${highlightedContent}</span></div>`;
+          } else {
+            html += `<div class="py-0.5 font-mono text-[11px] text-text-sub">${highlightedContent}</div>`;
+          }
+        });
+      });
+      return html;
+    }
+
+    function renderTreeOutput(text) {
+      if (!text) return '';
+      const lines = text.split('\n');
+      return lines.map(line => {
+        if (!line.trim()) return '';
+        const trimmed = line.trim();
+        const isDir = trimmed.endsWith('/');
+        const icon = isDir ? '📁' : '📄';
+        return `<div class="flex items-center gap-1.5 py-0.5 font-mono text-[11px] hover:bg-white/5 text-text-main"><span class="text-[10px] select-none opacity-70">${icon}</span><span>${escapeHtml(trimmed)}</span></div>`;
+      }).join('');
+    }
+
+    function renderInspectorOutputContent(c, rawOut) {
+      const inspectOutput = document.getElementById('inspectOutput');
+      if (!inspectOutput) return;
+
+      const isRunning = commandIsRunning(c);
+      if (!rawOut || rawOut.trim().length === 0) {
+        if (isRunning) {
+          inspectOutput.innerHTML = '<span style="color: var(--accent);" class="animate-pulse">⚡ Đang thực thi...</span> <span class="animate-pulse font-bold" style="color: var(--accent);">▋</span>';
+        } else {
+          inspectOutput.innerHTML = '<span style="color: var(--text-dim);">(Không có kết quả STDOUT)</span>';
+        }
+        return;
+      }
+
+      const outType = (c.output_type || '').toLowerCase();
+      if (outType === 'diff' || (rawOut.startsWith('---') && rawOut.includes('+++'))) {
+        inspectOutput.innerHTML = renderDiffOutput(rawOut);
+      } else if (outType === 'search') {
+        inspectOutput.innerHTML = renderSearchOutput(rawOut, c.target);
+      } else if (outType === 'tree') {
+        inspectOutput.innerHTML = renderTreeOutput(rawOut);
+      } else if (outType === 'code') {
+        inspectOutput.innerHTML = renderCodeOutput(rawOut, c);
+      } else {
+        let html = renderAnsi(rawOut);
+        if (isRunning) {
+          html += ' <span class="animate-pulse font-bold" style="color: var(--accent);">▋</span>';
+        }
+        inspectOutput.innerHTML = html;
+      }
+    }
+
+    let isInspectorAutoScroll = true;
+
+    function toggleInspectorAutoScroll(btn) {
+      isInspectorAutoScroll = !isInspectorAutoScroll;
+      const inspectOutput = document.getElementById('inspectOutput');
+      if (btn) {
+        if (isInspectorAutoScroll) {
+          btn.innerText = '↓ Cuộn: BẬT';
+          btn.classList.add('text-emerald-400');
+          btn.classList.remove('opacity-60');
+          if (inspectOutput) inspectOutput.scrollTop = inspectOutput.scrollHeight;
+        } else {
+          btn.innerText = '↓ Cuộn: TẮT';
+          btn.classList.remove('text-emerald-400');
+          btn.classList.add('opacity-60');
+        }
+      }
+    }
+
+    function toggleInspectorWrap(btn) {
+      const inspectOutput = document.getElementById('inspectOutput');
+      if (!inspectOutput) return;
+      if (inspectOutput.classList.contains('whitespace-pre-wrap')) {
+        inspectOutput.classList.remove('whitespace-pre-wrap');
+        inspectOutput.classList.add('whitespace-pre', 'overflow-x-auto');
+        if (btn) btn.innerText = 'No-Wrap';
+      } else {
+        inspectOutput.classList.remove('whitespace-pre', 'overflow-x-auto');
+        inspectOutput.classList.add('whitespace-pre-wrap');
+        if (btn) btn.innerText = 'Wrap';
+      }
+    }
+
+    function copyInspectorOutput(btn) {
+      const inspectOutput = document.getElementById('inspectOutput');
+      if (!inspectOutput) return;
+      const text = inspectOutput.innerText || '';
+      if (!text.trim()) {
+        showToast('⚠️ Không có nội dung để sao chép');
+        return;
+      }
+      copyTextToClipboard(text, () => {
+        showToast('✓ Đã sao chép nội dung đầu ra');
+        if (btn) {
+          const old = btn.innerText;
+          btn.innerText = 'Copied!';
+          setTimeout(() => { btn.innerText = old; }, 1500);
+        }
+      });
+    }
+
     function extractTargetFileInfo(c) {
       if (!c) return null;
-      const tool = (c.tool || '').toLowerCase();
-      let targetPath = null;
-      let opType = null;
+      let opType = (c.action || '').toUpperCase();
+      if (!opType) {
+        const tool = (c.tool || '').toLowerCase();
+        if (tool.includes('edit') || tool.includes('write')) opType = 'EDIT';
+        else if (tool.includes('explore') || tool.includes('read') || tool.includes('tree')) opType = 'READ';
+        else if (tool.includes('search')) opType = 'FIND';
+        else if (tool.includes('execute') || tool.includes('run')) opType = 'EXEC';
+        else if (tool.includes('task')) opType = 'TASK';
+        else if (tool.includes('web')) opType = 'WEB';
+        else opType = 'TOOL';
+      }
+
+      // Shell executions, searches, tasks, and web queries have dedicated inspector cards
+      if (['EXEC', 'FIND', 'TASK', 'WEB'].includes(opType)) {
+        return null;
+      }
+
+      let targetPath = c.target || null;
       let details = '';
 
       let payload = null;
@@ -3366,51 +3668,20 @@
       }
 
       if (payload) {
-        if (payload.path) targetPath = payload.path;
-        else if (payload.target_path) targetPath = payload.target_path;
-        else if (payload.file) targetPath = payload.file;
-        else if (payload.filename) targetPath = payload.filename;
-
-        if (payload.pattern) details += `Mẫu tìm kiếm: "${payload.pattern}" `;
-        if (payload.expected_count != null) details += `· Kỳ vọng thay thế: ${payload.expected_count} vị trí `;
-        if (payload.offset_lines != null || payload.limit_lines != null) {
-          details += `· Dòng: ${payload.offset_lines || 1} -> ${(payload.offset_lines || 1) + (payload.limit_lines || 0)} `;
+        if (!targetPath) {
+          targetPath = payload.path || payload.target_path || payload.file || payload.filename;
         }
-      }
-
-      if (tool.includes('write_file')) {
-        opType = 'WRITE';
-        if (!details) details = 'Ghi đè hoặc tạo mới toàn bộ tệp tin';
-      } else if (tool.includes('replace_text')) {
-        opType = 'REPLACE';
-        if (!details) details = 'Thay thế văn bản trong tệp tin';
-      } else if (tool.includes('append_file')) {
-        opType = 'APPEND';
-        if (!details) details = 'Nối nội dung vào cuối tệp tin';
-      } else if (tool.includes('read_file')) {
-        opType = 'READ';
-        if (!details) details = 'Đọc nội dung tệp tin';
-      } else if (tool.includes('mkdir')) {
-        opType = 'MKDIR';
-        if (!details) details = 'Tạo thư mục mới';
-      } else if (tool.includes('search_text')) {
-        opType = 'SEARCH';
-        if (!details) details = 'Tìm kiếm chuỗi văn bản đệ quy';
-      }
-
-      if (!targetPath && opType && c.cmd) {
-        const parts = c.cmd.trim().split(/\s+/);
-        const candidate = parts.slice(1).find(p => !p.startsWith('-') && (p.includes('/') || p.includes('.')));
-        if (candidate) {
-          targetPath = candidate.replace(/^['"]|['"]$/g, '');
+        if (payload.start_line != null || payload.end_line != null) {
+          details += `Dòng: ${payload.start_line || 1} -> ${payload.end_line || 'hết'} `;
         }
+        if (payload.action) details += `· Thao tác: ${payload.action} `;
       }
 
-      if (targetPath || opType) {
+      if (targetPath) {
         return {
-          path: targetPath || '(Đường dẫn trong tham số)',
+          path: targetPath,
           opType: opType || 'FILE',
-          details: details.trim() || 'Thao tác tệp tin qua Host MCP'
+          details: details.trim() || (opType === 'EDIT' ? 'Cập nhật mã nguồn tệp tin' : 'Đọc và khám phá tệp tin')
         };
       }
       return null;
@@ -3452,6 +3723,24 @@
       });
     }
 
+    function copyCommandText(btn) {
+      const cmd = document.getElementById('inspectCommand')?.innerText || '';
+      if (!cmd || cmd === '—' || cmd === '(Trống)') {
+        showToast('⚠️ Không có lệnh shell để sao chép');
+        return;
+      }
+      copyTextToClipboard(cmd, () => {
+        showToast('✓ Đã sao chép lệnh shell');
+        if (btn) {
+          const label = btn.querySelector('.btn-copy-text');
+          if (label) {
+            label.innerText = 'Copied!';
+            setTimeout(() => { label.innerText = 'Copy Cmd'; }, 1500);
+          }
+        }
+      });
+    }
+
     function updateInspectorNonDestructive(c) {
       if (!c) {
         clearInspector();
@@ -3473,8 +3762,8 @@
         // Hero Intent Card at the top of Inspector
         const inspectIntentHero = document.getElementById('inspectIntentHero');
         const inspectIntentHeroText = document.getElementById('inspectIntentHeroText');
-        const intentStr = (c.intent != null) ? String(c.intent) : '';
-        const hasIntent = intentStr.trim().length > 0 && intentStr !== c.cmd;
+        const intentStr = (c.intent != null) ? String(c.intent).trim() : '';
+        const hasIntent = intentStr.length > 0 && intentStr !== c.cmd && intentStr !== c.target;
         if (inspectIntentHero && inspectIntentHeroText) {
           if (hasIntent) {
             inspectIntentHeroText.innerText = intentStr;
@@ -3504,15 +3793,29 @@
           inspectExit.style.color = exitState.color;
         }
 
-        // Tab 1: Output - ANSI colorized rendering while preserving scroll position!
+        // Tab 1: Output - Rich viewer with smooth streaming auto-scroll!
         if (inspectOutput) {
           const rawOut = (c.output != null) ? String(c.output) : '';
-          const newOutput = rawOut.trim().length > 0 ? rawOut : '(Không có kết quả STDOUT)';
-          if (inspectOutput._lastRaw !== newOutput) {
-            inspectOutput._lastRaw = newOutput;
-            const prevScroll = inspectOutput.scrollTop;
-            inspectOutput.innerHTML = renderAnsi(newOutput);
-            inspectOutput.scrollTop = prevScroll;
+          const outputKey = `${c.id || ''}_${c.output_type || ''}_${rawOut.length}_${commandIsRunning(c)}`;
+          if (inspectOutput._lastOutputKey !== outputKey) {
+            inspectOutput._lastOutputKey = outputKey;
+            const wasNearBottom = (inspectOutput.scrollHeight - inspectOutput.scrollTop - inspectOutput.clientHeight) <= 50;
+            renderInspectorOutputContent(c, rawOut);
+
+            const modeBadge = document.getElementById('inspectOutputModeBadge');
+            const subTitle = document.getElementById('inspectOutputSubtitle');
+            if (modeBadge) {
+              modeBadge.innerText = (c.output_type || 'STREAM').toUpperCase();
+            }
+            if (subTitle) {
+              const targetStr = c.target || c.cmd || '';
+              subTitle.innerText = targetStr.includes('/') ? (targetStr.split('/').pop() || targetStr) : targetStr;
+              subTitle.title = targetStr;
+            }
+
+            if (isInspectorAutoScroll && (wasNearBottom || commandIsRunning(c) || inspectOutput.scrollTop === 0)) {
+              inspectOutput.scrollTop = inspectOutput.scrollHeight;
+            }
           }
         }
 
@@ -3520,28 +3823,101 @@
         const inspectSessionId = document.getElementById('inspectSessionId');
         const curSessId = activeChatId || c.chat_id || '--';
         if (inspectSessionId && inspectSessionId.innerText !== curSessId) inspectSessionId.innerText = curSessId;
-        const cmdStr = (c.cmd != null) ? String(c.cmd) : '(Trống)';
-        if (inspectCommand && inspectCommand.innerText !== cmdStr) inspectCommand.innerText = cmdStr;
 
-        // Target File Card
+        const act = (c.action || displayToolName(c.tool)).toUpperCase();
+
+        const inspectCommandCard = document.getElementById('inspectCommandCard');
         const inspectTargetFileCard = document.getElementById('inspectTargetFileCard');
         const inspectTargetFilePath = document.getElementById('inspectTargetFilePath');
         const inspectTargetFileBadge = document.getElementById('inspectTargetFileBadge');
         const inspectTargetFileDetails = document.getElementById('inspectTargetFileDetails');
-        const fileInfo = extractTargetFileInfo(c);
-        if (inspectTargetFileCard && inspectTargetFilePath) {
-          if (fileInfo) {
-            inspectTargetFilePath.innerText = fileInfo.path;
-            if (inspectTargetFileBadge) inspectTargetFileBadge.innerText = fileInfo.opType;
-            if (inspectTargetFileDetails) inspectTargetFileDetails.innerText = fileInfo.details;
-            inspectTargetFileCard.classList.remove('hidden');
-          } else {
-            inspectTargetFileCard.classList.add('hidden');
+        const inspectSearchQueryCard = document.getElementById('inspectSearchQueryCard');
+        const inspectSearchPattern = document.getElementById('inspectSearchPattern');
+        const inspectSearchScope = document.getElementById('inspectSearchScope');
+        const inspectWebRequestCard = document.getElementById('inspectWebRequestCard');
+        const inspectWebUrl = document.getElementById('inspectWebUrl');
+        const inspectCwdCard = document.getElementById('inspectCwdCard');
+
+        // Hide all tool-specific cards first, then activate the appropriate one
+        if (inspectCommandCard) inspectCommandCard.classList.add('hidden');
+        if (inspectTargetFileCard) inspectTargetFileCard.classList.add('hidden');
+        if (inspectSearchQueryCard) inspectSearchQueryCard.classList.add('hidden');
+        if (inspectWebRequestCard) inspectWebRequestCard.classList.add('hidden');
+        if (inspectCwdCard) inspectCwdCard.classList.add('hidden');
+
+        if (act === 'EXEC') {
+          // Terminal: Dedicated Shell Command Card (Full intact shell command preserved) + CWD
+          if (inspectCommandCard && inspectCommand) {
+            const titleEl = inspectCommandCard.querySelector('.text-\\[10px\\]');
+            if (titleEl) titleEl.innerText = 'Lệnh thực thi shell (Shell Command)';
+            const badgeEl = inspectCommandCard.querySelector('.font-mono.font-bold');
+            if (badgeEl) badgeEl.innerText = 'EXEC';
+            const fullCmd = c.cmd || c.target || '(Trống)';
+            inspectCommand.innerText = fullCmd;
+            inspectCommandCard.classList.remove('hidden');
+          }
+          if (inspectCwdCard && inspectCwd) {
+            const cwdStr = (c.cwd != null && c.cwd !== '') ? String(c.cwd) : '(Thư mục gốc workspace)';
+            inspectCwd.innerText = cwdStr;
+            inspectCwdCard.classList.remove('hidden');
+          }
+        } else if (act === 'READ' || act === 'TREE' || act === 'EDIT') {
+          // File operations: Dedicated Target File Context Card
+          const fileInfo = extractTargetFileInfo(c);
+          if (inspectTargetFileCard && inspectTargetFilePath) {
+            if (fileInfo) {
+              inspectTargetFilePath.innerText = fileInfo.path;
+              if (inspectTargetFileBadge) inspectTargetFileBadge.innerText = fileInfo.opType;
+              if (inspectTargetFileDetails) inspectTargetFileDetails.innerText = fileInfo.details;
+              inspectTargetFileCard.classList.remove('hidden');
+            }
+          }
+          if (inspectCwdCard && inspectCwd && c.cwd) {
+            inspectCwd.innerText = String(c.cwd);
+            inspectCwdCard.classList.remove('hidden');
+          }
+        } else if (act === 'FIND') {
+          // Search operations: Dedicated Search Query Card
+          if (inspectSearchQueryCard && inspectSearchPattern) {
+            const searchInfo = extractSearchInfo(c);
+            inspectSearchPattern.innerText = searchInfo.pattern || c.target || c.cmd || '—';
+            if (inspectSearchScope) {
+              inspectSearchScope.innerText = searchInfo.scope ? `Phạm vi tìm kiếm: ${searchInfo.scope}` : 'Phạm vi: Toàn bộ workspace';
+            }
+            inspectSearchQueryCard.classList.remove('hidden');
+          }
+          if (inspectCwdCard && inspectCwd && c.cwd) {
+            inspectCwd.innerText = String(c.cwd);
+            inspectCwdCard.classList.remove('hidden');
+          }
+        } else if (act === 'WEB') {
+          // Web intelligence: Dedicated Web Target Card
+          if (inspectWebRequestCard && inspectWebUrl) {
+            const payload = parseCommandPayload(c);
+            inspectWebUrl.innerText = payload.url || c.target || c.cmd || '—';
+            inspectWebRequestCard.classList.remove('hidden');
+          }
+        } else if (act === 'TASK') {
+          // Task Manager: Dedicated Task Action Card
+          if (inspectCommandCard && inspectCommand) {
+            const titleEl = inspectCommandCard.querySelector('.text-\\[10px\\]');
+            if (titleEl) titleEl.innerText = 'Thao tác tác vụ (Task Action)';
+            const badgeEl = inspectCommandCard.querySelector('.font-mono.font-bold');
+            if (badgeEl) badgeEl.innerText = 'TASK';
+            inspectCommand.innerText = c.cmd || c.target || '(Trống)';
+            inspectCommandCard.classList.remove('hidden');
+          }
+        } else {
+          // Fallback tool card
+          if (inspectCommandCard && inspectCommand) {
+            const titleEl = inspectCommandCard.querySelector('.text-\\[10px\\]');
+            if (titleEl) titleEl.innerText = `Lệnh công cụ (${act})`;
+            const badgeEl = inspectCommandCard.querySelector('.font-mono.font-bold');
+            if (badgeEl) badgeEl.innerText = act;
+            inspectCommand.innerText = c.cmd || c.target || '(Trống)';
+            inspectCommandCard.classList.remove('hidden');
           }
         }
-
-        const cwdStr = (c.cwd != null) ? String(c.cwd) : '(Không xác định)';
-        if (inspectCwd && inspectCwd.innerText !== cwdStr) inspectCwd.innerText = cwdStr;
 
         // Tab 3: STDERR - ANSI colorized rendering while preserving scroll position!
         const rawErr = (c.stderr != null) ? String(c.stderr) : '';
@@ -3629,6 +4005,14 @@
       if (inspectIntentHero) inspectIntentHero.classList.add('hidden');
       const inspectTargetFileCard = document.getElementById('inspectTargetFileCard');
       if (inspectTargetFileCard) inspectTargetFileCard.classList.add('hidden');
+      const inspectCommandCard = document.getElementById('inspectCommandCard');
+      if (inspectCommandCard) inspectCommandCard.classList.add('hidden');
+      const inspectSearchQueryCard = document.getElementById('inspectSearchQueryCard');
+      if (inspectSearchQueryCard) inspectSearchQueryCard.classList.add('hidden');
+      const inspectWebRequestCard = document.getElementById('inspectWebRequestCard');
+      if (inspectWebRequestCard) inspectWebRequestCard.classList.add('hidden');
+      const inspectCwdCard = document.getElementById('inspectCwdCard');
+      if (inspectCwdCard) inspectCwdCard.classList.add('hidden');
       if (inspectCwd) inspectCwd.innerText = '(Trống)';
       if (inspectStderr) {
         inspectStderr._lastRaw = '';
@@ -3922,6 +4306,9 @@
       if (status.workspace_root) setVal('cfgWorkspaceDir', status.workspace_root);
       if (status.default_dir) setVal('cfgDefaultDir', status.default_dir);
       if (status.chat_root) setVal('cfgChatRoot', status.chat_root);
+      if (status.max_workspaces || status.HOST_CHAT_MAX_WORKSPACES) setVal('cfgMaxWorkspaces', status.max_workspaces || status.HOST_CHAT_MAX_WORKSPACES);
+      if (status.quota_mb || status.HOST_CHAT_QUOTA_MB) setVal('cfgQuotaMb', status.quota_mb || status.HOST_CHAT_QUOTA_MB);
+      if (status.root_max_gb || status.HOST_CHAT_ROOT_MAX_GB) setVal('cfgRootMaxGb', status.root_max_gb || status.HOST_CHAT_ROOT_MAX_GB);
       if (status.policy) setVal('cfgPolicy', status.policy);
       if (status.default_timeout) setVal('cfgDefaultTimeout', status.default_timeout);
       if (status.max_timeout) setVal('cfgMaxTimeout', status.max_timeout);
@@ -3931,18 +4318,6 @@
       if (status.attribution_mode) setVal('cfgAttribution', status.attribution_mode);
       if (status.fastmcp_port) setVal('cfgPort', String(status.fastmcp_port));
       if (status.bind_host) setVal('cfgBindHost', String(status.bind_host));
-      if (status.SEARCH_TEXT_DEADLINE_SECONDS) setVal('cfgSearchDeadline', String(status.SEARCH_TEXT_DEADLINE_SECONDS));
-      if (status.WORKSPACE_SEARCH_MAX_WORK_MATCHES) setVal('cfgSearchWork', String(status.WORKSPACE_SEARCH_MAX_WORK_MATCHES));
-      if (status.WORKSPACE_SEARCH_MAX_SCANNED_FILES) setVal('cfgSearchScannedFiles', String(status.WORKSPACE_SEARCH_MAX_SCANNED_FILES));
-      if (status.WORKSPACE_SEARCH_MAX_SCANNED_BYTES) setVal('cfgSearchScannedBytes', String(status.WORKSPACE_SEARCH_MAX_SCANNED_BYTES));
-      if (status.WORKSPACE_SEARCH_MAX_CONCURRENT) setVal('cfgSearchConcurrent', String(status.WORKSPACE_SEARCH_MAX_CONCURRENT));
-      if (status.WORKSPACE_SEARCH_MAX_PER_CHAT) setVal('cfgSearchPerChat', String(status.WORKSPACE_SEARCH_MAX_PER_CHAT));
-      if (status.WORKSPACE_SEARCH_QUEUE_TIMEOUT_SECONDS) setVal('cfgSearchQueue', String(status.WORKSPACE_SEARCH_QUEUE_TIMEOUT_SECONDS));
-      if (status.WORKSPACE_SEARCH_DEFAULT_MAX_MATCHES) setVal('cfgSearchDefaultCap', String(status.WORKSPACE_SEARCH_DEFAULT_MAX_MATCHES));
-      if (status.WORKSPACE_SEARCH_MAX_RETURNED_MATCHES) setVal('cfgSearchMaxCap', String(status.WORKSPACE_SEARCH_MAX_RETURNED_MATCHES));
-      if (status.WORKSPACE_SEARCH_MAX_LINE_CHARS) setVal('cfgSearchLineChars', String(status.WORKSPACE_SEARCH_MAX_LINE_CHARS));
-      if (status.MCP_MAX_PAYLOAD_BYTES) setVal('cfgMcpPayload', String(status.MCP_MAX_PAYLOAD_BYTES));
-      if (status.MCP_TOOL_RESULT_OVERHEAD_BYTES) setVal('cfgMcpOverhead', String(status.MCP_TOOL_RESULT_OVERHEAD_BYTES));
     };
 
     function setVal(id, val) {

@@ -125,6 +125,7 @@ def terminal_execute(
     chat_id: Optional[str] = None,
     wait_ms_before_async: int = getattr(app.config, "HOST_TASK_WAIT_BEFORE_ASYNC_MS", 5000),
     background: bool | None = None,
+    intent: Optional[str] = None,
 ) -> dict[str, Any]:
     """Execute commands with adaptive asynchronous task handling."""
     validated, rejection = _guard_chat_id("terminal_execute", chat_id)
@@ -136,17 +137,55 @@ def terminal_execute(
     command_summary = command.strip()
     manager = get_task_manager()
 
+    journal_details = {"command": command, "cwd": str(resolved_cwd)}
+    if intent:
+        journal_details["intent"] = str(intent).strip()[:300]
+    journal_op = _begin_workspace_journal("terminal_execute", validated, journal_details)
+
     if background is True:
         task_id = _run_async_task(
             manager.spawn_process(["/bin/bash", "-lc", command], str(resolved_cwd), validated or "default")
         )
-        return {
+        detached_res = {
             "ok": True,
             "task_id": task_id,
             "detached": True,
             "command_summary": command_summary,
             "message": "Task moved to background.",
         }
+        _record_tool_call("terminal_execute", validated)
+        finish_details = dict(journal_details)
+        finish_details.update({
+            "command": command,
+            "cwd": str(resolved_cwd),
+            "task_id": task_id,
+            "detached": True,
+            "status": "running",
+        })
+        _finish_workspace_journal(
+            "terminal_execute",
+            validated,
+            journal_op,
+            ok=True,
+            details=finish_details,
+        )
+        try:
+            from app.activity_log import record_mcp_command_activity
+
+            record_mcp_command_activity(
+                command=command,
+                cwd=str(resolved_cwd),
+                result=detached_res,
+                chat_id=validated,
+                operation_id=journal_op,
+                phase="started",
+                status="running",
+                tool_name="terminal_execute",
+                intent=intent,
+            )
+        except Exception:
+            pass
+        return detached_res
 
     # Adaptive detach mode: activated when caller specifies custom wait_ms_before_async
     is_explicit_adaptive = wait_ms_before_async != getattr(app.config, "HOST_TASK_WAIT_BEFORE_ASYNC_MS", 5000)
@@ -158,7 +197,7 @@ def terminal_execute(
         try:
             status = _run_async_task(manager.wait_task(task_id, timeout=wait_ms_before_async / 1000.0))
         except (TimeoutError, asyncio.TimeoutError):
-            return {
+            adaptive_res = {
                 "ok": True,
                 "task_id": task_id,
                 "detached": True,
@@ -166,11 +205,28 @@ def terminal_execute(
                 "initial_tail": _run_async_task(manager.tail_task(task_id, lines=50)),
                 "message": "Command exceeded synchronous threshold. Detached to background task. Use task(action='wait', task_id=...) to await completion, or task(action='tail') to inspect output. DO NOT poll status in a loop.",
             }
+            _record_tool_call("terminal_execute", validated)
+            finish_details = dict(journal_details)
+            finish_details.update({
+                "command": command,
+                "cwd": str(resolved_cwd),
+                "task_id": task_id,
+                "detached": True,
+                "status": "running",
+            })
+            _finish_workspace_journal(
+                "terminal_execute",
+                validated,
+                journal_op,
+                ok=True,
+                details=finish_details,
+            )
+            return adaptive_res
         exit_code = status.get("exit_code", 0)
         raw_output = _run_async_task(manager.tail_task(task_id, lines=10000))
         truncated_output, was_truncated = _truncate_output(raw_output)
         semantic_errors = _extract_semantic_errors(raw_output)
-        return {
+        res = {
             "ok": exit_code == 0,
             "exit_code": exit_code,
             "command_summary": command_summary,
@@ -182,6 +238,24 @@ def terminal_execute(
             "summary": {"errors": semantic_errors},
             "task_id": task_id,
         }
+        _record_tool_call("terminal_execute", validated)
+        finish_details = dict(journal_details)
+        finish_details.update({
+            "command": command,
+            "cwd": str(resolved_cwd),
+            "exit_code": exit_code,
+            "duration_ms": res.get("duration_ms"),
+            "stdout": truncated_output,
+            "timed_out": False,
+        })
+        _finish_workspace_journal(
+            "terminal_execute",
+            validated,
+            journal_op,
+            ok=exit_code == 0,
+            details=finish_details,
+        )
+        return res
 
     # Standard synchronous execution path (preserves mock Popen & process group kill compatibility)
     timeout = float(timeout_seconds) if timeout_seconds is not None else float(_DEFAULT_TIMEOUT)
@@ -227,6 +301,48 @@ def terminal_execute(
     }
 
     _record_tool_call("terminal_execute", validated)
+    finish_details = dict(journal_details)
+    finish_details.update({
+        "command": command,
+        "cwd": str(resolved_cwd),
+        "exit_code": exit_code,
+        "duration_ms": duration_ms,
+        "stdout": truncated_output,
+        "stderr": stderr or "",
+        "timed_out": timed_out,
+    })
+    _finish_workspace_journal(
+        "terminal_execute",
+        validated,
+        journal_op,
+        ok=(exit_code == 0) and not timed_out,
+        details=finish_details,
+    )
+    try:
+        from app.activity_log import record_mcp_command_activity
+
+        record_mcp_command_activity(
+            command=command,
+            cwd=str(resolved_cwd),
+            result={
+                "ok": (exit_code == 0) and not timed_out,
+                "exit_code": exit_code,
+                "command_summary": command_summary,
+                "stdout": truncated_output,
+                "stderr": stderr or "",
+                "duration_ms": duration_ms,
+                "timed_out": timed_out,
+            },
+            chat_id=validated,
+            operation_id=journal_op,
+            phase="completed",
+            status="succeeded" if (exit_code == 0 and not timed_out) else "failed",
+            tool_name="terminal_execute",
+            intent=intent,
+        )
+    except Exception:
+        pass
+
     if isinstance(result, dict):
         result = enforce_payload(result)
     return result

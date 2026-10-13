@@ -101,6 +101,7 @@ def workspace_edit(
     expected_count: int = 1,
     validate_syntax: bool = True,
     chat_id: Optional[str] = None,
+    intent: Optional[str] = None,
 ) -> dict[str, Any]:
     """Execute unified mutations on host files with atomic guarantees."""
     validated, rejection = _guard_chat_id("workspace_edit", chat_id)
@@ -112,6 +113,8 @@ def workspace_edit(
         "action": action,
         "expected_count": expected_count if action == "replace" else None,
     }
+    if intent:
+        journal_details["intent"] = str(intent).strip()[:300]
     journal_op = _begin_workspace_journal("workspace_edit", validated, journal_details)
 
     try:
@@ -207,11 +210,18 @@ def workspace_edit(
         result = format_error_response(exc)
 
     _record_tool_call("workspace_edit", validated)
+    finish_details = dict(journal_details)
+    if isinstance(result, dict) and result.get("ok"):
+        finish_details["bytes_written"] = result.get("bytes_written")
+        finish_details["lines_changed"] = result.get("lines_changed")
+        finish_details["diff_preview"] = result.get("diff_preview", "")
+        finish_details["stdout"] = result.get("diff_preview", "")
+
     _finish_workspace_journal(
         "workspace_edit",
         validated,
         journal_op,
         ok=isinstance(result, dict) and bool(result.get("ok", False)),
-        details=journal_details,
+        details=finish_details,
     )
     return enforce_bridge_payload_limit(result, "workspace_edit")

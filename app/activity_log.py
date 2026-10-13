@@ -47,6 +47,7 @@ def record_mcp_command_activity(
     phase: str | None = None,
     status: str | None = None,
     tool_name: str = "terminal_execute",
+    intent: str | None = None,
 ) -> None:
     """Append a redacted command/result record for the local desktop UI.
 
@@ -82,6 +83,8 @@ def record_mcp_command_activity(
         "stdout_truncated": bool(result.get("stdout_truncated", False)) or stdout_limited,
         "stderr_truncated": bool(result.get("stderr_truncated", False)) or stderr_limited,
     }
+    if intent:
+        record["intent"] = _bounded_display_text(intent)[0]
     if chat_id:
         # The command transcript is already a local 0600 operator journal.
         # Keep the opaque chat id beside it so the desktop UI can group calls
